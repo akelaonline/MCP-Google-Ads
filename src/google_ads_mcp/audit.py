@@ -10,6 +10,7 @@ from pathlib import Path
 
 class AuditLog:
     def __init__(self, db_path: str):
+        db_path = str(Path(db_path).expanduser())
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.execute(

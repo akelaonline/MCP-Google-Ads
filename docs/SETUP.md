@@ -74,4 +74,6 @@ Restart Claude. Ask it: *"List my accessible Google Ads customer IDs."*
 | `PERMISSION_DENIED` / developer token errors | Token still in Test access — apply for Standard, or point at a test account. |
 | `USER_PERMISSION_DENIED` | The OAuth account doesn't have access to that customer ID, or you need `GOOGLE_ADS_LOGIN_CUSTOMER_ID` set to the MCC. |
 | `AUTHENTICATION_ERROR` | Refresh token expired/revoked — regenerate with the auth helper. |
+| `sqlite3.OperationalError: unable to open database file` | Old bug (fixed): the audit-log path used to be relative (`./audit.db`), which fails silently depending on which directory the MCP host launches the process from. Update to the latest version — the default is now an absolute path (`~/.google_ads_mcp/audit.db`). If you still hit this with a custom `GOOGLE_ADS_MCP_AUDIT_DB`, make sure that path is absolute. |
+| Claude Desktop shows the server as "failed" but running it manually in the terminal works fine | Check `~/Library/Logs/Claude/mcp-server-<name>.log` (macOS) for the real Python traceback — Claude Desktop launches the process with a different working directory and a minimal `PATH` than your interactive shell, so errors that don't show up manually can still show up there. |
 | Nothing happens after a write tool | That's by design — check `list_pending_actions()` and call `confirm_pending_action(id)`. |
