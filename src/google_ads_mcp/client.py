@@ -78,26 +78,62 @@ class GoogleAdsClientWrapper:
         validate_only: bool = False,
     ):
         """Execute a mutate call. Callers build the typed operation(s) first."""
+        import inspect
+
         from google.ads.googleads.errors import GoogleAdsException
 
         service = self.service(service_name)
         customer_id = _normalize_customer_id(customer_id)
-        kwargs = {
+        method_name = _mutate_method_name(service_name)
+        method = getattr(service, method_name, None)
+        if method is None:
+            raise GoogleAdsMcpError(
+                f"{service_name} has no '{method_name}' method. This is a bug in "
+                f"_mutate_method_name's pluralization for this service — check "
+                f"_IRREGULAR_MUTATE_METHODS in client.py."
+            )
+
+        kwargs: dict[str, Any] = {
             "customer_id": customer_id,
             operations_field: list(operations),
-            "partial_failure": partial_failure,
-            "validate_only": validate_only,
         }
+        # Not every mutate RPC accepts partial_failure / validate_only (e.g.
+        # CampaignBudgetService.mutate_campaign_budgets does not in some API
+        # versions). Only pass what the underlying method actually declares.
         try:
-            method = getattr(service, _mutate_method_name(service_name))
+            accepted_params = set(inspect.signature(method).parameters)
+        except (TypeError, ValueError):
+            accepted_params = None  # signature unavailable (e.g. C-extension) — be permissive
+
+        if accepted_params is None or "partial_failure" in accepted_params:
+            kwargs["partial_failure"] = partial_failure
+        if accepted_params is None or "validate_only" in accepted_params:
+            kwargs["validate_only"] = validate_only
+
+        try:
             return method(**kwargs)
         except GoogleAdsException as ex:
             raise GoogleAdsMcpError(format_google_ads_exception(ex)) from ex
 
 
+# Google Ads API service -> mutate method names that don't follow the regular
+# "add a trailing s" pluralization (e.g. Criterion -> Criteria, not Criterions).
+# Keep this list alphabetized and add to it whenever a new irregular shows up.
+_IRREGULAR_MUTATE_METHODS: dict[str, str] = {
+    "AdGroupCriterionService": "mutate_ad_group_criteria",
+    "AssetGroupCriterionService": "mutate_asset_group_criteria",
+    "CampaignCriterionService": "mutate_campaign_criteria",
+    "CustomerNegativeCriterionService": "mutate_customer_negative_criteria",
+}
+
+
 def _mutate_method_name(service_name: str) -> str:
     # e.g. "CampaignService" -> "mutate_campaigns"
     # e.g. "CampaignBudgetService" -> "mutate_campaign_budgets"
+    # e.g. "CampaignCriterionService" -> "mutate_campaign_criteria" (irregular plural)
+    if service_name in _IRREGULAR_MUTATE_METHODS:
+        return _IRREGULAR_MUTATE_METHODS[service_name]
+
     import re
 
     base = service_name[: -len("Service")] if service_name.endswith("Service") else service_name
