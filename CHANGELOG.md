@@ -12,6 +12,27 @@ arriba de todo (la más reciente siempre primero), con subsecciones
 fixes de distintas fechas en la misma sección — cada versión pusheada al
 repo es una entrada nueva.
 
+## 0.1.3 — 2026-07-23
+
+### Added
+- **Changelog is now surfaced from the README** — a version badge and a
+  "Changelog" link in the top nav bar, plus a row in the Documentation
+  table, so anyone landing on the repo sees at a glance that it's
+  actively maintained and where to check what changed.
+
+### Changed
+- **Quick start now verifies the install instead of assuming it worked.**
+  Added a one-line smoke test (`import google_ads_mcp`) right after
+  `pip install -e .`, with an explicit "if this fails, nuke and rebuild
+  the venv" fallback — this is the exact failure mode documented in
+  0.1.2, now caught at setup time instead of surfacing later as an
+  intermittent Claude Desktop connection failure.
+- **MCP config example now points at `.venv/bin/python` directly**
+  instead of a bare `python`, since Claude Desktop launches the server
+  with its own `PATH` that may not resolve to the intended virtualenv —
+  this was the root cause of the "works in terminal, fails in Claude"
+  reports.
+
 ## 0.1.2 — 2026-07-23
 
 ### Fixed

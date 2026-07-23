@@ -10,8 +10,9 @@ Built by [**Akela**](https://github.com/akelaonline)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Google Ads API v20](https://img.shields.io/badge/Google%20Ads%20API-v20-4285F4.svg)](https://developers.google.com/google-ads/api)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
+[![Version](https://img.shields.io/badge/version-0.1.3-informational.svg)](CHANGELOG.md)
 
-[Quick start](#quick-start) · [What it does](#what-it-does) · [Safety model](#safety-model) · [Documentation](#documentation) · [FAQ](docs/FAQ.md)
+[Quick start](#quick-start) · [What it does](#what-it-does) · [Safety model](#safety-model) · [Documentation](#documentation) · [Changelog](CHANGELOG.md) · [FAQ](docs/FAQ.md)
 
 </div>
 
@@ -66,13 +67,29 @@ pip install -e .
 cp .env.example .env   # fill in credentials — see docs/SETUP.md
 ```
 
-Register with Claude Desktop / Claude Code (`~/.claude/settings.json` or `claude_desktop_config.json`):
+**Verify the install before doing anything else** (this catches the #1 support issue — an incomplete or corrupted virtualenv — before it costs you a debugging session):
+
+```bash
+.venv/bin/python -c "import google_ads_mcp; print('OK:', google_ads_mcp.__file__)"
+```
+
+If that doesn't print `OK: ...`, don't try to patch it — nuke and rebuild the venv, it's faster than debugging a half-installed one:
+
+```bash
+rm -rf .venv
+python -m venv .venv
+.venv/bin/python -m pip install -e .
+```
+
+> **Point your MCP config at the venv's own Python (an absolute path), not a bare `python`.** Claude Desktop launches the server with its own `PATH`, which may not resolve to the virtualenv you just created — this is the most common cause of a server that works fine when you run it by hand but shows as "failed" inside Claude. If you still hit issues, see the [venv troubleshooting entry](docs/SETUP.md#troubleshooting) — it covers a specific corruption pattern (duplicated `.venv` files with a `" 2"` suffix, from a macOS Finder folder merge) that causes `ModuleNotFoundError` intermittently.
+
+Register with Claude Desktop / Claude Code (`~/.claude/settings.json` or `claude_desktop_config.json`) — point `command` at the venv's own Python, not a bare `python`:
 
 ```json
 {
   "mcpServers": {
     "google-ads": {
-      "command": "python",
+      "command": "/absolute/path/to/MCP-Google-Ads/.venv/bin/python",
       "args": ["-m", "google_ads_mcp.server"],
       "env": { "GOOGLE_ADS_MCP_ENV_FILE": "/absolute/path/to/.env" }
     }
@@ -82,7 +99,7 @@ Register with Claude Desktop / Claude Code (`~/.claude/settings.json` or `claude
 
 Restart Claude and try: *"List my accessible Google Ads customer IDs."*
 
-Need the Developer Token / OAuth client / refresh token first? Full walkthrough in [`docs/SETUP.md`](docs/SETUP.md).
+Need the Developer Token / OAuth client / refresh token first? Full walkthrough in [`docs/SETUP.md`](docs/SETUP.md). Something not working? Check [`docs/SETUP.md#troubleshooting`](docs/SETUP.md#troubleshooting) first — most install issues are already diagnosed there. See what changed recently in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Example
 
@@ -108,6 +125,7 @@ More flows and ready-to-use GAQL queries: [`docs/EXAMPLES.md`](docs/EXAMPLES.md)
 
 | Doc | Covers |
 |---|---|
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version — check here after `git pull` before reporting a bug |
 | [`docs/SETUP.md`](docs/SETUP.md) | Cloud project, OAuth client, developer token, refresh token, smoke test, troubleshooting table |
 | [`docs/TOOLS.md`](docs/TOOLS.md) | Every tool, its arguments, and what it returns |
 | [`docs/SAFETY.md`](docs/SAFETY.md) | How propose/confirm and the audit log work, and why |
