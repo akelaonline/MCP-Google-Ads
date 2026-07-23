@@ -1,112 +1,72 @@
-# Google Ads MCP — Full Read/Write Server
+<div align="center">
 
-**Created and maintained by [Akela](https://github.com/akelaonline)** ([Akelaonline](https://www.youtube.com/@Akelaonline) · [mktmarketingdigital.com](https://mktmarketingdigital.com))
+# Google Ads MCP
 
-A complete [Model Context Protocol](https://modelcontextprotocol.io) server for **active Google Ads management** — not just reporting. Built on Google's official `google-ads` Python client library, with a human-in-the-loop safety layer so no destructive change ever fires without an explicit confirmation step.
+**Full read/write [Model Context Protocol](https://modelcontextprotocol.io) server for active Google Ads management from Claude.**
 
-Every other Google Ads MCP server on GitHub today (as of mid-2026) is read-only or partial. This one is built to reach full parity with hands-on account management: campaigns, budgets, ad groups, ads, keywords, negative keywords, bidding strategies, audiences, offline conversions, and account-level change history — all from a single conversational interface.
+Built by [**Akela**](https://github.com/akelaonline)
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![Google Ads API v20](https://img.shields.io/badge/Google%20Ads%20API-v20-4285F4.svg)](https://developers.google.com/google-ads/api)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
+
+[Quick start](#quick-start) · [What it does](#what-it-does) · [Safety model](#safety-model) · [Documentation](#documentation) · [FAQ](docs/FAQ.md)
+
+</div>
 
 ---
 
 ## Why this exists
 
-Most Google Ads MCP servers stop at `search` / `list_accounts` / GAQL reporting. That covers analysis, but not the actual job of running an account: pausing an underperforming ad group at 11pm, pushing a budget increase after a good week, adding negatives from a search-terms report, or shipping a new RSA. This project closes that gap, with safety rails appropriate for real client budgets.
+Most Google Ads MCP servers on GitHub today stop at reporting: `search`, `list_accounts`, raw GAQL. That's useful for analysis, but it isn't what running an account actually requires — pausing an ad group that's bleeding budget, shipping a new Responsive Search Ad, adding negatives from this week's search-terms report, or nudging a budget after a strong week.
 
-## Architecture
+This server closes that gap. It's built on Google's **official `google-ads` Python client** (API v20), wraps ~40 tools spanning the full campaign lifecycle, and adds a **human-in-the-loop safety layer** so an LLM never silently touches real client spend — every write is proposed, previewed, and only executes on explicit confirmation.
+
+## What it does
+
+| Domain | Capabilities |
+|---|---|
+| **Accounts** | List accessible customers, walk MCC hierarchies, pull account summaries |
+| **Reporting** | Campaign / ad group / keyword / ad / search-term performance, change history, and open-ended GAQL |
+| **Campaigns** | Create, rename, pause/enable, remove — any channel type |
+| **Budgets** | Create and adjust daily budgets |
+| **Bidding** | Manual CPC, Maximize Conversions, Target CPA, Target ROAS |
+| **Ad groups** | Create, pause/enable, adjust CPC bids |
+| **Ads** | Create Responsive Search Ads, pause/enable/remove |
+| **Keywords** | Add (with match type + bid), pause/enable/remove, negatives at campaign or ad-group level |
+| **Audiences** | List and attach user lists to ad groups with bid modifiers |
+| **Conversions** | List conversion actions, upload offline conversions (built for CRM/WhatsApp-driven funnels) |
+
+Full parameter-level reference: [`docs/TOOLS.md`](docs/TOOLS.md).
+
+## Safety model
 
 ```mermaid
-flowchart TB
-    Claude[Claude / any MCP client] -->|MCP stdio or HTTP| Server[FastMCP Server]
-
-    subgraph Server["google_ads_mcp"]
-        Tools[Tool Modules]
-        Safety[Safety Layer]
-        Audit[Audit Log — SQLite]
-        Client[Google Ads Client Wrapper]
-    end
-
-    Tools -->|propose mutation| Safety
-    Safety -->|pending_action_id| Claude
-    Claude -->|confirm_pending_action| Safety
-    Safety -->|execute| Client
-    Client -->|mutate / search| GoogleAdsAPI[(Google Ads API v20)]
-    Safety --> Audit
+flowchart LR
+    A[Claude proposes a change] --> B{Auto-approve?}
+    B -- no, default --> C[Preview + pending_action_id\nreturned, nothing changed yet]
+    C --> D[confirm_pending_action]
+    D --> E[Google Ads API]
+    B -- yes, opt-in --> E
+    E --> F[(SQLite audit log)]
 ```
 
-**Two-phase mutation model:** every write tool (`create_*`, `update_*`, `pause_*`, `remove_*`) *proposes* a change and returns a human-readable preview plus a `pending_action_id`. Nothing touches the account until `confirm_pending_action(id)` is called. This mirrors how a careful account manager works — review, then commit — and prevents an LLM from silently spending a client's budget. Set `GOOGLE_ADS_MCP_AUTO_APPROVE=true` in `.env` if you want to skip this for fully automated pipelines (not recommended for accounts with real spend).
+Every write tool — anything named `create_*`, `update_*`, `remove_*`, `set_*`, `add_*`, `upload_*` — proposes the change instead of executing it. Nothing touches the live account until `confirm_pending_action(action_id)` is called. Proposals expire after 30 minutes by default. Every executed mutation is logged to a local SQLite audit trail with the full before/after payload.
 
-Every executed mutation is written to a local SQLite audit log (`audit.db`) with the full before/after payload, so you always have a record of what the agent changed and when.
+Full write-up: [`docs/SAFETY.md`](docs/SAFETY.md).
 
-## Feature coverage
-
-| Domain | Tools |
-|---|---|
-| **Accounts** | `list_accessible_customers`, `get_account_hierarchy`, `get_account_summary` |
-| **Reporting (GAQL)** | `run_gaql_query`, `get_campaign_performance`, `get_ad_group_performance`, `get_keyword_performance`, `get_search_terms_report`, `get_ad_performance` |
-| **Campaigns** | `list_campaigns`, `create_campaign`, `update_campaign_status`, `update_campaign_name`, `remove_campaign` |
-| **Budgets** | `create_campaign_budget`, `update_campaign_budget` |
-| **Bidding** | `set_manual_cpc`, `set_maximize_conversions`, `set_target_cpa`, `set_target_roas` |
-| **Ad groups** | `create_ad_group`, `update_ad_group_status`, `update_ad_group_cpc_bid` |
-| **Ads** | `create_responsive_search_ad`, `update_ad_status`, `remove_ad` |
-| **Keywords** | `add_keywords`, `update_keyword_status`, `remove_keyword`, `add_negative_keywords` (campaign or ad-group level) |
-| **Audiences** | `list_user_lists`, `attach_audience_to_ad_group` |
-| **Conversions** | `list_conversion_actions`, `upload_offline_conversion` |
-| **Change history** | `get_change_history` (last 30 days, native `change_event` resource) |
-| **Safety** | `list_pending_actions`, `confirm_pending_action`, `cancel_pending_action` |
-
-~40 tools total. See [`docs/TOOLS.md`](docs/TOOLS.md) for full parameter reference.
-
-## Documentation
-
-- [`docs/SETUP.md`](docs/SETUP.md) — step-by-step: Cloud project, OAuth client, developer token, refresh token, first smoke test.
-- [`docs/TOOLS.md`](docs/TOOLS.md) — every tool, its arguments, and what it does.
-- [`docs/SAFETY.md`](docs/SAFETY.md) — how the propose/confirm layer and audit log work, and why.
-- [`docs/EXAMPLES.md`](docs/EXAMPLES.md) — sample conversations and useful raw GAQL queries.
-
-## Setup
-
-### 1. Requirements
-- Python 3.11+
-- A Google Ads **Developer Token** with at least Standard access ([apply here](https://developers.google.com/google-ads/api/docs/get-started/dev-token)) — Basic/Test tokens can only read test accounts.
-- OAuth2 credentials (Desktop App type) or a service account with domain-wide delegation.
-
-### 2. Install
+## Quick start
 
 ```bash
 git clone https://github.com/akelaonline/MCP-Google-Ads.git
 cd MCP-Google-Ads
 python -m venv .venv && source .venv/bin/activate
 pip install -e .
+cp .env.example .env   # fill in credentials — see docs/SETUP.md
 ```
 
-### 3. Configure
-
-```bash
-cp .env.example .env
-```
-
-Fill in:
-
-```
-GOOGLE_ADS_DEVELOPER_TOKEN=...
-GOOGLE_ADS_CLIENT_ID=...
-GOOGLE_ADS_CLIENT_SECRET=...
-GOOGLE_ADS_REFRESH_TOKEN=...
-GOOGLE_ADS_LOGIN_CUSTOMER_ID=...      # optional, only for MCC access
-GOOGLE_ADS_MCP_AUTO_APPROVE=false     # keep false unless you know what you're doing
-```
-
-Don't have a refresh token yet? Run:
-
-```bash
-python -m google_ads_mcp.auth --generate-refresh-token
-```
-
-This opens the OAuth consent screen and prints the refresh token to paste into `.env`.
-
-### 4. Register with your MCP client
-
-**Claude Desktop / Claude Code** (`~/.claude/settings.json` or `claude_desktop_config.json`):
+Register with Claude Desktop / Claude Code (`~/.claude/settings.json` or `claude_desktop_config.json`):
 
 ```json
 {
@@ -120,30 +80,61 @@ This opens the OAuth consent screen and prints the refresh token to paste into `
 }
 ```
 
-**HTTP transport** (for shared/remote use):
+Restart Claude and try: *"List my accessible Google Ads customer IDs."*
 
-```bash
-python -m google_ads_mcp.server --transport http --port 8080
-```
+Need the Developer Token / OAuth client / refresh token first? Full walkthrough in [`docs/SETUP.md`](docs/SETUP.md).
 
-## Safety model in practice
+## Example
 
 ```
-> Pause the "Brand - Search" campaign for customer 123-456-7890
+> Pull the search terms report for customer 123-456-7890, last 7 days.
+  Anything with cost over $20 and zero conversions, add as negatives.
 
-Claude calls update_campaign_status(...)
-→ "Proposed: set campaign 'Brand - Search' (id 111222333) status
-   ENABLED → PAUSED. Nothing has been changed yet.
-   pending_action_id: 7f3a2c1e"
+Claude → get_search_terms_report(...)
+       → add_negative_keywords(...)
+       ← "Proposed: add 4 negative keywords to campaign 111222333:
+          [BROAD] free, [BROAD] jobs, [BROAD] diy, [BROAD] template
+          pending_action_id: 7f3a2c1e — nothing changed yet."
 
 > confirm
 
-Claude calls confirm_pending_action("7f3a2c1e")
-→ "Done. Campaign 'Brand - Search' is now PAUSED. Logged to audit.db."
+Claude → confirm_pending_action("7f3a2c1e")
+       ← "Done. 4 negatives added. Logged to audit.db."
 ```
+
+More flows and ready-to-use GAQL queries: [`docs/EXAMPLES.md`](docs/EXAMPLES.md).
+
+## Documentation
+
+| Doc | Covers |
+|---|---|
+| [`docs/SETUP.md`](docs/SETUP.md) | Cloud project, OAuth client, developer token, refresh token, smoke test, troubleshooting table |
+| [`docs/TOOLS.md`](docs/TOOLS.md) | Every tool, its arguments, and what it returns |
+| [`docs/SAFETY.md`](docs/SAFETY.md) | How propose/confirm and the audit log work, and why |
+| [`docs/EXAMPLES.md`](docs/EXAMPLES.md) | Sample conversations and useful raw GAQL queries |
+| [`docs/FAQ.md`](docs/FAQ.md) | 40 real questions — from "where do I get the token" to "why not use an existing server" |
+
+## How this compares
+
+| | Read reports | Write / manage | Human-in-the-loop | Audit log | Self-hosted, no third party |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **This project** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Official `googleads/google-ads-mcp` | ✅ | ❌ | — | — | ✅ |
+| Most community servers | ✅ | Partial | ❌ | ❌ | ✅ |
+| Hosted/paid aggregators | ✅ | Varies | ❌ | ❌ | ❌ |
+
+## Requirements
+
+- Python 3.11+
+- A Google Ads **Developer Token** with Standard access for production use ([apply here](https://developers.google.com/google-ads/api/docs/get-started/dev-token) — Test access works for building/testing against test accounts)
+- OAuth 2.0 credentials (Desktop app) — see [`docs/SETUP.md`](docs/SETUP.md)
+
+## Contributing
+
+Contributions welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). The one hard rule: every write tool goes through the safety layer (`ctx.safety.propose(...)`), never a direct mutate call.
 
 ## License
 
 MIT © 2026 [Akela](https://github.com/akelaonline). See [LICENSE](LICENSE).
 
-Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). If this saves you time, a ⭐ on the repo is the best thank-you.
+If this saves you time, a ⭐ on the repo is appreciated.
