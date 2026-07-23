@@ -13,6 +13,15 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+_ENV_FILE = os.environ.get("GOOGLE_ADS_MCP_ENV_FILE")
+if _ENV_FILE:
+    load_dotenv(_ENV_FILE)
+else:
+    load_dotenv(Path.cwd() / ".env")
 
 SCOPES = ["https://www.googleapis.com/auth/adwords"]
 
