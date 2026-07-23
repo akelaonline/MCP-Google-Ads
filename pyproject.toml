@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "google-ads-mcp"
-version = "0.1.1"
+version = "0.1.2"
 description = "Full read/write Model Context Protocol server for Google Ads, with human-in-the-loop safety and audit logging."
 readme = "README.md"
 requires-python = ">=3.11"

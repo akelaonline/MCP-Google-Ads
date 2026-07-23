@@ -12,6 +12,22 @@ arriba de todo (la más reciente siempre primero), con subsecciones
 fixes de distintas fechas en la misma sección — cada versión pusheada al
 repo es una entrada nueva.
 
+## 0.1.2 — 2026-07-23
+
+### Fixed
+- **Documented a corrupted-venv failure mode** seen in the wild: a macOS
+  Finder folder merge (e.g. copying/dragging an old project checkout on
+  top of this one) leaves `.venv` with duplicated entries suffixed
+  `" 2"` (`.venv/bin/python 2`, `.venv/lib 2`, etc.). The mix of stale and
+  current site-packages causes `ModuleNotFoundError: No module named
+  'google_ads_mcp'` to appear intermittently across Claude Desktop
+  restarts, which is confusing to debug from the MCP error log alone since
+  it looks identical to "package never installed." Added a
+  `docs/SETUP.md` troubleshooting entry describing the `" 2"` file
+  signature and the fix (`rm -rf .venv && python -m venv .venv && pip
+  install -e .`), plus a one-liner to spot other merged/duplicated files
+  in the project root.
+
 ## 0.1.1 — 2026-07-23
 
 ### Fixed
