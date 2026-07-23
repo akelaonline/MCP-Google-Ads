@@ -56,6 +56,13 @@ Every executed mutation is written to a local SQLite audit log (`audit.db`) with
 
 ~40 tools total. See [`docs/TOOLS.md`](docs/TOOLS.md) for full parameter reference.
 
+## Documentation
+
+- [`docs/SETUP.md`](docs/SETUP.md) — step-by-step: Cloud project, OAuth client, developer token, refresh token, first smoke test.
+- [`docs/TOOLS.md`](docs/TOOLS.md) — every tool, its arguments, and what it does.
+- [`docs/SAFETY.md`](docs/SAFETY.md) — how the propose/confirm layer and audit log work, and why.
+- [`docs/EXAMPLES.md`](docs/EXAMPLES.md) — sample conversations and useful raw GAQL queries.
+
 ## Setup
 
 ### 1. Requirements
