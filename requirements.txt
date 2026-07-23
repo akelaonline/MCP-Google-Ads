@@ -1,0 +1,4 @@
+google-ads>=25.1.0
+fastmcp>=2.3.0
+python-dotenv>=1.0.1
+pydantic>=2.7

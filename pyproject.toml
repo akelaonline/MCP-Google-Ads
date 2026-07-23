@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "google-ads-mcp"
+version = "0.1.0"
+description = "Full read/write Model Context Protocol server for Google Ads, with human-in-the-loop safety and audit logging."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Akela", url = "https://github.com/akelaonline" }
+]
+keywords = ["mcp", "google-ads", "claude", "ai-agent", "advertising"]
+dependencies = [
+    "google-ads>=25.1.0",
+    "fastmcp>=2.3.0",
+    "python-dotenv>=1.0.1",
+    "pydantic>=2.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-mock>=3.14"]
+auth = ["google-auth-oauthlib>=1.2.0"]
+
+[project.scripts]
+google-ads-mcp = "google_ads_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
