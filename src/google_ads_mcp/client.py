@@ -11,7 +11,12 @@ from typing import Any, Iterable
 from .config import Settings
 from .errors import GoogleAdsMcpError, format_google_ads_exception
 
-_API_VERSION = "v20"
+# Intentionally not pinning a specific Google Ads API version here. The
+# `google-ads` PyPI package periodically drops the oldest supported API
+# version (e.g. 31.x dropped v20 support entirely) — pinning a literal
+# string like "v20" breaks on every upgrade. Omitting `version` makes
+# GoogleAdsClient use whatever DEFAULT_VERSION ships with the installed
+# library, which is always one it actually supports.
 
 
 def _normalize_customer_id(customer_id: str) -> str:
@@ -31,7 +36,7 @@ class GoogleAdsClientWrapper:
             from google.ads.googleads.client import GoogleAdsClient
 
             self._client = GoogleAdsClient.load_from_dict(
-                self._settings.google_ads_yaml_dict, version=_API_VERSION
+                self._settings.google_ads_yaml_dict
             )
         return self._client
 
