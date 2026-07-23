@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [
-    { name = "Akela", url = "https://github.com/akelaonline" }
+    { name = "Akela" }
 ]
 keywords = ["mcp", "google-ads", "claude", "ai-agent", "advertising"]
 dependencies = [
@@ -26,6 +26,10 @@ auth = ["google-auth-oauthlib>=1.2.0"]
 
 [project.scripts]
 google-ads-mcp = "google_ads_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/akelaonline/MCP-Google-Ads"
+Repository = "https://github.com/akelaonline/MCP-Google-Ads"
 
 [tool.setuptools.packages.find]
 where = ["src"]
