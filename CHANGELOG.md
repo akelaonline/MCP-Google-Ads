@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased
+Todas las versiones siguen [Semantic Versioning](https://semver.org/):
+`MAJOR.MINOR.PATCH`. Un fix de bug sin romper compatibilidad sube el
+`PATCH` (0.1.0 → 0.1.1), una herramienta nueva sube el `MINOR`, un cambio
+que rompe algo existente (firma de una tool, comportamiento por defecto)
+sube el `MAJOR`.
+
+Al agregar una entrada nueva: crear una sección `## X.Y.Z — YYYY-MM-DD`
+arriba de todo (la más reciente siempre primero), con subsecciones
+`### Added` / `### Fixed` / `### Changed` según corresponda. No mezclar
+fixes de distintas fechas en la misma sección — cada versión pusheada al
+repo es una entrada nueva.
+
+## 0.1.1 — 2026-07-23
 
 ### Fixed
 - **Every mutation on a `*CriterionService` failed at confirm time** (e.g.
