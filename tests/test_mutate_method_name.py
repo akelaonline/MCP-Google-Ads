@@ -32,6 +32,11 @@ from google_ads_mcp.client import GoogleAdsClientWrapper, _mutate_method_name
         ("CampaignBudgetService", "mutate_campaign_budgets"),
         ("AdGroupService", "mutate_ad_groups"),
         ("AdGroupAdService", "mutate_ad_group_ads"),
+        # Used by tools/assets.py (sitelinks/call/message assets) and the
+        # conversion-action management tools in tools/conversions.py.
+        ("AssetService", "mutate_assets"),
+        ("CampaignAssetService", "mutate_campaign_assets"),
+        ("ConversionActionService", "mutate_conversion_actions"),
         # Irregulars: Criterion -> Criteria, not Criterions.
         ("CampaignCriterionService", "mutate_campaign_criteria"),
         ("AdGroupCriterionService", "mutate_ad_group_criteria"),

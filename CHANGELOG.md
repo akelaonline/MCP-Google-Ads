@@ -12,6 +12,43 @@ arriba de todo (la más reciente siempre primero), con subsecciones
 fixes de distintas fechas en la misma sección — cada versión pusheada al
 repo es una entrada nueva.
 
+## 0.2.0 — 2026-07-23
+
+### Added
+- **`tools/assets.py` — campaign-level assets (sitelinks, call, message).**
+  Closes the biggest real-world gap found while operating a WhatsApp-driven
+  account: previously an ad could only push users to the landing page and
+  hope they found the contact button there. Each `create_*_asset` tool
+  does the create-then-link flow (AssetService, then CampaignAssetService)
+  in one call, so a single `confirm_pending_action` either creates and
+  attaches the asset or does nothing at all.
+  - `create_sitelink_asset` — extra links under the ad (e.g. "Ver cursos", "Sucursales").
+  - `create_call_asset` — click-to-call extension.
+  - `create_message_asset` — click-to-message (WhatsApp/SMS): opens a chat
+    directly from the ad, with a pre-filled message and business name.
+    This is the tool that lets "WhatsApp is our real conversion" actually
+    be reflected in the ad itself, not just the landing page.
+  - `list_campaign_assets` — read-only, what's attached to a campaign today.
+  - `remove_campaign_asset` — detach without deleting the underlying asset.
+- **Conversion action lifecycle management**, added to `tools/conversions.py`:
+  - `update_conversion_action_status` — ENABLED/REMOVED/HIDDEN. Prefer
+    over deleting a conversion action when the goal is just to stop it
+    from being counted.
+  - `set_conversion_action_counting` — include/exclude an action from the
+    account's primary Conversions metric and from automated bidding
+    (Maximize Conversions / Target CPA / Target ROAS all optimize toward
+    this), without touching whether the action keeps recording data. This
+    is the fix for the exact situation found auditing Instituto Cambridge:
+    a soft signal (a quiz/"Test de Nivel" completion) outweighing the real
+    business conversion (WhatsApp contact) in what Smart Bidding
+    optimizes for. Excluding it from counting stops that without losing
+    the historical data or breaking any existing report.
+- 9 new tests in `tests/test_assets_tools.py` covering the create-then-link
+  flow, input validation (character limits), and both conversion-action
+  tools. `tests/test_mutate_method_name.py` extended to cover the three
+  new services this module touches (`AssetService`, `CampaignAssetService`,
+  `ConversionActionService`).
+
 ## 0.1.3 — 2026-07-23
 
 ### Added

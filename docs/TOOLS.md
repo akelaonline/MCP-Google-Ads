@@ -69,6 +69,15 @@ Call `confirm_pending_action(action_id)` to execute a pending change, or `cancel
 | `remove_keyword(customer_id, ad_group_id, criterion_id)` | |
 | `add_negative_keywords(customer_id, keywords[], campaign_id? \| ad_group_id?)` | Exactly one scope. |
 
+## Assets **[write]**
+| Tool | Description |
+|---|---|
+| `create_sitelink_asset(customer_id, campaign_id, link_text, final_url, description1?, description2?)` | Creates the asset and attaches it to the campaign in one call. `link_text` ≤25 chars, descriptions ≤35 chars each. |
+| `create_call_asset(customer_id, campaign_id, phone_number, country_code?)` | Click-to-call extension. `country_code` defaults to "AR". |
+| `create_message_asset(customer_id, campaign_id, phone_number, country_code, business_name, message_text, call_to_action_text?)` | Click-to-message (WhatsApp/SMS) extension — opens a chat directly from the ad. `message_text` ≤35 chars. |
+| `list_campaign_assets(customer_id, campaign_id)` | Read-only: every asset attached to a campaign, with status. |
+| `remove_campaign_asset(customer_id, campaign_id, asset_id, field_type)` | Detach an asset (SITELINK/CALL/MESSAGE/etc.) from a campaign. |
+
 ## Audiences **[write]**
 | Tool | Description |
 |---|---|
@@ -78,8 +87,10 @@ Call `confirm_pending_action(action_id)` to execute a pending change, or `cancel
 ## Conversions **[write]**
 | Tool | Description |
 |---|---|
-| `list_conversion_actions(customer_id)` | Read-only. |
+| `list_conversion_actions(customer_id)` | Read-only. Includes `primary_for_goal` and `include_in_conversions_metric`. |
 | `upload_offline_conversion(customer_id, conversion_action_id, gclid, conversion_date_time, conversion_value, currency_code?)` | For CRM/WhatsApp-driven funnels where the sale closes after the click. |
+| `update_conversion_action_status(customer_id, conversion_action_id, status)` | ENABLED / REMOVED / HIDDEN. Prefer over deleting when you just want to stop counting a soft signal. |
+| `set_conversion_action_counting(customer_id, conversion_action_id, include_in_conversions_metric)` | Include/exclude an action from the primary Conversions column and automated bidding, without touching whether it still records data. Use this to stop Smart Bidding from optimizing toward a vanity metric (e.g. a quiz/page_view) while keeping the historical data. |
 
 ## Safety
 | Tool | Description |
