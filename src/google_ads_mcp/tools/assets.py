@@ -16,6 +16,8 @@ does nothing at all.
 
 from __future__ import annotations
 
+import urllib.request
+
 from ..context import AppContext
 
 
@@ -233,6 +235,157 @@ def register(mcp, ctx: AppContext) -> None:
                 "business_name": business_name,
                 "message_text": message_text,
                 "call_to_action_text": call_to_action_text,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def create_image_asset(
+        customer_id: str,
+        campaign_id: str,
+        image_url: str,
+        name: str,
+    ) -> dict:
+        """Propose downloading an image from a URL, uploading it as an Asset,
+        and attaching it to a campaign (e.g. for Search's Image Extension, or
+        as a logo/marketing image feeding Performance Max asset groups).
+
+        Args:
+            image_url: Public HTTPS URL of the image to fetch and upload.
+                Fetched at confirm time, not at proposal time.
+            name: Internal asset name shown in the Google Ads UI.
+        """
+        client = ctx.client.raw
+        customer_id_clean = customer_id.replace("-", "")
+
+        campaign_resource_name = client.get_service("CampaignService").campaign_path(
+            customer_id_clean, campaign_id
+        )
+
+        description = f"Upload image '{name}' from {image_url} and attach to campaign {campaign_id}"
+
+        def execute():
+            with urllib.request.urlopen(image_url, timeout=30) as response:  # noqa: S310
+                image_bytes = response.read()
+
+            asset_operation = client.get_type("AssetOperation")
+            asset = asset_operation.create
+            asset.name = name
+            asset.image_asset.data = image_bytes
+
+            asset_result = ctx.client.mutate("AssetService", customer_id, [asset_operation])
+            asset_resource_name = asset_result.results[0].resource_name
+
+            campaign_asset_operation = client.get_type("CampaignAssetOperation")
+            campaign_asset = campaign_asset_operation.create
+            campaign_asset.campaign = campaign_resource_name
+            campaign_asset.asset = asset_resource_name
+            campaign_asset.field_type = client.enums.AssetFieldTypeEnum.IMAGE
+
+            link_result = ctx.client.mutate(
+                "CampaignAssetService", customer_id, [campaign_asset_operation]
+            )
+            return {
+                "asset_resource_name": asset_resource_name,
+                "campaign_asset_resource_name": link_result.results[0].resource_name,
+                "bytes_uploaded": len(image_bytes),
+            }
+
+        return ctx.safety.propose(
+            tool_name="create_image_asset",
+            customer_id=customer_id,
+            description=description,
+            payload={"campaign_id": campaign_id, "image_url": image_url, "name": name},
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def create_promotion_asset(
+        customer_id: str,
+        campaign_id: str,
+        promotion_target: str,
+        discount_percent: float | None = None,
+        money_amount_off: float | None = None,
+        currency_code: str = "ARS",
+        promotion_code: str | None = None,
+        final_url: str | None = None,
+    ) -> dict:
+        """Propose creating a promotion extension (e.g. "20% OFF inscripción")
+        and attaching it to a campaign.
+
+        Args:
+            promotion_target: Short label for what's being promoted, e.g.
+                "Curso Regular 2026" — shown alongside the discount.
+            discount_percent: e.g. 20 for 20% off. Provide exactly one of
+                discount_percent or money_amount_off.
+            money_amount_off: Flat amount off, in currency_code units.
+            promotion_code: Optional coupon code the user needs to redeem.
+            final_url: Optional override landing URL; defaults to the ad's URL.
+        """
+        if bool(discount_percent) == bool(money_amount_off):
+            raise ValueError("Provide exactly one of discount_percent or money_amount_off.")
+
+        client = ctx.client.raw
+        customer_id_clean = customer_id.replace("-", "")
+
+        campaign_resource_name = client.get_service("CampaignService").campaign_path(
+            customer_id_clean, campaign_id
+        )
+
+        asset_operation = client.get_type("AssetOperation")
+        asset = asset_operation.create
+        asset.promotion_asset.promotion_target = promotion_target
+        asset.promotion_asset.currency_code = currency_code
+        if discount_percent is not None:
+            asset.promotion_asset.percent_off = int(discount_percent * 1_000_000)
+        else:
+            from ..client import micros
+
+            asset.promotion_asset.money_amount_off.amount_micros = micros(money_amount_off)
+            asset.promotion_asset.money_amount_off.currency_code = currency_code
+        if promotion_code:
+            asset.promotion_asset.promotion_code = promotion_code
+        if final_url:
+            asset.final_urls.append(final_url)
+
+        discount_label = (
+            f"{discount_percent}% off" if discount_percent is not None else f"{money_amount_off} {currency_code} off"
+        )
+        description = (
+            f"Create promotion asset '{promotion_target}' ({discount_label}) and attach to "
+            f"campaign {campaign_id}"
+        )
+
+        def execute():
+            asset_result = ctx.client.mutate("AssetService", customer_id, [asset_operation])
+            asset_resource_name = asset_result.results[0].resource_name
+
+            campaign_asset_operation = client.get_type("CampaignAssetOperation")
+            campaign_asset = campaign_asset_operation.create
+            campaign_asset.campaign = campaign_resource_name
+            campaign_asset.asset = asset_resource_name
+            campaign_asset.field_type = client.enums.AssetFieldTypeEnum.PROMOTION
+
+            link_result = ctx.client.mutate(
+                "CampaignAssetService", customer_id, [campaign_asset_operation]
+            )
+            return {
+                "asset_resource_name": asset_resource_name,
+                "campaign_asset_resource_name": link_result.results[0].resource_name,
+            }
+
+        return ctx.safety.propose(
+            tool_name="create_promotion_asset",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "campaign_id": campaign_id,
+                "promotion_target": promotion_target,
+                "discount_percent": discount_percent,
+                "money_amount_off": money_amount_off,
+                "currency_code": currency_code,
+                "promotion_code": promotion_code,
+                "final_url": final_url,
             },
             execute=execute,
         )

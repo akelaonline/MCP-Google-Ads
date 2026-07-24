@@ -37,6 +37,11 @@ from google_ads_mcp.client import GoogleAdsClientWrapper, _mutate_method_name
         ("AssetService", "mutate_assets"),
         ("CampaignAssetService", "mutate_campaign_assets"),
         ("ConversionActionService", "mutate_conversion_actions"),
+        # Used by tools/audiences.py (remarketing / customer match lists).
+        ("UserListService", "mutate_user_lists"),
+        # Used by tools/performance_max.py.
+        ("AssetGroupService", "mutate_asset_groups"),
+        ("AssetGroupAssetService", "mutate_asset_group_assets"),
         # Irregulars: Criterion -> Criteria, not Criterions.
         ("CampaignCriterionService", "mutate_campaign_criteria"),
         ("AdGroupCriterionService", "mutate_ad_group_criteria"),

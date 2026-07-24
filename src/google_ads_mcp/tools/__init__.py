@@ -8,9 +8,11 @@ from . import (
     audiences,
     bidding,
     budgets,
+    bulk,
     campaigns,
     conversions,
     keywords,
+    performance_max,
     reporting,
 )
 
@@ -24,6 +26,8 @@ ALL_MODULES = [
     ads,
     assets,
     keywords,
+    bulk,
     audiences,
     conversions,
+    performance_max,
 ]

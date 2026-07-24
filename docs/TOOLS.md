@@ -58,6 +58,8 @@ Call `confirm_pending_action(action_id)` to execute a pending change, or `cancel
 | Tool | Description |
 |---|---|
 | `create_responsive_search_ad(customer_id, ad_group_id, headlines[], descriptions[], final_urls[], path1?, path2?)` | 3-15 headlines (≤30 chars), 2-4 descriptions (≤90 chars). Created PAUSED. |
+| `create_responsive_display_ad(customer_id, ad_group_id, headlines[], long_headline, descriptions[], business_name, final_urls[], marketing_image_urls?, logo_image_urls?)` | 1-5 headlines (≤30 chars), 1 long headline (≤90 chars), 1-5 descriptions (≤90 chars). Downloads and uploads any image URLs given. Created PAUSED. |
+| `create_video_ad(customer_id, ad_group_id, youtube_video_id, headline, final_urls[], description1?, description2?, companion_banner_asset_resource_name?)` | In-stream YouTube ad, referencing an already-uploaded public/unlisted video by ID. `headline` ≤15 chars. Created PAUSED. |
 | `update_ad_status(customer_id, ad_group_id, ad_id, status)` | |
 | `remove_ad(customer_id, ad_group_id, ad_id)` | |
 
@@ -75,14 +77,27 @@ Call `confirm_pending_action(action_id)` to execute a pending change, or `cancel
 | `create_sitelink_asset(customer_id, campaign_id, link_text, final_url, description1?, description2?)` | Creates the asset and attaches it to the campaign in one call. `link_text` ≤25 chars, descriptions ≤35 chars each. |
 | `create_call_asset(customer_id, campaign_id, phone_number, country_code?)` | Click-to-call extension. `country_code` defaults to "AR". |
 | `create_message_asset(customer_id, campaign_id, phone_number, country_code, business_name, message_text, call_to_action_text?)` | Click-to-message (WhatsApp/SMS) extension — opens a chat directly from the ad. `message_text` ≤35 chars. |
+| `create_image_asset(customer_id, campaign_id, image_url, name)` | Downloads an image from a public HTTPS URL and uploads it as a campaign asset (image extension / PMax marketing image). Fetched at confirm time. |
+| `create_promotion_asset(customer_id, campaign_id, promotion_target, discount_percent? \| money_amount_off?, currency_code?, promotion_code?, final_url?)` | Promotion extension (e.g. "20% OFF"). Exactly one of `discount_percent` / `money_amount_off`. |
 | `list_campaign_assets(customer_id, campaign_id)` | Read-only: every asset attached to a campaign, with status. |
-| `remove_campaign_asset(customer_id, campaign_id, asset_id, field_type)` | Detach an asset (SITELINK/CALL/MESSAGE/etc.) from a campaign. |
+| `remove_campaign_asset(customer_id, campaign_id, asset_id, field_type)` | Detach an asset (SITELINK/CALL/MESSAGE/IMAGE/PROMOTION/etc.) from a campaign. |
+
+## Bulk operations **[write]**
+| Tool | Description |
+|---|---|
+| `bulk_update_keyword_status(customer_id, updates[], status)` | Pause/enable/remove many existing keywords — possibly across different ad groups — in a single API call. `updates`: `[{"ad_group_id", "criterion_id"}]`. |
+| `bulk_add_negative_keywords_multi_scope(customer_id, campaign_negatives?, ad_group_negatives?)` | Roll the same (or different) negative-keyword lists out across many campaigns/ad groups at once, e.g. one negative list applied to every active campaign in one shot. |
+| `bulk_update_ad_status(customer_id, updates[], status)` | Pause/enable/remove many ads in a single call. `updates`: `[{"ad_group_id", "ad_id"}]`. |
 
 ## Audiences **[write]**
 | Tool | Description |
 |---|---|
 | `list_user_lists(customer_id)` | Read-only. |
+| `create_remarketing_list(customer_id, name, membership_days?, description?)` | Website-visitor list. Requires the account's Google Ads tag to already be installed and firing — does not backfill past traffic. |
+| `create_customer_match_list(customer_id, name, description?)` | Empty contact-based list container; follow with `upload_customer_match_members`. Subject to Google's Customer Match policy approval, checked at upload time. |
+| `upload_customer_match_members(customer_id, user_list_resource_name, emails?, phone_numbers?)` | Uploads contacts, hashed (SHA-256) locally before sending — raw PII is never transmitted by this tool. |
 | `attach_audience_to_ad_group(customer_id, ad_group_id, user_list_resource_name, bid_modifier?)` | |
+| `remove_audience_from_ad_group(customer_id, ad_group_id, criterion_id)` | Detach an audience from an ad group. |
 
 ## Conversions **[write]**
 | Tool | Description |
@@ -91,6 +106,23 @@ Call `confirm_pending_action(action_id)` to execute a pending change, or `cancel
 | `upload_offline_conversion(customer_id, conversion_action_id, gclid, conversion_date_time, conversion_value, currency_code?)` | For CRM/WhatsApp-driven funnels where the sale closes after the click. |
 | `update_conversion_action_status(customer_id, conversion_action_id, status)` | ENABLED / REMOVED / HIDDEN. Prefer over deleting when you just want to stop counting a soft signal. |
 | `set_conversion_action_counting(customer_id, conversion_action_id, include_in_conversions_metric)` | Include/exclude an action from the primary Conversions column and automated bidding, without touching whether it still records data. Use this to stop Smart Bidding from optimizing toward a vanity metric (e.g. a quiz/page_view) while keeping the historical data. |
+
+## Performance Max **[write]**
+| Tool | Description |
+|---|---|
+| `create_performance_max_campaign(customer_id, name, campaign_budget_resource_name, target_cpa?, target_roas?)` | Created PAUSED. At most one of `target_cpa` / `target_roas`; if neither, uses Maximize Conversions with no target. Needs at least one asset group before it can serve. |
+| `create_asset_group(customer_id, campaign_id, name, final_urls[], headlines[], long_headline, descriptions[], business_name)` | Text-only asset group (3-5 headlines ≤30 chars, 1 long headline ≤90 chars, 1-5 descriptions ≤90 chars). Created PAUSED. Image/logo assets are not covered yet — attach those via the UI for now. |
+| `list_asset_groups(customer_id, campaign_id?)` | Read-only. |
+
+## Not supported — by design
+Google Ads' web-UI "Automated Rules" (e.g. "pause this keyword if CPA > X")
+have **no corresponding resource in the Google Ads API**. There is no
+`AutomatedRuleService`. Anything resembling scheduled/conditional automation
+has to be built as your own polling logic that calls the existing report +
+write tools here (e.g. a scheduled task that runs `get_keyword_performance`
+and calls `bulk_update_keyword_status` when a threshold is crossed) — this
+MCP intentionally does not pretend to wrap a native "rules" API that doesn't
+exist.
 
 ## Safety
 | Tool | Description |

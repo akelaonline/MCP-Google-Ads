@@ -12,6 +12,52 @@ arriba de todo (la más reciente siempre primero), con subsecciones
 fixes de distintas fechas en la misma sección — cada versión pusheada al
 repo es una entrada nueva.
 
+## 0.3.0 — 2026-07-24
+
+### Added
+- **`tools/audiences.py` — full audience lifecycle**, not just attaching an
+  existing list:
+  - `create_remarketing_list` — website-visitor list (requires the site tag
+    to already be installed; does not backfill past traffic).
+  - `create_customer_match_list` + `upload_customer_match_members` —
+    contact-based audiences. Emails/phones are SHA-256 hashed locally
+    before upload; this tool never transmits raw PII.
+  - `remove_audience_from_ad_group` — the missing counterpart to
+    `attach_audience_to_ad_group`.
+- **`tools/performance_max.py` — PMax campaign + asset group creation.**
+  `create_performance_max_campaign` (shell, PAUSED) and `create_asset_group`
+  (text-only: headlines/long headline/descriptions/business name, PAUSED).
+  Deliberately does NOT wrap listing group filters or asset group
+  signals yet — those need their own careful design, and a half-built
+  version would be riskier than not having it.
+- **Image and promotion campaign assets**, added to `tools/assets.py`:
+  `create_image_asset` (downloads from a URL, uploads, attaches) and
+  `create_promotion_asset` (percent-off or flat-amount-off extension).
+- **`tools/bulk.py` — batch operations in a single API call** instead of
+  one round-trip per item: `bulk_update_keyword_status` and
+  `bulk_update_ad_status` (both can span multiple ad groups in one call),
+  and `bulk_add_negative_keywords_multi_scope` (roll the same negative
+  list out across many campaigns/ad groups at once — e.g. applying the
+  Instituto Cambridge negative list to every active campaign in the
+  account in one shot instead of one `add_negative_keywords` call per
+  campaign).
+- **Display and video ad creation**, added to `tools/ads.py`:
+  `create_responsive_display_ad` (with image upload) and `create_video_ad`
+  (in-stream YouTube, referencing an existing video by ID).
+- **Documented a real API limitation instead of faking support for it**:
+  Google Ads' UI-only "Automated Rules" have no corresponding API
+  resource — `docs/TOOLS.md` now has a "Not supported — by design" section
+  explaining this instead of the MCP silently doing nothing or the docs
+  staying silent about the gap.
+- 27 new tests (`test_audiences_tools.py`, `test_performance_max_tools.py`,
+  `test_bulk_tools.py`, `test_image_promotion_assets.py`), plus a shared
+  `tests/conftest.py` fake-client fixture set (auto-vivifying proto
+  builder, fake mutate results, fake MCP registrar) so new tool modules
+  don't have to re-implement the same fakes. `test_mutate_method_name.py`
+  extended to cover every new service these modules touch (`UserListService`,
+  `AssetGroupService`, `AssetGroupAssetService`) — the exact class of bug
+  fixed in 0.1.1, now guarded against for the new surface area too.
+
 ## 0.2.0 — 2026-07-23
 
 ### Added
