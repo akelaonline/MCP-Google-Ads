@@ -12,6 +12,46 @@ arriba de todo (la más reciente siempre primero), con subsecciones
 fixes de distintas fechas en la misma sección — cada versión pusheada al
 repo es una entrada nueva.
 
+## 0.4.0 — 2026-07-24
+
+### Added
+- **`tools/targeting.py` — closes a real gap: campaigns created by this MCP
+  had no way to set location, language, dayparting, or device bid
+  modifiers.** Without this, a brand-new campaign defaults to "All
+  countries and territories," which is essentially never what an agency
+  wants.
+  - `add_location_targeting` — accepts common place names ("argentina",
+    "buenos aires") via a small built-in lookup table, or a raw geo target
+    constant ID for anything else. Supports exclusion (`negative=True`).
+  - `set_language_targeting`, `add_ad_schedule` (dayparting, with optional
+    bid modifier), `set_device_bid_modifier`.
+  - `list_campaign_criteria` — read-only view of everything targeting-related
+    on a campaign in one call (locations, languages, schedules, device
+    modifiers, negatives together).
+- **`tools/campaign_types.py` — Shopping and Local campaigns.**
+  - `create_shopping_campaign` — campaign shell only; explicitly documented
+    prerequisite (a product feed already live and linked in Google Merchant
+    Center, a separate API this MCP does not wrap) so it doesn't imply more
+    coverage than it has.
+  - `create_local_campaign` — campaign + its core text/business-name asset,
+    for physical-location businesses (relevant for e.g. real estate or
+    clinic accounts with a storefront).
+- **Four new reports** in `tools/reporting.py`: `get_geographic_performance`
+  (spend by actual user location, not targeted location — the tool for
+  catching spend leaking outside your intended area), `get_device_performance`,
+  `get_asset_performance` (which specific creative piece is pulling weight),
+  and `get_audience_performance`.
+- **Documented, not silently skipped: `docs/TOOLS.md` is explicit about
+  where Shopping and Local campaigns depend on infrastructure outside
+  Google Ads itself** (Merchant Center, Business Profile) — the tool
+  creates what the Ads API can create and says plainly what it can't.
+- 18 new tests (`test_targeting_tools.py`, `test_campaign_types_tools.py`),
+  plus `tests/conftest.py` extended with the new enums these modules touch
+  (`DayOfWeekEnum`, `DeviceEnum`, `AdvertisingChannelSubTypeEnum`, etc.).
+  66 tests total, all passing; every module still imports and registers
+  cleanly against a real `FastMCP` instance (verified separately from the
+  unit tests, which run against fakes).
+
 ## 0.3.0 — 2026-07-24
 
 ### Added

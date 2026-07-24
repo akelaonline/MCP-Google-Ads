@@ -52,6 +52,7 @@ class AssetFieldTypeEnum(enum.Enum):
     LONG_HEADLINE = 7
     DESCRIPTION = 8
     BUSINESS_NAME = 9
+    LOCAL = 10
 
 
 class ConversionActionStatusEnum(enum.Enum):
@@ -93,7 +94,15 @@ class AdvertisingChannelTypeEnum(enum.Enum):
     UNSPECIFIED = 0
     SEARCH = 2
     DISPLAY = 3
+    SHOPPING = 4
+    LOCAL = 10
     PERFORMANCE_MAX = 13
+
+
+class AdvertisingChannelSubTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    STANDARD_SHOPPING = 8
+    SMART_SHOPPING = 12
 
 
 class CustomerMatchUploadKeyTypeEnum(enum.Enum):
@@ -113,6 +122,32 @@ class KeywordMatchTypeEnum(enum.Enum):
     BROAD = 4
 
 
+class DayOfWeekEnum(enum.Enum):
+    UNSPECIFIED = 0
+    MONDAY = 2
+    TUESDAY = 3
+    WEDNESDAY = 4
+    THURSDAY = 5
+    FRIDAY = 6
+    SATURDAY = 7
+    SUNDAY = 8
+
+
+class MinuteOfHourEnum(enum.Enum):
+    UNSPECIFIED = 0
+    ZERO = 1
+    FIFTEEN = 2
+    THIRTY = 3
+    FORTY_FIVE = 4
+
+
+class DeviceEnum(enum.Enum):
+    UNSPECIFIED = 0
+    MOBILE = 2
+    TABLET = 3
+    DESKTOP = 4
+
+
 class FakeEnums:
     AssetFieldTypeEnum = AssetFieldTypeEnum
     ConversionActionStatusEnum = ConversionActionStatusEnum
@@ -121,6 +156,10 @@ class FakeEnums:
     CampaignStatusEnum = CampaignStatusEnum
     AssetGroupStatusEnum = AssetGroupStatusEnum
     AdvertisingChannelTypeEnum = AdvertisingChannelTypeEnum
+    AdvertisingChannelSubTypeEnum = AdvertisingChannelSubTypeEnum
+    DayOfWeekEnum = DayOfWeekEnum
+    MinuteOfHourEnum = MinuteOfHourEnum
+    DeviceEnum = DeviceEnum
     CustomerMatchUploadKeyTypeEnum = CustomerMatchUploadKeyTypeEnum
     OfflineUserDataJobTypeEnum = OfflineUserDataJobTypeEnum
     KeywordMatchTypeEnum = KeywordMatchTypeEnum

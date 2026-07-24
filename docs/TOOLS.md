@@ -23,6 +23,10 @@ Call `confirm_pending_action(action_id)` to execute a pending change, or `cancel
 | `get_search_terms_report(customer_id, date_range, campaign_id?)` | Actual queries that triggered ads. |
 | `get_ad_performance(customer_id, date_range, ad_group_id?)` | Per-ad metrics. |
 | `get_change_history(customer_id, days)` | Native `change_event` log, up to 30 days. |
+| `get_geographic_performance(customer_id, date_range, campaign_id?)` | Performance by the user's actual location (not the targeted location) — spot spend leaking outside your intended area. |
+| `get_device_performance(customer_id, date_range, campaign_id?)` | Performance by MOBILE/DESKTOP/TABLET — the data behind a `set_device_bid_modifier` decision. |
+| `get_asset_performance(customer_id, date_range, campaign_id?)` | Which specific asset (sitelink/call/message/image/promotion/RSA piece) is pulling weight. |
+| `get_audience_performance(customer_id, date_range, campaign_id?)` | Which attached audience is actually converting vs. just attached for observation. |
 
 ## Campaigns **[write]**
 | Tool | Description |
@@ -32,6 +36,21 @@ Call `confirm_pending_action(action_id)` to execute a pending change, or `cancel
 | `update_campaign_status(customer_id, campaign_id, status)` | ENABLED / PAUSED / REMOVED. |
 | `update_campaign_name(customer_id, campaign_id, new_name)` | Rename. |
 | `remove_campaign(customer_id, campaign_id)` | Irreversible — prefer PAUSED. |
+
+## Specialized campaign types **[write]**
+| Tool | Description |
+|---|---|
+| `create_shopping_campaign(customer_id, name, campaign_budget_resource_name, merchant_center_id, sales_country?, campaign_type?, target_roas?)` | Created PAUSED. **Requires a product feed already live in Google Merchant Center, linked to this account** — this tool creates the campaign shell only; feed/product management happens in Merchant Center, a separate API this MCP does not wrap. Will fail if `merchant_center_id` isn't already linked. |
+| `create_local_campaign(customer_id, name, campaign_budget_resource_name, business_name, headlines[], descriptions[], final_url, target_cpa?)` | Created PAUSED, with its core text asset attached. Requires a linked Google Business Profile for location targeting to resolve — set up separately in the Ads UI. |
+
+## Targeting **[write]**
+| Tool | Description |
+|---|---|
+| `add_location_targeting(customer_id, campaign_id, locations[], negative?)` | `locations` accepts common names ("argentina", "buenos aires" — see `COMMON_GEO_TARGET_IDS`) or raw numeric geo target constant IDs. `negative=True` excludes instead of targets. |
+| `set_language_targeting(customer_id, campaign_id, language_codes[])` | Language constant criterion IDs, e.g. "1003" Spanish, "1000" English. |
+| `add_ad_schedule(customer_id, campaign_id, day_of_week, start_hour, end_hour, bid_modifier?)` | Dayparting. One call per day/window; call repeatedly to build a full schedule. |
+| `set_device_bid_modifier(customer_id, campaign_id, device, bid_modifier)` | `device`: MOBILE / DESKTOP / TABLET. |
+| `list_campaign_criteria(customer_id, campaign_id)` | Read-only: every targeting criterion on a campaign (locations, languages, schedules, device modifiers, negatives) in one call. |
 
 ## Budgets **[write]**
 | Tool | Description |

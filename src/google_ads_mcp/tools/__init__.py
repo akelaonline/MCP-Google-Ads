@@ -9,19 +9,23 @@ from . import (
     bidding,
     budgets,
     bulk,
+    campaign_types,
     campaigns,
     conversions,
     keywords,
     performance_max,
     reporting,
+    targeting,
 )
 
 ALL_MODULES = [
     accounts,
     reporting,
     campaigns,
+    campaign_types,
     budgets,
     bidding,
+    targeting,
     ad_groups,
     ads,
     assets,
