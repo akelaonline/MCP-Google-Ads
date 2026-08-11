@@ -13,13 +13,12 @@ just a valid customer_id under the authorized login_customer_id (MCC).
 from __future__ import annotations
 
 import logging
-import re
 from typing import Optional
 
 from google.ads.googleads.errors import GoogleAdsException
 
-from ..client import _normalize_customer_id
 from ..context import AppContext
+from ..helpers import is_valid_customer_id, normalize_customer_id
 from ..errors import GoogleAdsMcpError, format_google_ads_exception
 
 logger = logging.getLogger(__name__)
@@ -76,7 +75,7 @@ def register(mcp, ctx: AppContext) -> None:
         _validate_inputs(customer_id, keywords, page_url, limit)
 
         client = ctx.client.raw
-        customer_id_norm = _normalize_customer_id(customer_id)
+        customer_id_norm = normalize_customer_id(customer_id)
 
         keyword_plan_idea_service = client.get_service("KeywordPlanIdeaService")
         keyword_plan_network = (
@@ -162,7 +161,7 @@ def register(mcp, ctx: AppContext) -> None:
         _validate_inputs(customer_id, keywords, page_url=None, limit=None)
 
         client = ctx.client.raw
-        customer_id_norm = _normalize_customer_id(customer_id)
+        customer_id_norm = normalize_customer_id(customer_id)
 
         keyword_plan_idea_service = client.get_service("KeywordPlanIdeaService")
 
@@ -253,7 +252,7 @@ def _validate_inputs(
     limit: int | None,
 ) -> None:
     """Raise ValueError for invalid arguments before calling the API."""
-    if not re.fullmatch(r"[\d\-]+", customer_id or ""):
+    if not is_valid_customer_id(customer_id):
         raise ValueError(
             f"Invalid customer_id '{customer_id}'. Expected digits and optional dashes."
         )

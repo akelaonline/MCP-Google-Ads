@@ -253,6 +253,60 @@ def register(mcp, ctx: AppContext) -> None:
         rows = ctx.client.search(customer_id, query)
         return {"days": days, "changes": rows}
 
+    @mcp.tool()
+    def get_quality_score_report(
+        customer_id: str, date_range: str = "LAST_30_DAYS"
+    ) -> dict:
+        """Aggregate keyword performance by Quality Score bucket.
+
+        Useful for spotting QS 1-3 keywords dragging down account-wide CPC
+        and prioritizing optimizations.
+        """
+        query = f"""
+            SELECT
+                ad_group_criterion.criterion_id,
+                ad_group_criterion.keyword.text,
+                ad_group_criterion.quality_info.quality_score,
+                ad_group.name, campaign.name,
+                metrics.impressions, metrics.clicks, metrics.cost_micros,
+                metrics.conversions
+            FROM keyword_view
+            WHERE segments.date DURING {date_range}
+              AND ad_group_criterion.quality_info.quality_score IS NOT NULL
+            ORDER BY metrics.cost_micros DESC
+            LIMIT 2000
+        """
+        rows = ctx.client.search(customer_id, query)
+
+        buckets: dict[int, dict] = {}
+        for row in rows:
+            qs = row.get("ad_group_criterion", {}).get("quality_info", {}).get("quality_score")
+            if qs is None:
+                continue
+            bucket = buckets.setdefault(
+                qs,
+                {
+                    "quality_score": qs,
+                    "keyword_count": 0,
+                    "impressions": 0,
+                    "clicks": 0,
+                    "cost": 0.0,
+                    "conversions": 0.0,
+                },
+            )
+            metrics = row.get("metrics", {})
+            bucket["keyword_count"] += 1
+            bucket["impressions"] += int(metrics.get("impressions", 0))
+            bucket["clicks"] += int(metrics.get("clicks", 0))
+            bucket["cost"] += from_micros(int(metrics.get("cost_micros", 0)))
+            bucket["conversions"] += float(metrics.get("conversions", 0.0) or 0.0)
+
+        return {
+            "date_range": date_range,
+            "buckets": list(buckets.values()),
+            "total_keywords": len(rows),
+        }
+
 
 def _flatten_campaign_row(row: dict) -> dict:
     c, m = row["campaign"], row["metrics"]

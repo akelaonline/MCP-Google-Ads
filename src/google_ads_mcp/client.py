@@ -10,6 +10,7 @@ from typing import Any, Iterable
 
 from .config import Settings
 from .errors import GoogleAdsMcpError, format_google_ads_exception
+from .helpers import normalize_customer_id
 
 # Intentionally not pinning a specific Google Ads API version here. The
 # `google-ads` PyPI package periodically drops the oldest supported API
@@ -17,10 +18,6 @@ from .errors import GoogleAdsMcpError, format_google_ads_exception
 # string like "v20" breaks on every upgrade. Omitting `version` makes
 # GoogleAdsClient use whatever DEFAULT_VERSION ships with the installed
 # library, which is always one it actually supports.
-
-
-def _normalize_customer_id(customer_id: str) -> str:
-    return customer_id.replace("-", "").strip()
 
 
 class GoogleAdsClientWrapper:
@@ -53,7 +50,7 @@ class GoogleAdsClientWrapper:
         from google.ads.googleads.errors import GoogleAdsException
 
         ga_service = self.service("GoogleAdsService")
-        customer_id = _normalize_customer_id(customer_id)
+        customer_id = normalize_customer_id(customer_id)
 
         try:
             stream = ga_service.search_stream(customer_id=customer_id, query=query)
@@ -83,7 +80,7 @@ class GoogleAdsClientWrapper:
         from google.ads.googleads.errors import GoogleAdsException
 
         service = self.service(service_name)
-        customer_id = _normalize_customer_id(customer_id)
+        customer_id = normalize_customer_id(customer_id)
         method_name = _mutate_method_name(service_name)
         method = getattr(service, method_name, None)
         if method is None:

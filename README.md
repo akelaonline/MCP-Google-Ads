@@ -10,7 +10,7 @@ Built by [**Akela**](https://github.com/akelaonline)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Google Ads API v20](https://img.shields.io/badge/Google%20Ads%20API-v20-4285F4.svg)](https://developers.google.com/google-ads/api)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
-[![Version](https://img.shields.io/badge/version-0.1.3-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.5.0-informational.svg)](CHANGELOG.md)
 
 [Quick start](#quick-start) · [What it does](#what-it-does) · [Safety model](#safety-model) · [Documentation](#documentation) · [Changelog](CHANGELOG.md) · [FAQ](docs/FAQ.md)
 
@@ -36,8 +36,10 @@ This server closes that gap. It's built on Google's **official `google-ads` Pyth
 | **Ad groups** | Create, pause/enable, adjust CPC bids |
 | **Ads** | Create Responsive Search Ads, pause/enable/remove |
 | **Keywords** | Add (with match type + bid), pause/enable/remove, negatives at campaign or ad-group level |
+| **Keyword research** | Generate keyword ideas + historical search-volume metrics via Keyword Planner API |
 | **Audiences** | List and attach user lists to ad groups with bid modifiers |
 | **Conversions** | List conversion actions, upload offline conversions (built for CRM/WhatsApp-driven funnels) |
+| **Recommendations** | List Google Ads recommendations; apply/dismiss them through the safety layer |
 
 Full parameter-level reference: [`docs/TOOLS.md`](docs/TOOLS.md).
 

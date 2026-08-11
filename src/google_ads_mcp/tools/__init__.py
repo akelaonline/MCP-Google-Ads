@@ -15,6 +15,7 @@ from . import (
     keyword_planner,
     keywords,
     performance_max,
+    recommendations,
     reporting,
     targeting,
 )
@@ -36,4 +37,5 @@ ALL_MODULES = [
     audiences,
     conversions,
     performance_max,
+    recommendations,
 ]

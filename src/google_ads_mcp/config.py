@@ -8,6 +8,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .helpers import normalize_customer_id
+
 _ENV_FILE = os.environ.get("GOOGLE_ADS_MCP_ENV_FILE")
 if _ENV_FILE:
     load_dotenv(_ENV_FILE)
@@ -47,7 +49,7 @@ class Settings:
             "use_proto_plus": True,
         }
         if self.login_customer_id:
-            cfg["login_customer_id"] = self.login_customer_id.replace("-", "")
+            cfg["login_customer_id"] = normalize_customer_id(self.login_customer_id)
         return cfg
 
 

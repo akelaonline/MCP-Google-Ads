@@ -27,6 +27,7 @@ Call `confirm_pending_action(action_id)` to execute a pending change, or `cancel
 | `get_device_performance(customer_id, date_range, campaign_id?)` | Performance by MOBILE/DESKTOP/TABLET — the data behind a `set_device_bid_modifier` decision. |
 | `get_asset_performance(customer_id, date_range, campaign_id?)` | Which specific asset (sitelink/call/message/image/promotion/RSA piece) is pulling weight. |
 | `get_audience_performance(customer_id, date_range, campaign_id?)` | Which attached audience is actually converting vs. just attached for observation. |
+| `get_quality_score_report(customer_id, date_range?)` | Aggregate keyword performance by Quality Score bucket (1-10). |
 
 ## Campaigns **[write]**
 | Tool | Description |
@@ -90,6 +91,12 @@ Call `confirm_pending_action(action_id)` to execute a pending change, or `cancel
 | `remove_keyword(customer_id, ad_group_id, criterion_id)` | |
 | `add_negative_keywords(customer_id, keywords[], campaign_id? \| ad_group_id?)` | Exactly one scope. |
 
+## Keyword research
+| Tool | Description |
+|---|---|
+| `generate_keyword_ideas(customer_id, keywords?, page_url?, language?, geo_target_ids?, limit?, include_adult_keywords?)` | Call `KeywordPlanIdeaService.GenerateKeywordIdeas`. Returns search volume, competition, competition index, and low/high CPC bid ranges for each idea. Provide at least one of `keywords` or `page_url`. `language` defaults to `"en"`; geo target IDs like `["2840"]` (US) restrict the forecast. |
+| `get_keyword_historical_metrics(customer_id, keywords[], language?, geo_target_ids?)` | Look up historical metrics for a known keyword list without expanding into new suggestions. |
+
 ## Assets **[write]**
 | Tool | Description |
 |---|---|
@@ -132,6 +139,13 @@ Call `confirm_pending_action(action_id)` to execute a pending change, or `cancel
 | `create_performance_max_campaign(customer_id, name, campaign_budget_resource_name, target_cpa?, target_roas?)` | Created PAUSED. At most one of `target_cpa` / `target_roas`; if neither, uses Maximize Conversions with no target. Needs at least one asset group before it can serve. |
 | `create_asset_group(customer_id, campaign_id, name, final_urls[], headlines[], long_headline, descriptions[], business_name)` | Text-only asset group (3-5 headlines ≤30 chars, 1 long headline ≤90 chars, 1-5 descriptions ≤90 chars). Created PAUSED. Image/logo assets are not covered yet — attach those via the UI for now. |
 | `list_asset_groups(customer_id, campaign_id?)` | Read-only. |
+
+## Recommendations **[write]**
+| Tool | Description |
+|---|---|
+| `get_recommendations(customer_id, type_filter?)` | List active Google Ads recommendations for the account. Optional `type_filter` e.g. `KEYWORD`, `SITELINK_ASSET`, `TARGET_ROAS_OPT_IN`. |
+| `apply_recommendation(customer_id, resource_name)` | Apply a recommendation by its `resource_name`. Proposed, must be confirmed. |
+| `dismiss_recommendation(customer_id, resource_name)` | Dismiss a recommendation by its `resource_name`. Proposed, must be confirmed. |
 
 ## Not supported — by design
 Google Ads' web-UI "Automated Rules" (e.g. "pause this keyword if CPA > X")

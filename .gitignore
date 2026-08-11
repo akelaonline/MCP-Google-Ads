@@ -3,7 +3,14 @@ __pycache__/
 .venv/
 venv/
 .env
+.env.*
+*.log
 audit.db
+coverage/
+htmlcov/
+.tox/
+.idea/
+.vscode/
 *.egg-info/
 dist/
 build/

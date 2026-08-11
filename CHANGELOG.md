@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.0 — 2026-08-11
+
+### Added
+- **`tools/keyword_planner.py` — Keyword Planner idea generation & historical metrics.**
+  - `generate_keyword_ideas` — calls `KeywordPlanIdeaService.GenerateKeywordIdeas` to get search volume, competition, and CPC bid ranges from seed keywords or a URL.
+  - `get_keyword_historical_metrics` — looks up volume/CPC for a fixed keyword list without expanding ideas.
+  - Input validation for `customer_id`, `language`, `limit`, `keywords`, and `page_url`.
+  - Extended language coverage in `LANGUAGE_IDS`.
+  - Unit tests in `tests/test_keyword_planner.py`.
+- **`tools/reporting.py` — `get_quality_score_report`** aggregates keyword performance by Quality Score bucket.
+- **`tools/recommendations.py` — read/apply/dismiss Google Ads recommendations.**
+  - `get_recommendations` lists active recommendations, optionally filtered by type.
+  - `apply_recommendation` and `dismiss_recommendation` go through the safety propose/confirm layer.
+- **`src/google_ads_mcp/helpers.py`** centralizes `normalize_customer_id` and `is_valid_customer_id`.
+- **`src/google_ads_mcp/logging_config.py`** adds structured, env-controlled logging (`GOOGLE_ADS_MCP_LOG_LEVEL`).
+- **`scripts/smoke_test.py` + `Makefile`** for quick install/test/smoke checks and `ruff` placeholders.
+- **GitHub Actions workflow** `.github/workflows/tests.yml` running pytest on Python 3.11–3.13.
+
 Todas las versiones siguen [Semantic Versioning](https://semver.org/):
 `MAJOR.MINOR.PATCH`. Un fix de bug sin romper compatibilidad sube el
 `PATCH` (0.1.0 → 0.1.1), una herramienta nueva sube el `MINOR`, un cambio

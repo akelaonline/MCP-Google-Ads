@@ -12,6 +12,7 @@ import argparse
 from fastmcp import FastMCP
 
 from .context import build_context
+from .logging_config import setup_logging
 
 MCP_INSTRUCTIONS = """
 Google Ads MCP — full read/write account management.
@@ -64,6 +65,7 @@ def _register_safety_tools(mcp: FastMCP, ctx) -> None:
 
 
 def main() -> None:
+    setup_logging()
     parser = argparse.ArgumentParser(description="Google Ads MCP server")
     parser.add_argument("--transport", choices=["stdio", "http"], default=None)
     parser.add_argument("--port", type=int, default=None)
