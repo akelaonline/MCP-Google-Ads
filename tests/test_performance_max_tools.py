@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from conftest import FakeMutateResult, build_ctx, register_module
 
 from google_ads_mcp import tools
-
-from conftest import FakeMutateResult, build_ctx, register_module
 
 
 def test_create_performance_max_campaign_rejects_both_targets():
@@ -51,7 +50,9 @@ def test_create_asset_group_creates_assets_then_group_then_links():
         calls.append((service_name, op_count))
         if service_name == "AssetService":
             # 4 headlines + 1 long headline + 2 descriptions + 1 business name = 8
-            return FakeMutateResult(*[f"customers/123/assets/{i}" for i in range(op_count)])
+            return FakeMutateResult(
+                *[f"customers/123/assets/{i}" for i in range(op_count)]
+            )
         if service_name == "AssetGroupService":
             return FakeMutateResult("customers/123/assetGroups/555")
         if service_name == "AssetGroupAssetService":
@@ -66,14 +67,23 @@ def test_create_asset_group_creates_assets_then_group_then_links():
         campaign_id="456",
         name="AG Cambridge",
         final_urls=["https://cambridge.com.ar"],
-        headlines=["Aprendé inglés", "Cambridge oficial", "Cursos 2026", "Certificación"],
+        headlines=[
+            "Aprendé inglés",
+            "Cambridge oficial",
+            "Cursos 2026",
+            "Certificación",
+        ],
         long_headline="El instituto de inglés más reconocido de Buenos Aires",
         descriptions=["Inscribite ya", "Clases presenciales y online"],
         business_name="Instituto Cambridge",
     )
 
     service_order = [c[0] for c in calls]
-    assert service_order == ["AssetService", "AssetGroupService", "AssetGroupAssetService"]
+    assert service_order == [
+        "AssetService",
+        "AssetGroupService",
+        "AssetGroupAssetService",
+    ]
 
     asset_call = next(c for c in calls if c[0] == "AssetService")
     # 4 headlines + 1 long_headline + 2 descriptions + 1 business_name = 8 text assets

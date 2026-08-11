@@ -1,9 +1,11 @@
-.PHONY: install test smoke lint format clean
+.PHONY: install dev test smoke lint format check clean
 
 VENV_PYTHON ?= .venv/bin/python
 
 install:
 	$(VENV_PYTHON) -m pip install -e ".[dev]"
+
+dev: install
 
 test:
 	$(VENV_PYTHON) -m pytest tests/ -q
@@ -12,10 +14,12 @@ smoke:
 	$(VENV_PYTHON) scripts/smoke_test.py
 
 lint:
-	$(VENV_PYTHON) -m ruff check src tests || true
+	$(VENV_PYTHON) -m ruff check src tests scripts
 
 format:
-	$(VENV_PYTHON) -m ruff format src tests || true
+	$(VENV_PYTHON) -m ruff format src tests scripts
+
+check: lint test smoke
 
 clean:
 	find src tests -type d -name __pycache__ -exec rm -rf {} +

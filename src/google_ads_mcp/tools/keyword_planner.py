@@ -13,13 +13,12 @@ just a valid customer_id under the authorized login_customer_id (MCC).
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from google.ads.googleads.errors import GoogleAdsException
 
 from ..context import AppContext
-from ..helpers import is_valid_customer_id, normalize_customer_id
 from ..errors import GoogleAdsMcpError, format_google_ads_exception
+from ..helpers import is_valid_customer_id, normalize_customer_id
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +103,9 @@ def register(mcp, ctx: AppContext) -> None:
             customer_id_norm,
             language,
             geo_target_ids,
-            "keyword_and_url" if (keywords and page_url) else ("url" if page_url else "keyword"),
+            "keyword_and_url"
+            if (keywords and page_url)
+            else ("url" if page_url else "keyword"),
         )
 
         try:
@@ -121,13 +122,17 @@ def register(mcp, ctx: AppContext) -> None:
                     "keyword": result.text,
                     "avg_monthly_searches": metrics.avg_monthly_searches,
                     "competition": (
-                        metrics.competition.name if metrics.competition is not None else None
+                        metrics.competition.name
+                        if metrics.competition is not None
+                        else None
                     ),
                     "competition_index": metrics.competition_index,
                     "low_bid_micros": metrics.low_top_of_page_bid_micros,
                     "high_bid_micros": metrics.high_top_of_page_bid_micros,
                     "low_bid": _micros_to_currency(metrics.low_top_of_page_bid_micros),
-                    "high_bid": _micros_to_currency(metrics.high_top_of_page_bid_micros),
+                    "high_bid": _micros_to_currency(
+                        metrics.high_top_of_page_bid_micros
+                    ),
                 }
             )
 
@@ -196,10 +201,14 @@ def register(mcp, ctx: AppContext) -> None:
                     "keyword": result.text,
                     "avg_monthly_searches": metrics.avg_monthly_searches,
                     "competition": (
-                        metrics.competition.name if metrics.competition is not None else None
+                        metrics.competition.name
+                        if metrics.competition is not None
+                        else None
                     ),
                     "low_bid": _micros_to_currency(metrics.low_top_of_page_bid_micros),
-                    "high_bid": _micros_to_currency(metrics.high_top_of_page_bid_micros),
+                    "high_bid": _micros_to_currency(
+                        metrics.high_top_of_page_bid_micros
+                    ),
                 }
             )
         return {"result_count": len(results), "results": results}
@@ -266,7 +275,11 @@ def _validate_inputs(
     if keywords and not all(isinstance(k, str) and k.strip() for k in keywords):
         raise ValueError("keywords must be a list of non-empty strings.")
 
-    if page_url is not None and page_url and not page_url.startswith(("http://", "https://")):
+    if (
+        page_url is not None
+        and page_url
+        and not page_url.startswith(("http://", "https://"))
+    ):
         raise ValueError("page_url must start with http:// or https://.")
 
 

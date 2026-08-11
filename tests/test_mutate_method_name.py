@@ -15,12 +15,9 @@ Two real production failures motivated these tests:
 
 from __future__ import annotations
 
-import inspect
-
 import pytest
 
 from google_ads_mcp.client import GoogleAdsClientWrapper, _mutate_method_name
-
 
 # ---- Bug 1: irregular pluralization (Criterion -> Criteria) ----------------
 
@@ -104,7 +101,8 @@ class _FakeCampaignCriterionService:
 
 
 class _FakeSettings:
-    google_ads_yaml_dict = {}
+    def __init__(self):
+        self.google_ads_yaml_dict = {}
 
 
 def _wrapper_with_fake_service(fake_service):

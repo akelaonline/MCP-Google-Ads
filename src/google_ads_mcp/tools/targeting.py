@@ -64,8 +64,8 @@ def register(mcp, ctx: AppContext) -> None:
             criterion = operation.create
             criterion.campaign = campaign_resource_name
             criterion.negative = negative
-            criterion.location.geo_target_constant = geo_service.geo_target_constant_path(
-                str(geo_id)
+            criterion.location.geo_target_constant = (
+                geo_service.geo_target_constant_path(str(geo_id))
             )
             operations.append(operation)
 
@@ -73,18 +73,26 @@ def register(mcp, ctx: AppContext) -> None:
         description = f"{verb} location(s) {resolved} on campaign {campaign_id}"
 
         def execute():
-            return ctx.client.mutate("CampaignCriterionService", customer_id, operations)
+            return ctx.client.mutate(
+                "CampaignCriterionService", customer_id, operations
+            )
 
         return ctx.safety.propose(
             tool_name="add_location_targeting",
             customer_id=customer_id,
             description=description,
-            payload={"campaign_id": campaign_id, "locations": locations, "negative": negative},
+            payload={
+                "campaign_id": campaign_id,
+                "locations": locations,
+                "negative": negative,
+            },
             execute=execute,
         )
 
     @mcp.tool()
-    def set_language_targeting(customer_id: str, campaign_id: str, language_codes: list[str]) -> dict:
+    def set_language_targeting(
+        customer_id: str, campaign_id: str, language_codes: list[str]
+    ) -> dict:
         """Propose setting language targeting on a campaign.
 
         Args:
@@ -104,13 +112,19 @@ def register(mcp, ctx: AppContext) -> None:
             operation = client.get_type("CampaignCriterionOperation")
             criterion = operation.create
             criterion.campaign = campaign_resource_name
-            criterion.language.language_constant = language_service.language_constant_path(code)
+            criterion.language.language_constant = (
+                language_service.language_constant_path(code)
+            )
             operations.append(operation)
 
-        description = f"Set language targeting {language_codes} on campaign {campaign_id}"
+        description = (
+            f"Set language targeting {language_codes} on campaign {campaign_id}"
+        )
 
         def execute():
-            return ctx.client.mutate("CampaignCriterionService", customer_id, operations)
+            return ctx.client.mutate(
+                "CampaignCriterionService", customer_id, operations
+            )
 
         return ctx.safety.propose(
             tool_name="set_language_targeting",
@@ -151,7 +165,9 @@ def register(mcp, ctx: AppContext) -> None:
         operation = client.get_type("CampaignCriterionOperation")
         criterion = operation.create
         criterion.campaign = campaign_resource_name
-        criterion.ad_schedule.day_of_week = client.enums.DayOfWeekEnum[day_of_week].value
+        criterion.ad_schedule.day_of_week = client.enums.DayOfWeekEnum[
+            day_of_week
+        ].value
         criterion.ad_schedule.start_hour = start_hour
         criterion.ad_schedule.start_minute = client.enums.MinuteOfHourEnum.ZERO
         criterion.ad_schedule.end_hour = end_hour
@@ -161,11 +177,14 @@ def register(mcp, ctx: AppContext) -> None:
 
         description = (
             f"Add ad schedule {day_of_week} {start_hour}:00-{end_hour}:00 to campaign "
-            f"{campaign_id}" + (f" (bid modifier x{bid_modifier})" if bid_modifier else "")
+            f"{campaign_id}"
+            + (f" (bid modifier x{bid_modifier})" if bid_modifier else "")
         )
 
         def execute():
-            return ctx.client.mutate("CampaignCriterionService", customer_id, [operation])
+            return ctx.client.mutate(
+                "CampaignCriterionService", customer_id, [operation]
+            )
 
         return ctx.safety.propose(
             tool_name="add_ad_schedule",
@@ -203,16 +222,24 @@ def register(mcp, ctx: AppContext) -> None:
         criterion.device.type_ = client.enums.DeviceEnum[device].value
         criterion.bid_modifier = bid_modifier
 
-        description = f"Set {device} bid modifier x{bid_modifier} on campaign {campaign_id}"
+        description = (
+            f"Set {device} bid modifier x{bid_modifier} on campaign {campaign_id}"
+        )
 
         def execute():
-            return ctx.client.mutate("CampaignCriterionService", customer_id, [operation])
+            return ctx.client.mutate(
+                "CampaignCriterionService", customer_id, [operation]
+            )
 
         return ctx.safety.propose(
             tool_name="set_device_bid_modifier",
             customer_id=customer_id,
             description=description,
-            payload={"campaign_id": campaign_id, "device": device, "bid_modifier": bid_modifier},
+            payload={
+                "campaign_id": campaign_id,
+                "device": device,
+                "bid_modifier": bid_modifier,
+            },
             execute=execute,
         )
 

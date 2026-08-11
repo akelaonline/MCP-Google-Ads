@@ -7,10 +7,9 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from conftest import FakeMutateResult, build_ctx, register_module
 
 from google_ads_mcp import tools
-
-from conftest import FakeMutateResult, build_ctx, register_module
 
 
 class _FakeHttpResponse:

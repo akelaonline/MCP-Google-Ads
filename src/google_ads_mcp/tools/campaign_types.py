@@ -46,10 +46,12 @@ def register(mcp, ctx: AppContext) -> None:
         campaign = operation.create
         campaign.name = name
         campaign.campaign_budget = campaign_budget_resource_name
-        campaign.advertising_channel_type = client.enums.AdvertisingChannelTypeEnum.SHOPPING
-        campaign.advertising_channel_sub_type = client.enums.AdvertisingChannelSubTypeEnum[
-            campaign_type
-        ].value
+        campaign.advertising_channel_type = (
+            client.enums.AdvertisingChannelTypeEnum.SHOPPING
+        )
+        campaign.advertising_channel_sub_type = (
+            client.enums.AdvertisingChannelSubTypeEnum[campaign_type].value
+        )
         campaign.status = client.enums.CampaignStatusEnum.PAUSED
         campaign.shopping_setting.merchant_id = int(merchant_center_id)
         campaign.shopping_setting.sales_country = sales_country
@@ -121,7 +123,9 @@ def register(mcp, ctx: AppContext) -> None:
         campaign = operation.create
         campaign.name = name
         campaign.campaign_budget = campaign_budget_resource_name
-        campaign.advertising_channel_type = client.enums.AdvertisingChannelTypeEnum.LOCAL
+        campaign.advertising_channel_type = (
+            client.enums.AdvertisingChannelTypeEnum.LOCAL
+        )
         campaign.status = client.enums.CampaignStatusEnum.PAUSED
 
         if target_cpa is not None:
@@ -137,7 +141,9 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
         def execute():
-            campaign_result = ctx.client.mutate("CampaignService", customer_id, [operation])
+            campaign_result = ctx.client.mutate(
+                "CampaignService", customer_id, [operation]
+            )
             campaign_resource_name = campaign_result.results[0].resource_name
 
             asset_operation = client.get_type("AssetOperation")
@@ -152,7 +158,9 @@ def register(mcp, ctx: AppContext) -> None:
             # Note: as of API v20, Local campaign creative is asset-group-like
             # but simpler — attaching via CampaignAsset with field_type LOCAL
             # is the supported path for the core text assets.
-            asset_result = ctx.client.mutate("AssetService", customer_id, [asset_operation])
+            asset_result = ctx.client.mutate(
+                "AssetService", customer_id, [asset_operation]
+            )
             asset_resource_name = asset_result.results[0].resource_name
 
             campaign_asset_operation = client.get_type("CampaignAssetOperation")

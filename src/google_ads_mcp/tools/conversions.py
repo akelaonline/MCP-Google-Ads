@@ -54,7 +54,9 @@ def register(mcp, ctx: AppContext) -> None:
         description = f"Set conversion action {conversion_action_id} status -> {status}"
 
         def execute():
-            return ctx.client.mutate("ConversionActionService", customer_id, [operation])
+            return ctx.client.mutate(
+                "ConversionActionService", customer_id, [operation]
+            )
 
         return ctx.safety.propose(
             tool_name="update_conversion_action_status",
@@ -101,7 +103,9 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
         def execute():
-            return ctx.client.mutate("ConversionActionService", customer_id, [operation])
+            return ctx.client.mutate(
+                "ConversionActionService", customer_id, [operation]
+            )
 
         return ctx.safety.propose(
             tool_name="set_conversion_action_counting",

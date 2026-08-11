@@ -5,10 +5,9 @@ device bid modifiers.
 from __future__ import annotations
 
 import pytest
+from conftest import FakeMutateResult, build_ctx, register_module
 
 from google_ads_mcp import tools
-
-from conftest import FakeMutateResult, build_ctx, register_module
 
 
 def test_add_location_targeting_resolves_common_names():

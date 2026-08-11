@@ -262,7 +262,9 @@ def build_ctx(mutate_side_effect, extra_services: dict | None = None):
         mutate=mutate_side_effect,
     )
     safety = SafetyLayer(auto_approve=True, ttl_minutes=30, audit_log=FakeAuditLog())
-    return AppContext(settings=None, client=fake_client, safety=safety, audit=FakeAuditLog())
+    return AppContext(
+        settings=None, client=fake_client, safety=safety, audit=FakeAuditLog()
+    )
 
 
 def register_module(module, ctx):

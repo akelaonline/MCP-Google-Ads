@@ -31,8 +31,7 @@ def generate_refresh_token() -> None:
         from google_auth_oauthlib.flow import InstalledAppFlow
     except ImportError:
         print(
-            "Missing dependency. Install it with:\n"
-            "  pip install google-auth-oauthlib",
+            "Missing dependency. Install it with:\n  pip install google-auth-oauthlib",
             file=sys.stderr,
         )
         sys.exit(1)

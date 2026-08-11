@@ -48,12 +48,15 @@ def register(mcp, ctx: AppContext) -> None:
         if bid_modifier is not None:
             criterion.bid_modifier = bid_modifier
 
-        description = f"Attach audience {user_list_resource_name} to ad group {ad_group_id}" + (
-            f" (bid modifier x{bid_modifier})" if bid_modifier else ""
+        description = (
+            f"Attach audience {user_list_resource_name} to ad group {ad_group_id}"
+            + (f" (bid modifier x{bid_modifier})" if bid_modifier else "")
         )
 
         def execute():
-            return ctx.client.mutate("AdGroupCriterionService", customer_id, [operation])
+            return ctx.client.mutate(
+                "AdGroupCriterionService", customer_id, [operation]
+            )
 
         return ctx.safety.propose(
             tool_name="attach_audience_to_ad_group",
@@ -68,7 +71,9 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
-    def remove_audience_from_ad_group(customer_id: str, ad_group_id: str, criterion_id: str) -> dict:
+    def remove_audience_from_ad_group(
+        customer_id: str, ad_group_id: str, criterion_id: str
+    ) -> dict:
         """Propose detaching an audience criterion from an ad group.
 
         Args:
@@ -78,14 +83,20 @@ def register(mcp, ctx: AppContext) -> None:
         """
         client = ctx.client.raw
         operation = client.get_type("AdGroupCriterionOperation")
-        operation.remove = client.get_service("AdGroupCriterionService").ad_group_criterion_path(
+        operation.remove = client.get_service(
+            "AdGroupCriterionService"
+        ).ad_group_criterion_path(
             customer_id.replace("-", ""), ad_group_id, criterion_id
         )
 
-        description = f"Detach audience criterion {criterion_id} from ad group {ad_group_id}"
+        description = (
+            f"Detach audience criterion {criterion_id} from ad group {ad_group_id}"
+        )
 
         def execute():
-            return ctx.client.mutate("AdGroupCriterionService", customer_id, [operation])
+            return ctx.client.mutate(
+                "AdGroupCriterionService", customer_id, [operation]
+            )
 
         return ctx.safety.propose(
             tool_name="remove_audience_from_ad_group",
@@ -174,7 +185,9 @@ def register(mcp, ctx: AppContext) -> None:
             client.enums.CustomerMatchUploadKeyTypeEnum.CONTACT_INFO
         )
 
-        description_text = f"Create Customer Match list '{name}' (empty, ready for uploads)"
+        description_text = (
+            f"Create Customer Match list '{name}' (empty, ready for uploads)"
+        )
 
         def execute():
             return ctx.client.mutate("UserListService", customer_id, [operation])
@@ -231,8 +244,12 @@ def register(mcp, ctx: AppContext) -> None:
             job_service = client.get_service("OfflineUserDataJobService")
             # Create the offline user data job.
             new_job = client.get_type("OfflineUserDataJob")
-            new_job.type_ = client.enums.OfflineUserDataJobTypeEnum.CUSTOMER_MATCH_USER_LIST
-            new_job.customer_match_user_list_metadata.user_list = user_list_resource_name
+            new_job.type_ = (
+                client.enums.OfflineUserDataJobTypeEnum.CUSTOMER_MATCH_USER_LIST
+            )
+            new_job.customer_match_user_list_metadata.user_list = (
+                user_list_resource_name
+            )
 
             create_job_response = job_service.create_offline_user_data_job(
                 customer_id=customer_id.replace("-", ""), job=new_job

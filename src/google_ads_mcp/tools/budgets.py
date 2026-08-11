@@ -27,10 +27,14 @@ def register(mcp, ctx: AppContext) -> None:
         budget = operation.create
         budget.name = name
         budget.amount_micros = micros(daily_amount)
-        budget.delivery_method = client.enums.BudgetDeliveryMethodEnum[delivery_method].value
+        budget.delivery_method = client.enums.BudgetDeliveryMethodEnum[
+            delivery_method
+        ].value
         budget.explicitly_shared = shared
 
-        description = f"Create budget '{name}': ${daily_amount:,.2f}/day ({delivery_method})"
+        description = (
+            f"Create budget '{name}': ${daily_amount:,.2f}/day ({delivery_method})"
+        )
 
         def execute():
             return ctx.client.mutate("CampaignBudgetService", customer_id, [operation])
@@ -39,18 +43,24 @@ def register(mcp, ctx: AppContext) -> None:
             tool_name="create_campaign_budget",
             customer_id=customer_id,
             description=description,
-            payload={"name": name, "daily_amount": daily_amount, "delivery_method": delivery_method},
+            payload={
+                "name": name,
+                "daily_amount": daily_amount,
+                "delivery_method": delivery_method,
+            },
             execute=execute,
         )
 
     @mcp.tool()
-    def update_campaign_budget(customer_id: str, budget_id: str, new_daily_amount: float) -> dict:
+    def update_campaign_budget(
+        customer_id: str, budget_id: str, new_daily_amount: float
+    ) -> dict:
         """Propose changing an existing campaign budget's daily amount."""
         client = ctx.client.raw
         operation = client.get_type("CampaignBudgetOperation")
-        resource_name = client.get_service("CampaignBudgetService").campaign_budget_path(
-            customer_id.replace("-", ""), budget_id
-        )
+        resource_name = client.get_service(
+            "CampaignBudgetService"
+        ).campaign_budget_path(customer_id.replace("-", ""), budget_id)
         budget = operation.update
         budget.resource_name = resource_name
         budget.amount_micros = micros(new_daily_amount)
@@ -61,7 +71,9 @@ def register(mcp, ctx: AppContext) -> None:
             field_mask_pb2.FieldMask(paths=["amount_micros"])
         )
 
-        description = f"Update budget {budget_id} daily amount to ${new_daily_amount:,.2f}"
+        description = (
+            f"Update budget {budget_id} daily amount to ${new_daily_amount:,.2f}"
+        )
 
         def execute():
             return ctx.client.mutate("CampaignBudgetService", customer_id, [operation])

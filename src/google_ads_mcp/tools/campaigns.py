@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from google.protobuf import field_mask_pb2
 
-from ..client import from_micros
 from ..context import AppContext
 
 
@@ -70,13 +69,17 @@ def register(mcp, ctx: AppContext) -> None:
             campaign.maximize_conversions.SetInParent()
         elif bidding_strategy == "TARGET_CPA":
             if target_cpa is None:
-                raise ValueError("target_cpa is required when bidding_strategy=TARGET_CPA")
+                raise ValueError(
+                    "target_cpa is required when bidding_strategy=TARGET_CPA"
+                )
             from ..client import micros
 
             campaign.target_cpa.target_cpa_micros = micros(target_cpa)
         elif bidding_strategy == "TARGET_ROAS":
             if target_roas is None:
-                raise ValueError("target_roas is required when bidding_strategy=TARGET_ROAS")
+                raise ValueError(
+                    "target_roas is required when bidding_strategy=TARGET_ROAS"
+                )
             campaign.target_roas.target_roas = target_roas
         else:
             raise ValueError(f"Unsupported bidding_strategy: {bidding_strategy}")

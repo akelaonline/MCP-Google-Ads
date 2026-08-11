@@ -9,13 +9,17 @@ GOOGLE_ADS_MCP_AUTO_APPROVE=true).
 
 from __future__ import annotations
 
+import logging
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from .audit import AuditLog
 from .errors import GoogleAdsMcpError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -89,9 +93,17 @@ class SafetyLayer:
                 "or already been confirmed/cancelled)."
             )
         result = self._run(
-            action.tool_name, action.customer_id, action.description, action.payload, action.execute
+            action.tool_name,
+            action.customer_id,
+            action.description,
+            action.payload,
+            action.execute,
         )
-        return {"status": "executed", "description": action.description, "result": result}
+        return {
+            "status": "executed",
+            "description": action.description,
+            "result": result,
+        }
 
     def cancel(self, action_id: str) -> dict[str, Any]:
         action = self._pending.pop(action_id, None)
@@ -161,5 +173,5 @@ def _safe_result(result: Any) -> Any:
         if results is not None:
             return {"resource_names": [r.resource_name for r in results]}
     except Exception:
-        pass
+        logger.debug("Could not convert result to JSON-safe form", exc_info=True)
     return str(result)

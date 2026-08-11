@@ -40,7 +40,10 @@ def register(mcp, ctx: AppContext) -> None:
         """
         if len(link_text) > 25:
             raise ValueError("link_text must be 25 characters or fewer.")
-        for label, text in [("description1", description1), ("description2", description2)]:
+        for label, text in [
+            ("description1", description1),
+            ("description2", description2),
+        ]:
             if text and len(text) > 35:
                 raise ValueError(f"{label} must be 35 characters or fewer.")
 
@@ -60,12 +63,12 @@ def register(mcp, ctx: AppContext) -> None:
             customer_id_clean, campaign_id
         )
 
-        description = (
-            f"Create sitelink '{link_text}' -> {final_url} and attach to campaign {campaign_id}"
-        )
+        description = f"Create sitelink '{link_text}' -> {final_url} and attach to campaign {campaign_id}"
 
         def execute():
-            asset_result = ctx.client.mutate("AssetService", customer_id, [asset_operation])
+            asset_result = ctx.client.mutate(
+                "AssetService", customer_id, [asset_operation]
+            )
             asset_resource_name = asset_result.results[0].resource_name
 
             campaign_asset_operation = client.get_type("CampaignAssetOperation")
@@ -128,7 +131,9 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
         def execute():
-            asset_result = ctx.client.mutate("AssetService", customer_id, [asset_operation])
+            asset_result = ctx.client.mutate(
+                "AssetService", customer_id, [asset_operation]
+            )
             asset_resource_name = asset_result.results[0].resource_name
 
             campaign_asset_operation = client.get_type("CampaignAssetOperation")
@@ -207,7 +212,9 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
         def execute():
-            asset_result = ctx.client.mutate("AssetService", customer_id, [asset_operation])
+            asset_result = ctx.client.mutate(
+                "AssetService", customer_id, [asset_operation]
+            )
             asset_resource_name = asset_result.results[0].resource_name
 
             campaign_asset_operation = client.get_type("CampaignAssetOperation")
@@ -265,7 +272,7 @@ def register(mcp, ctx: AppContext) -> None:
         description = f"Upload image '{name}' from {image_url} and attach to campaign {campaign_id}"
 
         def execute():
-            with urllib.request.urlopen(image_url, timeout=30) as response:  # noqa: S310
+            with urllib.request.urlopen(image_url, timeout=30) as response:
                 image_bytes = response.read()
 
             asset_operation = client.get_type("AssetOperation")
@@ -273,7 +280,9 @@ def register(mcp, ctx: AppContext) -> None:
             asset.name = name
             asset.image_asset.data = image_bytes
 
-            asset_result = ctx.client.mutate("AssetService", customer_id, [asset_operation])
+            asset_result = ctx.client.mutate(
+                "AssetService", customer_id, [asset_operation]
+            )
             asset_resource_name = asset_result.results[0].resource_name
 
             campaign_asset_operation = client.get_type("CampaignAssetOperation")
@@ -323,7 +332,9 @@ def register(mcp, ctx: AppContext) -> None:
             final_url: Optional override landing URL; defaults to the ad's URL.
         """
         if bool(discount_percent) == bool(money_amount_off):
-            raise ValueError("Provide exactly one of discount_percent or money_amount_off.")
+            raise ValueError(
+                "Provide exactly one of discount_percent or money_amount_off."
+            )
 
         client = ctx.client.raw
         customer_id_clean = customer_id.replace("-", "")
@@ -341,7 +352,9 @@ def register(mcp, ctx: AppContext) -> None:
         else:
             from ..client import micros
 
-            asset.promotion_asset.money_amount_off.amount_micros = micros(money_amount_off)
+            asset.promotion_asset.money_amount_off.amount_micros = micros(
+                money_amount_off
+            )
             asset.promotion_asset.money_amount_off.currency_code = currency_code
         if promotion_code:
             asset.promotion_asset.promotion_code = promotion_code
@@ -349,7 +362,9 @@ def register(mcp, ctx: AppContext) -> None:
             asset.final_urls.append(final_url)
 
         discount_label = (
-            f"{discount_percent}% off" if discount_percent is not None else f"{money_amount_off} {currency_code} off"
+            f"{discount_percent}% off"
+            if discount_percent is not None
+            else f"{money_amount_off} {currency_code} off"
         )
         description = (
             f"Create promotion asset '{promotion_target}' ({discount_label}) and attach to "
@@ -357,7 +372,9 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
         def execute():
-            asset_result = ctx.client.mutate("AssetService", customer_id, [asset_operation])
+            asset_result = ctx.client.mutate(
+                "AssetService", customer_id, [asset_operation]
+            )
             asset_resource_name = asset_result.results[0].resource_name
 
             campaign_asset_operation = client.get_type("CampaignAssetOperation")
@@ -420,18 +437,12 @@ def register(mcp, ctx: AppContext) -> None:
         client = ctx.client.raw
         customer_id_clean = customer_id.replace("-", "")
 
-        campaign_resource_name = client.get_service("CampaignService").campaign_path(
-            customer_id_clean, campaign_id
-        )
-        asset_resource_name = client.get_service("AssetService").asset_path(
-            customer_id_clean, asset_id
-        )
         field_type_enum = client.enums.AssetFieldTypeEnum[field_type].value
 
         operation = client.get_type("CampaignAssetOperation")
-        operation.remove = client.get_service("CampaignAssetService").campaign_asset_path(
-            customer_id_clean, campaign_id, asset_id, field_type_enum
-        )
+        operation.remove = client.get_service(
+            "CampaignAssetService"
+        ).campaign_asset_path(customer_id_clean, campaign_id, asset_id, field_type_enum)
 
         description = (
             f"Detach {field_type} asset {asset_id} from campaign {campaign_id}"
@@ -444,6 +455,10 @@ def register(mcp, ctx: AppContext) -> None:
             tool_name="remove_campaign_asset",
             customer_id=customer_id,
             description=description,
-            payload={"campaign_id": campaign_id, "asset_id": asset_id, "field_type": field_type},
+            payload={
+                "campaign_id": campaign_id,
+                "asset_id": asset_id,
+                "field_type": field_type,
+            },
             execute=execute,
         )

@@ -52,7 +52,9 @@ def _build_ctx(mutate_side_effect):
         mutate=mutate_side_effect,
     )
     safety = SafetyLayer(auto_approve=True, ttl_minutes=30, audit_log=_FakeAuditLog())
-    return AppContext(settings=None, client=fake_client, safety=safety, audit=_FakeAuditLog())
+    return AppContext(
+        settings=None, client=fake_client, safety=safety, audit=_FakeAuditLog()
+    )
 
 
 class _AssetFieldTypeEnum(enum.Enum):

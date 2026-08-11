@@ -40,8 +40,11 @@ def register(mcp, ctx: AppContext) -> None:
                 criterion.cpc_bid_micros = micros(cpc_bid)
             operations.append(operation)
 
-        description = f"Add {len(keywords)} keyword(s) to ad group {ad_group_id}: " + ", ".join(
-            f"[{k.get('match_type', 'BROAD')}] {k['text']}" for k in keywords
+        description = (
+            f"Add {len(keywords)} keyword(s) to ad group {ad_group_id}: "
+            + ", ".join(
+                f"[{k.get('match_type', 'BROAD')}] {k['text']}" for k in keywords
+            )
         )
 
         def execute():
@@ -51,7 +54,11 @@ def register(mcp, ctx: AppContext) -> None:
             tool_name="add_keywords",
             customer_id=customer_id,
             description=description,
-            payload={"ad_group_id": ad_group_id, "keywords": keywords, "cpc_bid": cpc_bid},
+            payload={
+                "ad_group_id": ad_group_id,
+                "keywords": keywords,
+                "cpc_bid": cpc_bid,
+            },
             execute=execute,
         )
 
@@ -66,23 +73,33 @@ def register(mcp, ctx: AppContext) -> None:
         """
         client = ctx.client.raw
         operation = client.get_type("AdGroupCriterionOperation")
-        resource_name = client.get_service("AdGroupCriterionService").ad_group_criterion_path(
+        resource_name = client.get_service(
+            "AdGroupCriterionService"
+        ).ad_group_criterion_path(
             customer_id.replace("-", ""), ad_group_id, criterion_id
         )
         operation.update.resource_name = resource_name
         operation.update.status = client.enums.AdGroupCriterionStatusEnum[status].value
         operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["status"]))
 
-        description = f"Set keyword {criterion_id} (ad group {ad_group_id}) status -> {status}"
+        description = (
+            f"Set keyword {criterion_id} (ad group {ad_group_id}) status -> {status}"
+        )
 
         def execute():
-            return ctx.client.mutate("AdGroupCriterionService", customer_id, [operation])
+            return ctx.client.mutate(
+                "AdGroupCriterionService", customer_id, [operation]
+            )
 
         return ctx.safety.propose(
             tool_name="update_keyword_status",
             customer_id=customer_id,
             description=description,
-            payload={"ad_group_id": ad_group_id, "criterion_id": criterion_id, "status": status},
+            payload={
+                "ad_group_id": ad_group_id,
+                "criterion_id": criterion_id,
+                "status": status,
+            },
             execute=execute,
         )
 
@@ -91,14 +108,18 @@ def register(mcp, ctx: AppContext) -> None:
         """Propose permanently removing a keyword from an ad group."""
         client = ctx.client.raw
         operation = client.get_type("AdGroupCriterionOperation")
-        operation.remove = client.get_service("AdGroupCriterionService").ad_group_criterion_path(
+        operation.remove = client.get_service(
+            "AdGroupCriterionService"
+        ).ad_group_criterion_path(
             customer_id.replace("-", ""), ad_group_id, criterion_id
         )
 
         description = f"REMOVE keyword {criterion_id} from ad group {ad_group_id}"
 
         def execute():
-            return ctx.client.mutate("AdGroupCriterionService", customer_id, [operation])
+            return ctx.client.mutate(
+                "AdGroupCriterionService", customer_id, [operation]
+            )
 
         return ctx.safety.propose(
             tool_name="remove_keyword",
@@ -133,9 +154,9 @@ def register(mcp, ctx: AppContext) -> None:
             for kw in keywords:
                 operation = client.get_type("CampaignCriterionOperation")
                 criterion = operation.create
-                criterion.campaign = client.get_service("CampaignService").campaign_path(
-                    customer_id.replace("-", ""), campaign_id
-                )
+                criterion.campaign = client.get_service(
+                    "CampaignService"
+                ).campaign_path(customer_id.replace("-", ""), campaign_id)
                 criterion.negative = True
                 criterion.keyword.text = kw["text"]
                 criterion.keyword.match_type = client.enums.KeywordMatchTypeEnum[
@@ -159,8 +180,11 @@ def register(mcp, ctx: AppContext) -> None:
                 operations.append(operation)
             scope = f"ad group {ad_group_id}"
 
-        description = f"Add {len(keywords)} negative keyword(s) to {scope}: " + ", ".join(
-            f"[{k.get('match_type', 'BROAD')}] {k['text']}" for k in keywords
+        description = (
+            f"Add {len(keywords)} negative keyword(s) to {scope}: "
+            + ", ".join(
+                f"[{k.get('match_type', 'BROAD')}] {k['text']}" for k in keywords
+            )
         )
 
         def execute():
@@ -170,6 +194,10 @@ def register(mcp, ctx: AppContext) -> None:
             tool_name="add_negative_keywords",
             customer_id=customer_id,
             description=description,
-            payload={"campaign_id": campaign_id, "ad_group_id": ad_group_id, "keywords": keywords},
+            payload={
+                "campaign_id": campaign_id,
+                "ad_group_id": ad_group_id,
+                "keywords": keywords,
+            },
             execute=execute,
         )

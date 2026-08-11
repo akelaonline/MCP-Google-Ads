@@ -38,7 +38,7 @@ def register(mcp, ctx: AppContext) -> None:
                 recommendation.campaign,
                 recommendation.ad_group
             FROM recommendation
-            WHERE {' AND '.join(where_parts)}
+            WHERE {" AND ".join(where_parts)}
             ORDER BY recommendation.impact.base_metrics.cost_micros DESC
             LIMIT 500
         """

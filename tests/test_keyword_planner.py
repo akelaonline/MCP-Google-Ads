@@ -1,15 +1,13 @@
-"""Tests for tools/keyword_planner.py — KeywordPlanIdeaService wrappers.
-"""
+"""Tests for tools/keyword_planner.py — KeywordPlanIdeaService wrappers."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 
 import pytest
+from conftest import build_ctx, register_module
 
 from google_ads_mcp import tools
-
-from conftest import build_ctx, register_module
 
 
 class _FakeKeywordPlanIdeaService:
@@ -62,7 +60,9 @@ class _FakeKeywordPlanIdeaService:
 
 def _ctx_with_keyword_planner():
     fake_service = _FakeKeywordPlanIdeaService()
-    ctx = build_ctx(lambda *a, **k: None, extra_services={"KeywordPlanIdeaService": fake_service})
+    ctx = build_ctx(
+        lambda *a, **k: None, extra_services={"KeywordPlanIdeaService": fake_service}
+    )
     tool_fns = register_module(tools.keyword_planner, ctx)
     return ctx, tool_fns, fake_service
 
@@ -71,7 +71,9 @@ def test_generate_keyword_ideas_requires_seed():
     _, tool_fns, _ = _ctx_with_keyword_planner()
 
     with pytest.raises(ValueError, match="at least one"):
-        tool_fns["generate_keyword_ideas"](customer_id="123-456-7890", keywords=[], page_url="")
+        tool_fns["generate_keyword_ideas"](
+            customer_id="123-456-7890", keywords=[], page_url=""
+        )
 
 
 def test_generate_keyword_ideas_with_keyword_seed():
@@ -124,7 +126,9 @@ def test_generate_keyword_ideas_enforces_limit_range():
         tool_fns["generate_keyword_ideas"](customer_id="123", keywords=["x"], limit=0)
 
     with pytest.raises(ValueError, match="limit"):
-        tool_fns["generate_keyword_ideas"](customer_id="123", keywords=["x"], limit=2001)
+        tool_fns["generate_keyword_ideas"](
+            customer_id="123", keywords=["x"], limit=2001
+        )
 
 
 def test_generate_keyword_ideas_rejects_invalid_customer_id():

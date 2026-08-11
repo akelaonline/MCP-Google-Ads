@@ -44,7 +44,9 @@ def register(mcp, ctx: AppContext) -> None:
                 customer_id_clean, item["ad_group_id"], item["criterion_id"]
             )
             operation.update.resource_name = resource_name
-            operation.update.status = client.enums.AdGroupCriterionStatusEnum[status].value
+            operation.update.status = client.enums.AdGroupCriterionStatusEnum[
+                status
+            ].value
             operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["status"]))
             operations.append(operation)
 
@@ -81,16 +83,18 @@ def register(mcp, ctx: AppContext) -> None:
         campaign_negatives = campaign_negatives or {}
         ad_group_negatives = ad_group_negatives or {}
         if not campaign_negatives and not ad_group_negatives:
-            raise ValueError("Provide at least one of campaign_negatives or ad_group_negatives.")
+            raise ValueError(
+                "Provide at least one of campaign_negatives or ad_group_negatives."
+            )
 
         client = ctx.client.raw
         customer_id_clean = customer_id.replace("-", "")
 
         campaign_ops = []
         for campaign_id, keywords in campaign_negatives.items():
-            campaign_resource_name = client.get_service("CampaignService").campaign_path(
-                customer_id_clean, campaign_id
-            )
+            campaign_resource_name = client.get_service(
+                "CampaignService"
+            ).campaign_path(customer_id_clean, campaign_id)
             for kw in keywords:
                 operation = client.get_type("CampaignCriterionOperation")
                 criterion = operation.create
@@ -129,11 +133,17 @@ def register(mcp, ctx: AppContext) -> None:
             results = {}
             if campaign_ops:
                 results["campaign_criteria"] = ctx.client.mutate(
-                    "CampaignCriterionService", customer_id, campaign_ops, partial_failure=True
+                    "CampaignCriterionService",
+                    customer_id,
+                    campaign_ops,
+                    partial_failure=True,
                 )
             if ad_group_ops:
                 results["ad_group_criteria"] = ctx.client.mutate(
-                    "AdGroupCriterionService", customer_id, ad_group_ops, partial_failure=True
+                    "AdGroupCriterionService",
+                    customer_id,
+                    ad_group_ops,
+                    partial_failure=True,
                 )
             return {
                 "campaign_resource_names": [
@@ -160,7 +170,9 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
-    def bulk_update_ad_status(customer_id: str, updates: list[dict], status: str) -> dict:
+    def bulk_update_ad_status(
+        customer_id: str, updates: list[dict], status: str
+    ) -> dict:
         """Propose pausing, enabling, or removing many ads in one call.
 
         Args:

@@ -19,9 +19,9 @@ def _build_server():
 
 
 def _check_modules():
-    from google_ads_mcp.tools import ALL_MODULES
     from google_ads_mcp.context import AppContext
     from google_ads_mcp.safety import SafetyLayer
+    from google_ads_mcp.tools import ALL_MODULES
 
     class _FakeClient:
         @property
@@ -52,7 +52,9 @@ def _check_modules():
     ctx = AppContext(
         settings=None,
         client=_FakeClient(),
-        safety=SafetyLayer(auto_approve=False, ttl_minutes=30, audit_log=_FakeAuditLog()),
+        safety=SafetyLayer(
+            auto_approve=False, ttl_minutes=30, audit_log=_FakeAuditLog()
+        ),
         audit=_FakeAuditLog(),
     )
     mcp = _FakeMcp()

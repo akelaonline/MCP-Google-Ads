@@ -2,6 +2,20 @@
 
 ## Conversational flows
 
+**Keyword research before building a campaign:**
+> "Find keyword ideas around 'google ads automation' for the US, Spanish language, and show me search volume plus CPC ranges."
+> — Claude calls `generate_keyword_ideas` with `keywords=["google ads automation"]`, `language="es"`, `geo_target_ids=["2840"]`.
+>
+> "Now check historical metrics for: automatizacion google ads, automatizar campañas google ads."
+> — Claude calls `get_keyword_historical_metrics` with the shortlisted keywords.
+
+**Apply a Google Ads recommendation safely:**
+> "List active recommendations for customer 123-456-7890."
+> — Claude calls `get_recommendations`.
+>
+> "Apply the sitelink asset recommendation customers/123/recommendations/456."
+> — Claude calls `apply_recommendation`, shows the preview, waits for "confirm", then calls `confirm_pending_action`.
+
 **Weekly cleanup:**
 > "Pull the search terms report for the last 7 days on customer 123-456-7890, and show me anything with cost over $20 and zero conversions."
 > "Add the worst 5 as negative keywords on that campaign."

@@ -22,7 +22,9 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def get_campaign_performance(
-        customer_id: str, date_range: str = "LAST_7_DAYS", campaign_id: str | None = None
+        customer_id: str,
+        date_range: str = "LAST_7_DAYS",
+        campaign_id: str | None = None,
     ) -> dict:
         """Campaign-level performance: impressions, clicks, cost, conversions, CTR, CPC.
 
@@ -44,11 +46,16 @@ def register(mcp, ctx: AppContext) -> None:
             ORDER BY metrics.cost_micros DESC
         """
         rows = ctx.client.search(customer_id, query)
-        return {"date_range": date_range, "campaigns": [_flatten_campaign_row(r) for r in rows]}
+        return {
+            "date_range": date_range,
+            "campaigns": [_flatten_campaign_row(r) for r in rows],
+        }
 
     @mcp.tool()
     def get_ad_group_performance(
-        customer_id: str, date_range: str = "LAST_7_DAYS", campaign_id: str | None = None
+        customer_id: str,
+        date_range: str = "LAST_7_DAYS",
+        campaign_id: str | None = None,
     ) -> dict:
         """Ad-group-level performance metrics."""
         where = f"WHERE segments.date DURING {date_range}"
@@ -68,7 +75,9 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def get_keyword_performance(
-        customer_id: str, date_range: str = "LAST_7_DAYS", ad_group_id: str | None = None
+        customer_id: str,
+        date_range: str = "LAST_7_DAYS",
+        ad_group_id: str | None = None,
     ) -> dict:
         """Keyword-level performance, including quality score where available."""
         where = f"WHERE segments.date DURING {date_range}"
@@ -93,7 +102,9 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def get_search_terms_report(
-        customer_id: str, date_range: str = "LAST_7_DAYS", campaign_id: str | None = None
+        customer_id: str,
+        date_range: str = "LAST_7_DAYS",
+        campaign_id: str | None = None,
     ) -> dict:
         """Actual search terms that triggered your ads — the source list for new negatives/keywords."""
         where = f"WHERE segments.date DURING {date_range}"
@@ -115,7 +126,9 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def get_ad_performance(
-        customer_id: str, date_range: str = "LAST_7_DAYS", ad_group_id: str | None = None
+        customer_id: str,
+        date_range: str = "LAST_7_DAYS",
+        ad_group_id: str | None = None,
     ) -> dict:
         """Ad-level performance, including responsive search ad asset combos."""
         where = f"WHERE segments.date DURING {date_range}"
@@ -139,7 +152,9 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def get_geographic_performance(
-        customer_id: str, date_range: str = "LAST_7_DAYS", campaign_id: str | None = None
+        customer_id: str,
+        date_range: str = "LAST_7_DAYS",
+        campaign_id: str | None = None,
     ) -> dict:
         """Performance broken down by the physical or presence location of
         the user (where the click came from), not by which location was
@@ -164,7 +179,9 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def get_device_performance(
-        customer_id: str, date_range: str = "LAST_7_DAYS", campaign_id: str | None = None
+        customer_id: str,
+        date_range: str = "LAST_7_DAYS",
+        campaign_id: str | None = None,
     ) -> dict:
         """Performance broken down by device (MOBILE / DESKTOP / TABLET),
         segmented at the campaign level — the data behind deciding a
@@ -186,7 +203,9 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def get_asset_performance(
-        customer_id: str, date_range: str = "LAST_7_DAYS", campaign_id: str | None = None
+        customer_id: str,
+        date_range: str = "LAST_7_DAYS",
+        campaign_id: str | None = None,
     ) -> dict:
         """Performance of individual assets (sitelinks, call, message, image,
         promotion, and RSA headline/description assets) — which specific
@@ -210,7 +229,9 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def get_audience_performance(
-        customer_id: str, date_range: str = "LAST_7_DAYS", campaign_id: str | None = None
+        customer_id: str,
+        date_range: str = "LAST_7_DAYS",
+        campaign_id: str | None = None,
     ) -> dict:
         """Performance of attached audiences (remarketing / customer match /
         affinity / in-market) at the ad-group level — which audience is
@@ -280,7 +301,11 @@ def register(mcp, ctx: AppContext) -> None:
 
         buckets: dict[int, dict] = {}
         for row in rows:
-            qs = row.get("ad_group_criterion", {}).get("quality_info", {}).get("quality_score")
+            qs = (
+                row.get("ad_group_criterion", {})
+                .get("quality_info", {})
+                .get("quality_score")
+            )
             if qs is None:
                 continue
             bucket = buckets.setdefault(

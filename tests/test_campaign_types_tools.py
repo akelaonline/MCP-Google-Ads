@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from google_ads_mcp import tools
-
 from conftest import FakeMutateResult, build_ctx, register_module
+
+from google_ads_mcp import tools
 
 
 def test_create_shopping_campaign_calls_campaign_service():

@@ -20,14 +20,18 @@ def _campaign_operation(ctx, customer_id, campaign_id):
 
 def register(mcp, ctx: AppContext) -> None:
     @mcp.tool()
-    def set_manual_cpc(customer_id: str, campaign_id: str, enhanced_cpc: bool = True) -> dict:
+    def set_manual_cpc(
+        customer_id: str, campaign_id: str, enhanced_cpc: bool = True
+    ) -> dict:
         """Propose switching a campaign to Manual CPC bidding."""
-        client, operation = _campaign_operation(ctx, customer_id, campaign_id)
+        _, operation = _campaign_operation(ctx, customer_id, campaign_id)
         operation.update.manual_cpc.enhanced_cpc_enabled = enhanced_cpc
         operation.update_mask.CopyFrom(
             field_mask_pb2.FieldMask(paths=["manual_cpc.enhanced_cpc_enabled"])
         )
-        description = f"Set campaign {campaign_id} bidding -> Manual CPC (eCPC={enhanced_cpc})"
+        description = (
+            f"Set campaign {campaign_id} bidding -> Manual CPC (eCPC={enhanced_cpc})"
+        )
 
         def execute():
             return ctx.client.mutate("CampaignService", customer_id, [operation])
@@ -46,7 +50,7 @@ def register(mcp, ctx: AppContext) -> None:
     ) -> dict:
         """Propose switching a campaign to Maximize Conversions bidding,
         optionally with a target CPA cap."""
-        client, operation = _campaign_operation(ctx, customer_id, campaign_id)
+        _, operation = _campaign_operation(ctx, customer_id, campaign_id)
         if target_cpa is not None:
             operation.update.maximize_conversions.target_cpa_micros = micros(target_cpa)
             mask = ["maximize_conversions.target_cpa_micros"]
@@ -73,12 +77,14 @@ def register(mcp, ctx: AppContext) -> None:
     @mcp.tool()
     def set_target_cpa(customer_id: str, campaign_id: str, target_cpa: float) -> dict:
         """Propose switching a campaign to Target CPA bidding."""
-        client, operation = _campaign_operation(ctx, customer_id, campaign_id)
+        _, operation = _campaign_operation(ctx, customer_id, campaign_id)
         operation.update.target_cpa.target_cpa_micros = micros(target_cpa)
         operation.update_mask.CopyFrom(
             field_mask_pb2.FieldMask(paths=["target_cpa.target_cpa_micros"])
         )
-        description = f"Set campaign {campaign_id} bidding -> Target CPA ${target_cpa:,.2f}"
+        description = (
+            f"Set campaign {campaign_id} bidding -> Target CPA ${target_cpa:,.2f}"
+        )
 
         def execute():
             return ctx.client.mutate("CampaignService", customer_id, [operation])
@@ -98,10 +104,14 @@ def register(mcp, ctx: AppContext) -> None:
         Args:
             target_roas: Ratio, e.g. 4.0 means 400% (aim for $4 revenue per $1 spent).
         """
-        client, operation = _campaign_operation(ctx, customer_id, campaign_id)
+        _, operation = _campaign_operation(ctx, customer_id, campaign_id)
         operation.update.target_roas.target_roas = target_roas
-        operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["target_roas.target_roas"]))
-        description = f"Set campaign {campaign_id} bidding -> Target ROAS {target_roas:.2f}"
+        operation.update_mask.CopyFrom(
+            field_mask_pb2.FieldMask(paths=["target_roas.target_roas"])
+        )
+        description = (
+            f"Set campaign {campaign_id} bidding -> Target ROAS {target_roas:.2f}"
+        )
 
         def execute():
             return ctx.client.mutate("CampaignService", customer_id, [operation])

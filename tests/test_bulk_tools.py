@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import pytest
+from conftest import FakeMutateResult, build_ctx, register_module
 
 from google_ads_mcp import tools
-
-from conftest import FakeMutateResult, build_ctx, register_module
 
 
 def test_bulk_update_keyword_status_single_call():
     calls = []
 
     def fake_mutate(service_name, customer_id, operations, **kwargs):
-        calls.append((service_name, len(list(operations)), kwargs.get("partial_failure")))
+        calls.append(
+            (service_name, len(list(operations)), kwargs.get("partial_failure"))
+        )
         return FakeMutateResult("a", "b", "c")
 
     ctx = build_ctx(fake_mutate)
@@ -39,7 +40,9 @@ def test_bulk_update_keyword_status_requires_updates():
     tool_fns = register_module(tools.bulk, ctx)
 
     with pytest.raises(ValueError, match="at least one"):
-        tool_fns["bulk_update_keyword_status"](customer_id="123", updates=[], status="PAUSED")
+        tool_fns["bulk_update_keyword_status"](
+            customer_id="123", updates=[], status="PAUSED"
+        )
 
 
 def test_bulk_add_negative_keywords_multi_scope_splits_by_service():

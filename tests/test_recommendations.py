@@ -1,13 +1,12 @@
-"""Tests for tools/recommendations.py — apply and dismiss recommendations.
-"""
+"""Tests for tools/recommendations.py — apply and dismiss recommendations."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 
-from google_ads_mcp import tools
-
 from conftest import build_ctx, register_module
+
+from google_ads_mcp import tools
 
 
 class _FakeRecommendationService:
@@ -21,7 +20,9 @@ class _FakeRecommendationService:
         )
 
     def dismiss_recommendation(self, *, customer_id, operations):
-        self.calls.append(("dismiss", customer_id, [o.resource_name for o in operations]))
+        self.calls.append(
+            ("dismiss", customer_id, [o.resource_name for o in operations])
+        )
         return SimpleNamespace(
             results=[SimpleNamespace(resource_name="customers/123/recommendations/456")]
         )

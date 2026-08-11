@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import hashlib
 
-from google_ads_mcp import tools
-
 from conftest import FakeMutateResult, build_ctx, register_module
+
+from google_ads_mcp import tools
 
 
 def test_create_remarketing_list_validates_membership_days():
@@ -51,7 +51,9 @@ def test_create_customer_match_list_calls_user_list_service():
     ctx = build_ctx(fake_mutate)
     tool_fns = register_module(tools.audiences, ctx)
 
-    result = tool_fns["create_customer_match_list"](customer_id="123", name="VIP Customers")
+    result = tool_fns["create_customer_match_list"](
+        customer_id="123", name="VIP Customers"
+    )
 
     assert calls == ["UserListService"]
     assert result["status"] == "executed"
@@ -75,7 +77,9 @@ def test_upload_customer_match_members_hashes_pii_and_runs_job():
     class _FakeOfflineUserDataJobService:
         def create_offline_user_data_job(self, *, customer_id, job):
             calls["created"] = True
-            return SimpleNamespaceLike(resource_name="customers/123/offlineUserDataJobs/9")
+            return SimpleNamespaceLike(
+                resource_name="customers/123/offlineUserDataJobs/9"
+            )
 
         def add_offline_user_data_job_operations(self, *, resource_name, operations):
             calls["added_ops"] = operations
@@ -114,7 +118,9 @@ def test_upload_customer_match_members_hashes_pii_and_runs_job():
 def test_hash_pii_is_sha256():
     from google_ads_mcp.tools.audiences import _hash_pii
 
-    assert _hash_pii("test@example.com") == hashlib.sha256(b"test@example.com").hexdigest()
+    assert (
+        _hash_pii("test@example.com") == hashlib.sha256(b"test@example.com").hexdigest()
+    )
 
 
 def test_attach_audience_to_ad_group():

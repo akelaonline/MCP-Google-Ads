@@ -84,7 +84,9 @@ def load_settings() -> Settings:
         refresh_token=os.environ.get("GOOGLE_ADS_REFRESH_TOKEN", ""),
         login_customer_id=os.environ.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID") or None,
         auto_approve=_bool("GOOGLE_ADS_MCP_AUTO_APPROVE", False),
-        pending_ttl_minutes=int(os.environ.get("GOOGLE_ADS_MCP_PENDING_TTL_MINUTES", "30")),
+        pending_ttl_minutes=int(
+            os.environ.get("GOOGLE_ADS_MCP_PENDING_TTL_MINUTES", "30")
+        ),
         audit_db_path=_resolve_audit_db_path(os.environ.get("GOOGLE_ADS_MCP_AUDIT_DB")),
         transport=os.environ.get("GOOGLE_ADS_MCP_TRANSPORT", "stdio"),
         http_port=int(os.environ.get("GOOGLE_ADS_MCP_HTTP_PORT", "8080")),

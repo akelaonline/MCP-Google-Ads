@@ -162,7 +162,9 @@ def register(mcp, ctx: AppContext) -> None:
             asset_group.campaign = campaign_resource_name
             asset_group.final_urls.extend(final_urls)
             asset_group.status = client.enums.AssetGroupStatusEnum.PAUSED
-            ag_result = ctx.client.mutate("AssetGroupService", customer_id, [ag_operation])
+            ag_result = ctx.client.mutate(
+                "AssetGroupService", customer_id, [ag_operation]
+            )
             asset_group_resource_name = ag_result.results[0].resource_name
 
             # Step 3: link each text asset to the asset group with its field type.

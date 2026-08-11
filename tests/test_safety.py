@@ -8,9 +8,9 @@ from google_ads_mcp.safety import SafetyLayer
 
 
 def make_safety(auto_approve=False):
-    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-    audit = AuditLog(tmp.name)
-    return SafetyLayer(auto_approve=auto_approve, ttl_minutes=30, audit_log=audit)
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+        audit = AuditLog(tmp.name)
+        return SafetyLayer(auto_approve=auto_approve, ttl_minutes=30, audit_log=audit)
 
 
 def test_propose_requires_confirmation():

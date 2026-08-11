@@ -30,7 +30,9 @@ def register(mcp, ctx: AppContext) -> None:
         if cpc_bid is not None:
             ad_group.cpc_bid_micros = micros(cpc_bid)
 
-        description = f"Create ad group '{name}' in campaign {campaign_id} (status={status})"
+        description = (
+            f"Create ad group '{name}' in campaign {campaign_id} (status={status})"
+        )
 
         def execute():
             return ctx.client.mutate("AdGroupService", customer_id, [operation])
@@ -39,7 +41,12 @@ def register(mcp, ctx: AppContext) -> None:
             tool_name="create_ad_group",
             customer_id=customer_id,
             description=description,
-            payload={"campaign_id": campaign_id, "name": name, "cpc_bid": cpc_bid, "status": status},
+            payload={
+                "campaign_id": campaign_id,
+                "name": name,
+                "cpc_bid": cpc_bid,
+                "status": status,
+            },
             execute=execute,
         )
 
@@ -73,7 +80,9 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
-    def update_ad_group_cpc_bid(customer_id: str, ad_group_id: str, new_cpc_bid: float) -> dict:
+    def update_ad_group_cpc_bid(
+        customer_id: str, ad_group_id: str, new_cpc_bid: float
+    ) -> dict:
         """Propose changing an ad group's default max CPC bid."""
         client = ctx.client.raw
         operation = client.get_type("AdGroupOperation")
@@ -82,7 +91,9 @@ def register(mcp, ctx: AppContext) -> None:
         )
         operation.update.resource_name = resource_name
         operation.update.cpc_bid_micros = micros(new_cpc_bid)
-        operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["cpc_bid_micros"]))
+        operation.update_mask.CopyFrom(
+            field_mask_pb2.FieldMask(paths=["cpc_bid_micros"])
+        )
 
         description = f"Set ad group {ad_group_id} CPC bid -> ${new_cpc_bid:,.2f}"
 

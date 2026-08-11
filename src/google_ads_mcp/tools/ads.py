@@ -129,7 +129,7 @@ def register(mcp, ctx: AppContext) -> None:
             def _upload_images(urls, field):
                 resource_names = []
                 for url in urls or []:
-                    with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310
+                    with urllib.request.urlopen(url, timeout=30) as response:
                         image_bytes = response.read()
                     op = client.get_type("AssetOperation")
                     op.create.image_asset.data = image_bytes
@@ -212,7 +212,9 @@ def register(mcp, ctx: AppContext) -> None:
                 asset resource name for the companion banner.
         """
         if len(headline) > 15:
-            raise ValueError("headline must be 15 characters or fewer (YouTube CTA limit).")
+            raise ValueError(
+                "headline must be 15 characters or fewer (YouTube CTA limit)."
+            )
 
         client = ctx.client.raw
         operation = client.get_type("AdGroupAdOperation")
@@ -256,7 +258,9 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
-    def update_ad_status(customer_id: str, ad_group_id: str, ad_id: str, status: str) -> dict:
+    def update_ad_status(
+        customer_id: str, ad_group_id: str, ad_id: str, status: str
+    ) -> dict:
         """Propose pausing, enabling, or removing an ad.
 
         Args:

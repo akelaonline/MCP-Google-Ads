@@ -6,7 +6,8 @@ every tool module shares the same retry/error handling.
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from .config import Settings
 from .errors import GoogleAdsMcpError, format_google_ads_exception
@@ -100,7 +101,9 @@ class GoogleAdsClientWrapper:
         try:
             accepted_params = set(inspect.signature(method).parameters)
         except (TypeError, ValueError):
-            accepted_params = None  # signature unavailable (e.g. C-extension) — be permissive
+            accepted_params = (
+                None  # signature unavailable (e.g. C-extension) — be permissive
+            )
 
         if accepted_params is None or "partial_failure" in accepted_params:
             kwargs["partial_failure"] = partial_failure
@@ -133,7 +136,7 @@ def _mutate_method_name(service_name: str) -> str:
 
     import re
 
-    base = service_name[: -len("Service")] if service_name.endswith("Service") else service_name
+    base = service_name.removesuffix("Service")
     snake = re.sub(r"(?<!^)(?=[A-Z])", "_", base).lower()
     return f"mutate_{snake}s"
 
@@ -147,7 +150,7 @@ def _row_to_dict(row) -> dict[str, Any]:
 
 def micros(amount: float) -> int:
     """Convert a currency amount (e.g. 25.50) to micros (25500000)."""
-    return int(round(amount * 1_000_000))
+    return round(amount * 1_000_000)
 
 
 def from_micros(amount_micros: int) -> float:
