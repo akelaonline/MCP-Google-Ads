@@ -4,8 +4,10 @@
 
 **Full read/write [Model Context Protocol](https://modelcontextprotocol.io) server for active Google Ads management from Claude.**
 
-Built by [**Akela**](https://github.com/akelaonline)
+Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation & AI workflows
 
+[![Email](https://img.shields.io/badge/email-adjose%40gmail.com-blue.svg)](mailto:adjose@gmail.com)
+[![Instagram](https://img.shields.io/badge/instagram-%40akelaonline-E4405F?logo=instagram&logoColor=white)](https://www.instagram.com/akelaonline/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Google Ads API v20](https://img.shields.io/badge/Google%20Ads%20API-v20-4285F4.svg)](https://developers.google.com/google-ads/api)
@@ -185,8 +187,16 @@ More flows and ready-to-use GAQL queries: [`docs/EXAMPLES.md`](docs/EXAMPLES.md)
 
 Contributions welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). The one hard rule: every write tool goes through the safety layer (`ctx.safety.propose(...)`), never a direct mutate call.
 
+## About Akela
+
+I help agencies and consultants automate Google Ads workflows with AI — from MCC reporting to campaign builds, optimization, and custom MCP integrations.
+
+- **Email:** [adjose@gmail.com](mailto:adjose@gmail.com)
+- **Instagram:** [@akelaonline](https://www.instagram.com/akelaonline/)
+- **GitHub:** [akelaonline](https://github.com/akelaonline)
+
+If this saves you time, a ⭐ on the repo is appreciated.
+
 ## License
 
 MIT © 2026 [Akela](https://github.com/akelaonline). See [LICENSE](LICENSE).
-
-If this saves you time, a ⭐ on the repo is appreciated.
