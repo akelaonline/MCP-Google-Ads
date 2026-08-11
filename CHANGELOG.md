@@ -2,21 +2,27 @@
 
 ## 0.5.0 — 2026-08-11
 
-### Added
-- **`tools/keyword_planner.py` — Keyword Planner idea generation & historical metrics.**
-  - `generate_keyword_ideas` — calls `KeywordPlanIdeaService.GenerateKeywordIdeas` to get search volume, competition, and CPC bid ranges from seed keywords or a URL.
-  - `get_keyword_historical_metrics` — looks up volume/CPC for a fixed keyword list without expanding ideas.
-  - Input validation for `customer_id`, `language`, `limit`, `keywords`, and `page_url`.
-  - Extended language coverage in `LANGUAGE_IDS`.
-  - Unit tests in `tests/test_keyword_planner.py`.
-- **`tools/reporting.py` — `get_quality_score_report`** aggregates keyword performance by Quality Score bucket.
-- **`tools/recommendations.py` — read/apply/dismiss Google Ads recommendations.**
-  - `get_recommendations` lists active recommendations, optionally filtered by type.
-  - `apply_recommendation` and `dismiss_recommendation` go through the safety propose/confirm layer.
-- **`src/google_ads_mcp/helpers.py`** centralizes `normalize_customer_id` and `is_valid_customer_id`.
-- **`src/google_ads_mcp/logging_config.py`** adds structured, env-controlled logging (`GOOGLE_ADS_MCP_LOG_LEVEL`).
-- **`scripts/smoke_test.py` + `Makefile`** for quick install/test/smoke checks and `ruff` placeholders.
-- **GitHub Actions workflow** `.github/workflows/tests.yml` running pytest on Python 3.11–3.13.
+### New capabilities
+- **Keyword Planner directly inside Claude** (`tools/keyword_planner.py`).
+  - `generate_keyword_ideas` — search-volume, competition, and CPC bid ranges from seed keywords or a URL via `KeywordPlanIdeaService.GenerateKeywordIdeas`.
+  - `get_keyword_historical_metrics` — volume/CPC lookup for a fixed keyword list without idea expansion.
+  - Input validation for `customer_id`, `language`, `limit`, `keywords`, and `page_url`; extended language coverage in `LANGUAGE_IDS`.
+- **Google Ads recommendations workflow** (`tools/recommendations.py`).
+  - `get_recommendations` lists active recommendations with optional type filtering.
+  - `apply_recommendation` and `dismiss_recommendation` run through the existing safety propose/confirm layer.
+- **Quality Score reporting** (`tools/reporting.py`).
+  - `get_quality_score_report` buckets keyword performance by Quality Score to surface low-QS drag on CPCs.
+
+### Engineering
+- Centralized customer-ID helpers in `src/google_ads_mcp/helpers.py` (`normalize_customer_id`, `is_valid_customer_id`).
+- Added structured logging via `src/google_ads_mcp/logging_config.py`, controlled by `GOOGLE_ADS_MCP_LOG_LEVEL`.
+- Added `Makefile` and `scripts/smoke_test.py` for install / test / smoke-test workflows, plus lint/format placeholders.
+- Added `.github/workflows/tests.yml` CI running the full pytest suite on Python 3.11, 3.12, and 3.13.
+
+### Tests
+- `tests/test_keyword_planner.py` covers idea generation, historical metrics, argument validation, and error handling.
+- `tests/test_recommendations.py` covers apply and dismiss recommendation flows.
+- Suite now totals **77 tests**, all passing.
 
 Todas las versiones siguen [Semantic Versioning](https://semver.org/):
 `MAJOR.MINOR.PATCH`. Un fix de bug sin romper compatibilidad sube el

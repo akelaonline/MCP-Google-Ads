@@ -18,6 +18,13 @@ Built by [**Akela**](https://github.com/akelaonline)
 
 ---
 
+## What's new in v0.5.0
+
+- **Keyword Planner inside Claude** — `generate_keyword_ideas` and `get_keyword_historical_metrics` pull real search-volume, competition, and CPC bid ranges from Google Ads' `KeywordPlanIdeaService`.
+- **Recommendations workflow** — list, apply, or dismiss Google Ads recommendations without leaving chat, still gated by the human-in-the-loop safety layer.
+- **Quality Score report** — instantly bucket keywords by Quality Score to find the low-QS drag on CPCs.
+- **Production-grade testing** — 77 unit tests, smoke test, and GitHub Actions CI on Python 3.11–3.13.
+
 ## Why this exists
 
 Most Google Ads MCP servers on GitHub today stop at reporting: `search`, `list_accounts`, raw GAQL. That's useful for analysis, but it isn't what running an account actually requires — pausing an ad group that's bleeding budget, shipping a new Responsive Search Ad, adding negatives from this week's search-terms report, or nudging a budget after a strong week.
@@ -25,6 +32,8 @@ Most Google Ads MCP servers on GitHub today stop at reporting: `search`, `list_a
 This server closes that gap. It's built on Google's **official `google-ads` Python client** (API v20), wraps ~40 tools spanning the full campaign lifecycle, and adds a **human-in-the-loop safety layer** so an LLM never silently touches real client spend — every write is proposed, previewed, and only executes on explicit confirmation.
 
 ## What it does
+
+This MCP server gives Claude direct, structured access to the full Google Ads lifecycle — from research and reporting to creation, optimization, and auditing. Every write is proposed first, then confirmed.
 
 | Domain | Capabilities |
 |---|---|
@@ -121,6 +130,20 @@ Claude → confirm_pending_action("7f3a2c1e")
        ← "Done. 4 negatives added. Logged to audit.db."
 ```
 
+Another common flow — Keyword Planner research:
+
+```
+> Find keyword ideas around "google ads automation" in the US, Spanish language.
+
+Claude → generate_keyword_ideas(
+           customer_id="123-456-7890",
+           keywords=["google ads automation"],
+           language="es",
+           geo_target_ids=["2840"]
+         )
+       ← { "ideas": [...], "idea_count": N }
+```
+
 More flows and ready-to-use GAQL queries: [`docs/EXAMPLES.md`](docs/EXAMPLES.md).
 
 ## Documentation
@@ -142,6 +165,14 @@ More flows and ready-to-use GAQL queries: [`docs/EXAMPLES.md`](docs/EXAMPLES.md)
 | Official `googleads/google-ads-mcp` | ✅ | ❌ | — | — | ✅ |
 | Most community servers | ✅ | Partial | ❌ | ❌ | ✅ |
 | Hosted/paid aggregators | ✅ | Varies | ❌ | ❌ | ❌ |
+
+## Built for agencies & consultants
+
+- **Multi-account MCC workflows** — switch between client accounts without swapping credentials.
+- **Search → action in one chat** — pull a search-terms report, identify bleeders, and add negatives in the same conversation.
+- **Keyword Planner inside Claude** — research volume, competition, and CPC ranges before building campaigns.
+- **Audit trail by default** — every confirmed mutation is written to a local SQLite audit log, so you can always reconstruct who changed what.
+- **No hosted middleware** — runs entirely in your own environment; your credentials never leave your machine.
 
 ## Requirements
 
