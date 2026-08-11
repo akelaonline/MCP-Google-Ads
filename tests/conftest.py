@@ -122,6 +122,12 @@ class KeywordMatchTypeEnum(enum.Enum):
     BROAD = 4
 
 
+class KeywordPlanNetworkEnum(enum.Enum):
+    UNSPECIFIED = 0
+    GOOGLE_SEARCH = 2
+    GOOGLE_SEARCH_AND_PARTNERS = 3
+
+
 class DayOfWeekEnum(enum.Enum):
     UNSPECIFIED = 0
     MONDAY = 2
@@ -163,6 +169,7 @@ class FakeEnums:
     CustomerMatchUploadKeyTypeEnum = CustomerMatchUploadKeyTypeEnum
     OfflineUserDataJobTypeEnum = OfflineUserDataJobTypeEnum
     KeywordMatchTypeEnum = KeywordMatchTypeEnum
+    KeywordPlanNetworkEnum = KeywordPlanNetworkEnum
 
 
 class AutoVivify:
