@@ -332,6 +332,95 @@ def register(mcp, ctx: AppContext) -> None:
             "total_keywords": len(rows),
         }
 
+    @mcp.tool()
+    def get_disapproved_ads(
+        customer_id: str, campaign_id: str | None = None
+    ) -> dict:
+        """List ads with policy issues: disapproved, limited by policy, or
+        under review — with the specific policy topic and evidence where
+        available. This is the fast way to find "why isn't this ad
+        serving" without opening the UI, especially relevant for regulated
+        categories (health, medical devices, finance) where policy holds
+        are common.
+        """
+        where = "WHERE ad_group_ad.policy_summary.approval_status != APPROVED"
+        if campaign_id:
+            where += f" AND campaign.id = {int(campaign_id)}"
+        query = f"""
+            SELECT
+                campaign.name, ad_group.name, ad_group_ad.ad.id,
+                ad_group_ad.status,
+                ad_group_ad.policy_summary.approval_status,
+                ad_group_ad.policy_summary.review_status,
+                ad_group_ad.policy_summary.policy_topic_entries
+            FROM ad_group_ad
+            {where}
+        """
+        rows = ctx.client.search(customer_id, query)
+        return {"ads_with_policy_issues": rows, "count": len(rows)}
+
+    @mcp.tool()
+    def get_shopping_performance_report(
+        customer_id: str,
+        campaign_id: str | None = None,
+        date_range: str = "LAST_30_DAYS",
+    ) -> dict:
+        """Shopping campaign performance broken out by individual product
+        (via shopping_performance_view) — impressions, clicks, cost,
+        conversions per item, so you can see which SKUs are actually
+        driving results vs. burning spend with none.
+        """
+        where = f"WHERE segments.date DURING {date_range}"
+        if campaign_id:
+            where += f" AND campaign.id = {int(campaign_id)}"
+        query = f"""
+            SELECT
+                campaign.name,
+                segments.product_item_id, segments.product_title,
+                segments.product_brand, segments.product_type_l1,
+                metrics.impressions, metrics.clicks, metrics.cost_micros,
+                metrics.conversions, metrics.conversions_value
+            FROM shopping_performance_view
+            {where}
+            ORDER BY metrics.cost_micros DESC
+            LIMIT 2000
+        """
+        rows = ctx.client.search(customer_id, query)
+        for row in rows:
+            metrics = row.get("metrics", {})
+            if "cost_micros" in metrics:
+                metrics["cost"] = from_micros(int(metrics["cost_micros"]))
+        return {"date_range": date_range, "products": rows, "count": len(rows)}
+
+    @mcp.tool()
+    def list_shopping_products(customer_id: str, campaign_id: str | None = None) -> dict:
+        """List the distinct products currently serving in Shopping/PMax
+        campaigns, read from Google Ads' side (not Merchant Center) — i.e.
+        what's actually eligible to show, with basic identifying info. For
+        full catalog/feed management (pricing, availability, adding new
+        products) use Merchant Center directly; this MCP does not wrap that
+        API.
+        """
+        where = ""
+        if campaign_id:
+            where = f"WHERE campaign.id = {int(campaign_id)}"
+        query = f"""
+            SELECT
+                campaign.name,
+                segments.product_item_id, segments.product_title,
+                segments.product_brand, segments.product_type_l1,
+                segments.product_condition
+            FROM shopping_performance_view
+            {where}
+        """
+        rows = ctx.client.search(customer_id, query)
+        seen = {}
+        for row in rows:
+            item_id = row.get("segments", {}).get("product_item_id")
+            if item_id and item_id not in seen:
+                seen[item_id] = row
+        return {"products": list(seen.values()), "count": len(seen)}
+
 
 def _flatten_campaign_row(row: dict) -> dict:
     c, m = row["campaign"], row["metrics"]

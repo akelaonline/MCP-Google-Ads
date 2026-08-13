@@ -2,7 +2,7 @@
 
 # Google Ads MCP
 
-**Full read/write [Model Context Protocol](https://modelcontextprotocol.io) server for active Google Ads management from Claude.**
+**The most complete read/write [Model Context Protocol](https://modelcontextprotocol.io) server for Google Ads — run full accounts from Claude.**
 
 Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation & AI workflows
 
@@ -13,7 +13,7 @@ Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation &
 [![Google Ads API v20](https://img.shields.io/badge/Google%20Ads%20API-v20-4285F4.svg)](https://developers.google.com/google-ads/api)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
 [![CI](https://github.com/akelaonline/MCP-Google-Ads/actions/workflows/tests.yml/badge.svg)](https://github.com/akelaonline/MCP-Google-Ads/actions/workflows/tests.yml)
-[![Version](https://img.shields.io/badge/version-0.5.0-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.11.0-informational.svg)](CHANGELOG.md)
 
 [Quick start](#quick-start) · [What it does](#what-it-does) · [Safety model](#safety-model) · [Documentation](#documentation) · [Changelog](CHANGELOG.md) · [FAQ](docs/FAQ.md)
 
@@ -21,37 +21,50 @@ Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation &
 
 ---
 
-## What's new in v0.5.0
+## What's new in v0.11.0
 
-- **Keyword Planner inside Claude** — `generate_keyword_ideas` and `get_keyword_historical_metrics` pull real search-volume, competition, and CPC bid ranges from Google Ads' `KeywordPlanIdeaService`.
-- **Recommendations workflow** — list, apply, or dismiss Google Ads recommendations without leaving chat, still gated by the human-in-the-loop safety layer.
-- **Quality Score report** — instantly bucket keywords by Quality Score to find the low-QS drag on CPCs.
-- **Production-grade testing** — 77 unit tests, smoke test, and GitHub Actions CI on Python 3.11–3.13.
+The broadest Google Ads API coverage of any MCP server.
+
+- **Search ad extensions** — callouts and structured snippets (`create_callout_asset`, `create_structured_snippet_asset`).
+- **Affinity / In-Market / Topic targeting** — attach Google's predefined interest and brand-safety segments.
+- **Shopping performance & product scoping** — per-product reporting, listing filters, and PMax asset group signals.
+- **A/B campaign experiments** — create, promote, or end experiments without leaving chat.
+- **Demand Gen & Call Ads** — full-funnel creative formats beyond Search.
+- **Conversion Value Rules & Enhanced Conversions** — better attribution and value-based bidding.
+- **Portfolio bidding & impression share targets** — advanced strategies for agencies.
+- **RSA in-place editing, keyword bid/match-type editing, MCC onboarding** — the day-to-day operations agencies actually need.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full 0.6.0 → 0.11.0 coverage pass.
 
 ## Why this exists
 
-Most Google Ads MCP servers on GitHub today stop at reporting: `search`, `list_accounts`, raw GAQL. That's useful for analysis, but it isn't what running an account actually requires — pausing an ad group that's bleeding budget, shipping a new Responsive Search Ad, adding negatives from this week's search-terms report, or nudging a budget after a strong week.
+Most Google Ads MCP servers on GitHub stop at reporting: `search`, `list_accounts`, raw GAQL. That's useful for analysis, but it isn't what **running** an account requires — pausing an ad group that's bleeding budget, shipping a new Responsive Search Ad, adding negatives from this week's search-terms report, nudging a budget after a strong week, or launching a Demand Gen test.
 
-This server closes that gap. It's built on Google's **official `google-ads` Python client** (API v20), wraps ~40 tools spanning the full campaign lifecycle, and adds a **human-in-the-loop safety layer** so an LLM never silently touches real client spend — every write is proposed, previewed, and only executes on explicit confirmation.
+This server closes that gap. It is built on Google's **official `google-ads` Python client** (API v20), wraps **~80 tools** spanning the full campaign lifecycle, and adds a **human-in-the-loop safety layer** so an LLM never silently touches real client spend — every write is proposed, previewed, and only executes on explicit confirmation.
 
 ## What it does
 
-This MCP server gives Claude direct, structured access to the full Google Ads lifecycle — from research and reporting to creation, optimization, and auditing. Every write is proposed first, then confirmed.
+This MCP server gives Claude direct, structured access to the full Google Ads lifecycle — from keyword research and campaign creation to optimization, experiments, and auditing. Every write is proposed first, then confirmed.
 
 | Domain | Capabilities |
 |---|---|
-| **Accounts** | List accessible customers, walk MCC hierarchies, pull account summaries |
-| **Reporting** | Campaign / ad group / keyword / ad / search-term performance, change history, and open-ended GAQL |
-| **Campaigns** | Create, rename, pause/enable, remove — any channel type |
-| **Budgets** | Create and adjust daily budgets |
-| **Bidding** | Manual CPC, Maximize Conversions, Target CPA, Target ROAS |
+| **Accounts & MCC** | List customers, walk hierarchies, create client accounts, accept manager links, pull summaries |
+| **Reporting** | Campaign / ad group / keyword / ad / search-term / shopping / device / geographic / asset / audience / quality score / disapproved ads / change history, plus open-ended GAQL |
+| **Campaigns** | Create, rename, pause/enable, remove — Search, Shopping, Local, Performance Max, Demand Gen, experiments |
+| **Budgets** | Create and adjust daily budgets, shared budgets |
+| **Bidding** | Manual CPC, Maximize Conversions/Conversion Value, Target CPA, Target ROAS, Target Impression Share, portfolio/shared strategies |
 | **Ad groups** | Create, pause/enable, adjust CPC bids |
-| **Ads** | Create Responsive Search Ads, pause/enable/remove |
-| **Keywords** | Add (with match type + bid), pause/enable/remove, negatives at campaign or ad-group level |
-| **Keyword research** | Generate keyword ideas + historical search-volume metrics via Keyword Planner API |
-| **Audiences** | List and attach user lists to ad groups with bid modifiers |
-| **Conversions** | List conversion actions, upload offline conversions (built for CRM/WhatsApp-driven funnels) |
-| **Recommendations** | List Google Ads recommendations; apply/dismiss them through the safety layer |
+| **Ads** | Responsive Search, Responsive Display, Video, Call, Demand Gen — create, update in place, pause/enable/remove |
+| **Assets** | Sitelinks, calls, messages, images, promotions, callouts, structured snippets — create and attach to campaigns |
+| **Keywords** | Add, update bids, update match type in place, pause/enable/remove, negatives at campaign or ad-group level, bulk ops |
+| **Keyword research** | Generate keyword ideas + historical metrics via Keyword Planner API |
+| **Audiences** | Remarketing, Customer Match (hashed), affinity/in-market, topics — create, attach, detach |
+| **Targeting** | Location, language, dayparting, device bid modifiers, placement exclusions, campaign criteria listing |
+| **Conversions** | List, create, upload offline, upload enhanced, set counting, value rules |
+| **Recommendations** | List, apply, dismiss Google Ads recommendations through the safety layer |
+| **PMax** | Campaigns, asset groups, text/image/video assets, listing filters, audience/search signals, status management |
+| **Bulk operations** | Update campaign / ad group / keyword / ad status, add negatives across scopes in one call |
+| **Experiments** | A/B trials, promote winning arm, end and discard |
 
 Full parameter-level reference: [`docs/TOOLS.md`](docs/TOOLS.md).
 
@@ -67,7 +80,7 @@ flowchart LR
     E --> F[(SQLite audit log)]
 ```
 
-Every write tool — anything named `create_*`, `update_*`, `remove_*`, `set_*`, `add_*`, `upload_*` — proposes the change instead of executing it. Nothing touches the live account until `confirm_pending_action(action_id)` is called. Proposals expire after 30 minutes by default. Every executed mutation is logged to a local SQLite audit trail with the full before/after payload.
+Every write tool — anything named `create_*`, `update_*`, `remove_*`, `set_*`, `add_*`, `upload_*`, `apply_*`, `dismiss_*`, `promote_*`, `end_*` — proposes the change instead of executing it. Nothing touches the live account until `confirm_pending_action(action_id)` is called. Proposals expire after 30 minutes by default. Every executed mutation is logged to a local SQLite audit trail with the full before/after payload.
 
 Full write-up: [`docs/SAFETY.md`](docs/SAFETY.md).
 
@@ -163,17 +176,19 @@ More flows and ready-to-use GAQL queries: [`docs/EXAMPLES.md`](docs/EXAMPLES.md)
 ## How this compares
 
 | | Read reports | Write / manage | Human-in-the-loop | Audit log | Self-hosted, no third party |
-|---|:---:|:---:|:---:|:---:|:---:|
-| **This project** | ✅ | ✅ | ✅ | ✅ | ✅ |
+|---|---|:---:|:---:|:---:|:---:|:---:|
+| **This project** | ✅ | ✅ Full lifecycle | ✅ | ✅ | ✅ |
 | Official `googleads/google-ads-mcp` | ✅ | ❌ | — | — | ✅ |
 | Most community servers | ✅ | Partial | ❌ | ❌ | ✅ |
 | Hosted/paid aggregators | ✅ | Varies | ❌ | ❌ | ❌ |
 
 ## Built for agencies & consultants
 
-- **Multi-account MCC workflows** — switch between client accounts without swapping credentials.
+- **Multi-account MCC workflows** — switch between client accounts without swapping credentials, onboard new clients, accept manager invitations.
 - **Search → action in one chat** — pull a search-terms report, identify bleeders, and add negatives in the same conversation.
 - **Keyword Planner inside Claude** — research volume, competition, and CPC ranges before building campaigns.
+- **Full creative coverage** — RSA, Display, Video, Call, Demand Gen, plus every common Search extension.
+- **A/B experiments & advanced bidding** — run trials and portfolio strategies like an enterprise team.
 - **Audit trail by default** — every confirmed mutation is written to a local SQLite audit log, so you can always reconstruct who changed what.
 - **No hosted middleware** — runs entirely in your own environment; your credentials never leave your machine.
 
@@ -189,7 +204,7 @@ Contributions welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). The one hard
 
 ## About Akela
 
-I help agencies and consultants automate Google Ads workflows with AI — from MCC reporting to campaign builds, optimization, and custom MCP integrations.
+I help agencies and consultants automate Google Ads workflows with AI — from MCC reporting to campaign builds, optimization, experiments, and custom MCP integrations.
 
 - **Email:** [adjose@gmail.com](mailto:adjose@gmail.com)
 - **Instagram:** [@akelaonline](https://www.instagram.com/akelaonline/)

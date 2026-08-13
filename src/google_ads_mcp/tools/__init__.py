@@ -12,6 +12,7 @@ from . import (
     campaign_types,
     campaigns,
     conversions,
+    experiments,
     keyword_planner,
     keywords,
     performance_max,
@@ -36,6 +37,7 @@ ALL_MODULES = [
     bulk,
     audiences,
     conversions,
+    experiments,
     performance_max,
     recommendations,
 ]

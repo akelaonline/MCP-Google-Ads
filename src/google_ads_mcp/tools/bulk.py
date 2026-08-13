@@ -211,3 +211,49 @@ def register(mcp, ctx: AppContext) -> None:
             payload={"updates": updates, "status": status},
             execute=execute,
         )
+
+    @mcp.tool()
+    def bulk_update_campaign_status(
+        customer_id: str, campaign_ids: list[str], status: str
+    ) -> dict:
+        """Propose pausing, enabling, or removing many campaigns in one call
+        — e.g. pausing every campaign at month-end budget exhaustion, or
+        enabling a batch of seasonal campaigns at once.
+
+        Args:
+            campaign_ids: List of campaign IDs.
+            status: ENABLED, PAUSED, or REMOVED — applied to every campaign
+                in the list.
+        """
+        if not campaign_ids:
+            raise ValueError("Provide at least one campaign_id.")
+
+        client = ctx.client.raw
+        customer_id_clean = customer_id.replace("-", "")
+        campaign_service = client.get_service("CampaignService")
+
+        operations = []
+        for campaign_id in campaign_ids:
+            operation = client.get_type("CampaignOperation")
+            resource_name = campaign_service.campaign_path(
+                customer_id_clean, campaign_id
+            )
+            operation.update.resource_name = resource_name
+            operation.update.status = client.enums.CampaignStatusEnum[status].value
+            operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["status"]))
+            operations.append(operation)
+
+        description = f"Set {len(operations)} campaign(s) status -> {status}"
+
+        def execute():
+            return ctx.client.mutate(
+                "CampaignService", customer_id, operations, partial_failure=True
+            )
+
+        return ctx.safety.propose(
+            tool_name="bulk_update_campaign_status",
+            customer_id=customer_id,
+            description=description,
+            payload={"campaign_ids": campaign_ids, "status": status},
+            execute=execute,
+        )

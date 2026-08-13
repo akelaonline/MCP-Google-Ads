@@ -244,6 +244,72 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
+    def add_placement_exclusion(
+        customer_id: str,
+        campaign_id: str,
+        placement_url: str,
+        placement_type: str = "WEBSITE",
+    ) -> dict:
+        """Propose excluding a specific Display/YouTube placement (a site,
+        app, or YouTube channel) from a campaign — for when the search terms
+        or placement report shows a placement burning spend with no results
+        (e.g. a game app showing Display ads that get accidentally tapped).
+
+        Args:
+            placement_url: The placement identifier — a domain (e.g.
+                "example.com") for WEBSITE, a YouTube channel ID for
+                YOUTUBE_CHANNEL, or a mobile app ID for MOBILE_APPLICATION.
+            placement_type: WEBSITE, YOUTUBE_CHANNEL, YOUTUBE_VIDEO, or
+                MOBILE_APPLICATION.
+        """
+        client = ctx.client.raw
+        customer_id_clean = customer_id.replace("-", "")
+        campaign_resource_name = client.get_service("CampaignService").campaign_path(
+            customer_id_clean, campaign_id
+        )
+
+        operation = client.get_type("CampaignCriterionOperation")
+        criterion = operation.create
+        criterion.campaign = campaign_resource_name
+        criterion.negative = True
+
+        if placement_type == "WEBSITE":
+            criterion.placement.url = placement_url
+        elif placement_type == "YOUTUBE_CHANNEL":
+            criterion.youtube_channel.channel_id = placement_url
+        elif placement_type == "YOUTUBE_VIDEO":
+            criterion.youtube_video.video_id = placement_url
+        elif placement_type == "MOBILE_APPLICATION":
+            criterion.mobile_application.app_id = placement_url
+        else:
+            raise ValueError(
+                "placement_type must be WEBSITE, YOUTUBE_CHANNEL, YOUTUBE_VIDEO, "
+                "or MOBILE_APPLICATION."
+            )
+
+        description = (
+            f"Exclude {placement_type} placement '{placement_url}' from campaign "
+            f"{campaign_id}"
+        )
+
+        def execute():
+            return ctx.client.mutate(
+                "CampaignCriterionService", customer_id, [operation]
+            )
+
+        return ctx.safety.propose(
+            tool_name="add_placement_exclusion",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "campaign_id": campaign_id,
+                "placement_url": placement_url,
+                "placement_type": placement_type,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
     def list_campaign_criteria(customer_id: str, campaign_id: str) -> dict:
         """List all targeting criteria on a campaign — locations, languages,
         ad schedules, device modifiers, and negative keywords together."""

@@ -6,14 +6,15 @@ bundle of creative (headlines, descriptions, images, logos) plus its own
 final URL, that Google's automation assembles into ads across all
 Google inventory (Search, Display, YouTube, Discover, Gmail, Maps).
 
-This module covers the create-and-launch basics. It intentionally does NOT
-wrap listing group filters (product-level Shopping targeting within PMax)
-or asset group signals (audience/search-theme signals) — those are common
-enough to warrant their own careful design later, but a half-built version
-here would be more dangerous than useful for a first PMax campaign.
+This module covers create-and-launch, asset group editing (text, image,
+video), status control, Shopping-listing scoping via listing group filters
+(add_asset_group_listing_filter), and audience/search-theme signals used
+to steer PMax's automated targeting (add_asset_group_signal).
 """
 
 from __future__ import annotations
+
+from google.protobuf import field_mask_pb2
 
 from ..context import AppContext
 
@@ -208,6 +209,479 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
+    def update_asset_group_final_urls(
+        customer_id: str, asset_group_id: str, final_urls: list[str]
+    ) -> dict:
+        """Propose replacing an existing Asset Group's final URL(s) (the
+        landing page it sends traffic to). Use this instead of
+        create_asset_group when the asset group already exists and only
+        the destination URL needs to change (e.g. after a site migration)."""
+        client = ctx.client.raw
+        customer_id_clean = customer_id.replace("-", "")
+
+        operation = client.get_type("AssetGroupOperation")
+        resource_name = client.get_service("AssetGroupService").asset_group_path(
+            customer_id_clean, asset_group_id
+        )
+        operation.update.resource_name = resource_name
+        operation.update.final_urls.extend(final_urls)
+        operation.update_mask.CopyFrom(
+            field_mask_pb2.FieldMask(paths=["final_urls"])
+        )
+
+        description = (
+            f"Update asset group {asset_group_id} final_urls -> {final_urls}"
+        )
+
+        def execute():
+            return ctx.client.mutate("AssetGroupService", customer_id, [operation])
+
+        return ctx.safety.propose(
+            tool_name="update_asset_group_final_urls",
+            customer_id=customer_id,
+            description=description,
+            payload={"asset_group_id": asset_group_id, "final_urls": final_urls},
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def add_asset_group_text_asset(
+        customer_id: str,
+        asset_group_id: str,
+        text: str,
+        field_type: str,
+    ) -> dict:
+        """Propose creating a new text asset (headline / long_headline /
+        description / business_name) and linking it into an existing
+        Performance Max Asset Group.
+
+        Args:
+            field_type: One of HEADLINE, LONG_HEADLINE, DESCRIPTION,
+                BUSINESS_NAME. Character limits: HEADLINE <=30,
+                LONG_HEADLINE <=90, DESCRIPTION <=90.
+        """
+        limits = {"HEADLINE": 30, "LONG_HEADLINE": 90, "DESCRIPTION": 90}
+        if field_type in limits and len(text) > limits[field_type]:
+            raise ValueError(
+                f"{field_type} text must be {limits[field_type]} characters or fewer."
+            )
+
+        client = ctx.client.raw
+        customer_id_clean = customer_id.replace("-", "")
+
+        asset_group_resource_name = client.get_service(
+            "AssetGroupService"
+        ).asset_group_path(customer_id_clean, asset_group_id)
+
+        description = (
+            f"Add {field_type} text asset '{text}' to asset group {asset_group_id}"
+        )
+
+        def execute():
+            asset_operation = client.get_type("AssetOperation")
+            asset_operation.create.text_asset.text = text
+            asset_result = ctx.client.mutate(
+                "AssetService", customer_id, [asset_operation]
+            )
+            asset_resource_name = asset_result.results[0].resource_name
+
+            link_operation = client.get_type("AssetGroupAssetOperation")
+            link = link_operation.create
+            link.asset_group = asset_group_resource_name
+            link.asset = asset_resource_name
+            link.field_type = client.enums.AssetFieldTypeEnum[field_type].value
+
+            link_result = ctx.client.mutate(
+                "AssetGroupAssetService", customer_id, [link_operation]
+            )
+            return {
+                "asset_resource_name": asset_resource_name,
+                "asset_group_asset_resource_name": link_result.results[0].resource_name,
+            }
+
+        return ctx.safety.propose(
+            tool_name="add_asset_group_text_asset",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "asset_group_id": asset_group_id,
+                "text": text,
+                "field_type": field_type,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def remove_asset_group_asset(
+        customer_id: str,
+        asset_group_id: str,
+        asset_id: str,
+        field_type: str,
+    ) -> dict:
+        """Propose unlinking a text/image asset from a Performance Max
+        Asset Group (does not delete the underlying Asset resource, just
+        detaches it from this asset group).
+
+        Args:
+            field_type: The AssetFieldType the asset is linked as (e.g.
+                HEADLINE, LONG_HEADLINE, DESCRIPTION, MARKETING_IMAGE) —
+                must match how it was attached.
+        """
+        client = ctx.client.raw
+        customer_id_clean = customer_id.replace("-", "")
+
+        # Validate the name is a real AssetFieldType before using it —
+        # the path builder wants the enum *name* (str), not its numeric value.
+        client.enums.AssetFieldTypeEnum[field_type]
+
+        operation = client.get_type("AssetGroupAssetOperation")
+        operation.remove = client.get_service(
+            "AssetGroupAssetService"
+        ).asset_group_asset_path(
+            customer_id_clean, asset_group_id, asset_id, field_type
+        )
+
+        description = (
+            f"Unlink {field_type} asset {asset_id} from asset group {asset_group_id}"
+        )
+
+        def execute():
+            return ctx.client.mutate(
+                "AssetGroupAssetService", customer_id, [operation]
+            )
+
+        return ctx.safety.propose(
+            tool_name="remove_asset_group_asset",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "asset_group_id": asset_group_id,
+                "asset_id": asset_id,
+                "field_type": field_type,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def add_asset_group_image_asset(
+        customer_id: str,
+        asset_group_id: str,
+        image_url: str,
+        field_type: str,
+    ) -> dict:
+        """Propose downloading an image from a public HTTPS URL, uploading it
+        as an Asset, and linking it into an existing Performance Max Asset
+        Group. This is what was missing to add real creative (not just text)
+        to a PMax asset group after create_asset_group.
+
+        Args:
+            image_url: Public HTTPS URL of the image. Downloaded server-side
+                at confirm time.
+            field_type: One of MARKETING_IMAGE (min 1200x628, landscape),
+                SQUARE_MARKETING_IMAGE (1:1), PORTRAIT_MARKETING_IMAGE (4:5),
+                LOGO (min 1200x1200, 1:1), LANDSCAPE_LOGO (4:1).
+        """
+        valid_types = {
+            "MARKETING_IMAGE",
+            "SQUARE_MARKETING_IMAGE",
+            "PORTRAIT_MARKETING_IMAGE",
+            "LOGO",
+            "LANDSCAPE_LOGO",
+        }
+        if field_type not in valid_types:
+            raise ValueError(f"field_type must be one of {sorted(valid_types)}.")
+
+        client = ctx.client.raw
+        customer_id_clean = customer_id.replace("-", "")
+
+        asset_group_resource_name = client.get_service(
+            "AssetGroupService"
+        ).asset_group_path(customer_id_clean, asset_group_id)
+
+        description = (
+            f"Add {field_type} image asset (from {image_url}) to asset group "
+            f"{asset_group_id}"
+        )
+
+        def execute():
+            import urllib.request
+
+            with urllib.request.urlopen(image_url, timeout=30) as response:
+                image_bytes = response.read()
+
+            asset_operation = client.get_type("AssetOperation")
+            asset_operation.create.image_asset.data = image_bytes
+            asset_result = ctx.client.mutate(
+                "AssetService", customer_id, [asset_operation]
+            )
+            asset_resource_name = asset_result.results[0].resource_name
+
+            link_operation = client.get_type("AssetGroupAssetOperation")
+            link = link_operation.create
+            link.asset_group = asset_group_resource_name
+            link.asset = asset_resource_name
+            link.field_type = client.enums.AssetFieldTypeEnum[field_type].value
+
+            link_result = ctx.client.mutate(
+                "AssetGroupAssetService", customer_id, [link_operation]
+            )
+            return {
+                "asset_resource_name": asset_resource_name,
+                "asset_group_asset_resource_name": link_result.results[0].resource_name,
+            }
+
+        return ctx.safety.propose(
+            tool_name="add_asset_group_image_asset",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "asset_group_id": asset_group_id,
+                "image_url": image_url,
+                "field_type": field_type,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def add_asset_group_video_asset(
+        customer_id: str,
+        asset_group_id: str,
+        youtube_video_id: str,
+    ) -> dict:
+        """Propose linking an existing YouTube video into a Performance Max
+        Asset Group as a VIDEO asset. The video must already be public or
+        unlisted on YouTube — this does not upload video files.
+
+        Args:
+            youtube_video_id: The 11-character ID from the YouTube URL.
+        """
+        client = ctx.client.raw
+        customer_id_clean = customer_id.replace("-", "")
+
+        asset_group_resource_name = client.get_service(
+            "AssetGroupService"
+        ).asset_group_path(customer_id_clean, asset_group_id)
+
+        description = (
+            f"Link YouTube video {youtube_video_id} to asset group {asset_group_id}"
+        )
+
+        def execute():
+            asset_operation = client.get_type("AssetOperation")
+            asset_operation.create.youtube_video_asset.youtube_video_id = (
+                youtube_video_id
+            )
+            asset_result = ctx.client.mutate(
+                "AssetService", customer_id, [asset_operation]
+            )
+            asset_resource_name = asset_result.results[0].resource_name
+
+            link_operation = client.get_type("AssetGroupAssetOperation")
+            link = link_operation.create
+            link.asset_group = asset_group_resource_name
+            link.asset = asset_resource_name
+            link.field_type = client.enums.AssetFieldTypeEnum.VIDEO.value
+
+            link_result = ctx.client.mutate(
+                "AssetGroupAssetService", customer_id, [link_operation]
+            )
+            return {
+                "asset_resource_name": asset_resource_name,
+                "asset_group_asset_resource_name": link_result.results[0].resource_name,
+            }
+
+        return ctx.safety.propose(
+            tool_name="add_asset_group_video_asset",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "asset_group_id": asset_group_id,
+                "youtube_video_id": youtube_video_id,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def update_asset_group_status(
+        customer_id: str, asset_group_id: str, status: str
+    ) -> dict:
+        """Propose pausing or enabling a single Asset Group within a PMax
+        campaign, without touching the campaign itself or other asset groups.
+
+        Args:
+            status: ENABLED or PAUSED.
+        """
+        client = ctx.client.raw
+        customer_id_clean = customer_id.replace("-", "")
+
+        operation = client.get_type("AssetGroupOperation")
+        resource_name = client.get_service("AssetGroupService").asset_group_path(
+            customer_id_clean, asset_group_id
+        )
+        operation.update.resource_name = resource_name
+        operation.update.status = client.enums.AssetGroupStatusEnum[status].value
+        operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["status"]))
+
+        description = f"Set asset group {asset_group_id} status -> {status}"
+
+        def execute():
+            return ctx.client.mutate("AssetGroupService", customer_id, [operation])
+
+        return ctx.safety.propose(
+            tool_name="update_asset_group_status",
+            customer_id=customer_id,
+            description=description,
+            payload={"asset_group_id": asset_group_id, "status": status},
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def add_asset_group_listing_filter(
+        customer_id: str,
+        asset_group_id: str,
+        campaign_id: str,
+        product_condition: str | None = None,
+        product_brand: str | None = None,
+        product_item_id: str | None = None,
+        product_type_l1: str | None = None,
+    ) -> dict:
+        """Propose adding a Listing Group Filter to a Performance Max Asset
+        Group, restricting which products from the linked Shopping/Merchant
+        Center feed that asset group is allowed to advertise.
+
+        Without any listing group filter, a PMax asset group with a Shopping
+        listing source can advertise the ENTIRE product catalog — this is
+        how you scope one asset group to (for example) only one brand or
+        product line, so its creative/messaging matches what it's actually
+        selling.
+
+        This creates a two-level tree under the asset group's root: a
+        top-level "everything else" subdivision plus one filtered unit for
+        the dimension you specify. For multi-dimension trees (e.g. brand AND
+        product type together), build them one call at a time and refer to
+        Google's Listing Group Filter documentation for tree structure rules.
+
+        Args:
+            product_condition: One of NEW, USED, REFURBISHED. Exactly one of
+                product_condition / product_brand / product_item_id /
+                product_type_l1 should be set per call.
+            product_brand: Exact brand string as it appears in the feed.
+            product_item_id: Exact Merchant Center item ID.
+            product_type_l1: Top-level product type/category string from the feed.
+        """
+        dims_set = [
+            d
+            for d in (product_condition, product_brand, product_item_id, product_type_l1)
+            if d is not None
+        ]
+        if len(dims_set) != 1:
+            raise ValueError(
+                "Set exactly one of product_condition, product_brand, "
+                "product_item_id, product_type_l1 per call."
+            )
+
+        client = ctx.client.raw
+        customer_id_clean = customer_id.replace("-", "")
+
+        asset_group_resource_name = client.get_service(
+            "AssetGroupService"
+        ).asset_group_path(customer_id_clean, asset_group_id)
+
+        description = (
+            f"Add listing group filter to asset group {asset_group_id}: "
+            f"condition={product_condition} brand={product_brand} "
+            f"item_id={product_item_id} type_l1={product_type_l1}"
+        )
+
+        def execute():
+            # Root "everything" subdivision for this asset group (required
+            # before any filtered unit can be added under it).
+            root_op = client.get_type("AssetGroupListingGroupFilterOperation")
+            root = root_op.create
+            root.asset_group = asset_group_resource_name
+            root.type_ = client.enums.ListingGroupFilterTypeEnum.SUBDIVISION
+            root.listing_source = (
+                client.enums.ListingGroupFilterListingSourceEnum.SHOPPING
+            )
+            root_result = ctx.client.mutate(
+                "AssetGroupListingGroupFilterService", customer_id, [root_op]
+            )
+            root_resource_name = root_result.results[0].resource_name
+
+            unit_op = client.get_type("AssetGroupListingGroupFilterOperation")
+            unit = unit_op.create
+            unit.asset_group = asset_group_resource_name
+            unit.type_ = client.enums.ListingGroupFilterTypeEnum.UNIT
+            unit.listing_source = (
+                client.enums.ListingGroupFilterListingSourceEnum.SHOPPING
+            )
+            unit.parent_listing_group_filter = root_resource_name
+
+            case_value = unit.case_value
+            if product_condition is not None:
+                case_value.product_condition.condition = (
+                    client.enums.ListingGroupFilterProductConditionEnum[
+                        product_condition
+                    ].value
+                )
+            elif product_brand is not None:
+                case_value.product_brand.value = product_brand
+            elif product_item_id is not None:
+                case_value.product_item_id.value = product_item_id
+            elif product_type_l1 is not None:
+                case_value.product_type.level = (
+                    client.enums.ListingGroupFilterProductTypeLevelEnum.LEVEL1
+                )
+                case_value.product_type.value = product_type_l1
+
+            unit_result = ctx.client.mutate(
+                "AssetGroupListingGroupFilterService", customer_id, [unit_op]
+            )
+
+            return {
+                "root_subdivision_resource_name": root_resource_name,
+                "unit_resource_name": unit_result.results[0].resource_name,
+            }
+
+        return ctx.safety.propose(
+            tool_name="add_asset_group_listing_filter",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "asset_group_id": asset_group_id,
+                "campaign_id": campaign_id,
+                "product_condition": product_condition,
+                "product_brand": product_brand,
+                "product_item_id": product_item_id,
+                "product_type_l1": product_type_l1,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def list_asset_group_listing_filters(
+        customer_id: str, asset_group_id: str | None = None
+    ) -> dict:
+        """List the listing group filter tree(s) for PMax asset groups —
+        shows how each asset group's Shopping product scope is subdivided."""
+        where = (
+            f"WHERE asset_group.id = {int(asset_group_id)}" if asset_group_id else ""
+        )
+        query = f"""
+            SELECT
+                asset_group.name, asset_group_listing_group_filter.id,
+                asset_group_listing_group_filter.type,
+                asset_group_listing_group_filter.case_value.product_brand.value,
+                asset_group_listing_group_filter.case_value.product_item_id.value,
+                asset_group_listing_group_filter.case_value.product_type.value,
+                asset_group_listing_group_filter.parent_listing_group_filter
+            FROM asset_group_listing_group_filter
+            {where}
+        """
+        rows = ctx.client.search(customer_id, query)
+        return {"filters": rows, "count": len(rows)}
+
+    @mcp.tool()
     def list_asset_groups(customer_id: str, campaign_id: str | None = None) -> dict:
         """List asset groups, optionally filtered to one PMax campaign."""
         where = f"WHERE campaign.id = {campaign_id}" if campaign_id else ""
@@ -220,3 +694,97 @@ def register(mcp, ctx: AppContext) -> None:
         """
         rows = ctx.client.search(customer_id, query)
         return {"asset_groups": rows, "count": len(rows)}
+
+    @mcp.tool()
+    def add_asset_group_signal(
+        customer_id: str,
+        asset_group_id: str,
+        signal_type: str,
+        audience_resource_name: str | None = None,
+        search_theme_text: str | None = None,
+    ) -> dict:
+        """Propose adding an audience or search-theme signal to a PMax asset
+        group — this is how you point Google's automation toward the
+        customers/intent most likely to convert, since PMax has no manual
+        keyword or audience targeting otherwise. Signals are a starting
+        point/hint, not a hard restriction — PMax can still serve beyond them.
+
+        Args:
+            signal_type: "AUDIENCE" (pass audience_resource_name — a user
+                list, custom audience, or affinity/in-market segment
+                resource name) or "SEARCH_THEME" (pass search_theme_text —
+                a short phrase describing likely search intent, similar to
+                a broad-match keyword).
+        """
+        if signal_type == "AUDIENCE":
+            if not audience_resource_name:
+                raise ValueError(
+                    "audience_resource_name is required when signal_type='AUDIENCE'."
+                )
+        elif signal_type == "SEARCH_THEME":
+            if not search_theme_text:
+                raise ValueError(
+                    "search_theme_text is required when signal_type='SEARCH_THEME'."
+                )
+        else:
+            raise ValueError('signal_type must be "AUDIENCE" or "SEARCH_THEME".')
+
+        client = ctx.client.raw
+        customer_id_clean = customer_id.replace("-", "")
+        asset_group_resource_name = client.get_service(
+            "AssetGroupService"
+        ).asset_group_path(customer_id_clean, asset_group_id)
+
+        operation = client.get_type("AssetGroupSignalOperation")
+        signal = operation.create
+        signal.asset_group = asset_group_resource_name
+
+        if signal_type == "AUDIENCE":
+            signal.audience.audience = audience_resource_name
+            description = (
+                f"Add audience signal {audience_resource_name} to asset group "
+                f"{asset_group_id}"
+            )
+        else:
+            signal.search_theme.text = search_theme_text
+            description = (
+                f"Add search theme signal '{search_theme_text}' to asset group "
+                f"{asset_group_id}"
+            )
+
+        def execute():
+            return ctx.client.mutate(
+                "AssetGroupSignalService", customer_id, [operation]
+            )
+
+        return ctx.safety.propose(
+            tool_name="add_asset_group_signal",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "asset_group_id": asset_group_id,
+                "signal_type": signal_type,
+                "audience_resource_name": audience_resource_name,
+                "search_theme_text": search_theme_text,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def list_asset_group_signals(
+        customer_id: str, asset_group_id: str | None = None
+    ) -> dict:
+        """List the audience/search-theme signals attached to PMax asset groups."""
+        where = (
+            f"WHERE asset_group.id = {int(asset_group_id)}" if asset_group_id else ""
+        )
+        query = f"""
+            SELECT
+                asset_group.name, asset_group_signal.asset_group,
+                asset_group_signal.audience.audience,
+                asset_group_signal.search_theme.text
+            FROM asset_group_signal
+            {where}
+        """
+        rows = ctx.client.search(customer_id, query)
+        return {"signals": rows, "count": len(rows)}

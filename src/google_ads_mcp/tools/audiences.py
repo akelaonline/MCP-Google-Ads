@@ -283,6 +283,128 @@ def register(mcp, ctx: AppContext) -> None:
             execute=execute,
         )
 
+    @mcp.tool()
+    def search_user_interests(customer_id: str, name_query: str) -> dict:
+        """Look up Affinity / In-Market / Custom-Intent segment IDs by name
+        (Google's predefined interest/purchase-intent categories — distinct
+        from your own remarketing/customer-match lists). Use the returned
+        `user_interest_id` with add_in_market_or_affinity_audience.
+
+        Args:
+            name_query: Partial, case-sensitive-insensitive match against
+                the segment's display name, e.g. "Sporting Goods" or
+                "Cooking Enthusiasts".
+        """
+        query = f"""
+            SELECT user_interest.user_interest_id, user_interest.name,
+                   user_interest.taxonomy_type
+            FROM user_interest
+            WHERE user_interest.name LIKE '%{name_query}%'
+            LIMIT 50
+        """
+        rows = ctx.client.search(customer_id, query)
+        return {"matches": rows, "count": len(rows)}
+
+    @mcp.tool()
+    def add_in_market_or_affinity_audience(
+        customer_id: str,
+        ad_group_id: str,
+        user_interest_id: str,
+        bid_modifier: float | None = None,
+    ) -> dict:
+        """Propose adding an Affinity / In-Market / Custom-Intent segment to
+        an ad group — Google's predefined interest/purchase-intent
+        categories, distinct from your own remarketing or Customer Match
+        lists (use attach_audience_to_ad_group for those).
+
+        Args:
+            user_interest_id: From search_user_interests.
+            bid_modifier: Optional, e.g. 1.2 for +20%.
+        """
+        client = ctx.client.raw
+        operation = client.get_type("AdGroupCriterionOperation")
+        criterion = operation.create
+        criterion.ad_group = client.get_service("AdGroupService").ad_group_path(
+            customer_id.replace("-", ""), ad_group_id
+        )
+        criterion.user_interest.user_interest_category = client.get_service(
+            "UserInterestService"
+        ).user_interest_path(customer_id.replace("-", ""), user_interest_id)
+        if bid_modifier is not None:
+            criterion.bid_modifier = bid_modifier
+
+        description = (
+            f"Add user interest segment {user_interest_id} to ad group {ad_group_id}"
+            + (f" (bid modifier x{bid_modifier})" if bid_modifier else "")
+        )
+
+        def execute():
+            return ctx.client.mutate(
+                "AdGroupCriterionService", customer_id, [operation]
+            )
+
+        return ctx.safety.propose(
+            tool_name="add_in_market_or_affinity_audience",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "ad_group_id": ad_group_id,
+                "user_interest_id": user_interest_id,
+                "bid_modifier": bid_modifier,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def add_topic_targeting(
+        customer_id: str,
+        ad_group_id: str,
+        topic_id: str,
+        negative: bool = False,
+    ) -> dict:
+        """Propose adding (or excluding) Display/YouTube topic targeting on
+        an ad group — targets pages/videos about a subject (e.g. "Home &
+        Garden > Landscaping") rather than a specific placement or audience.
+
+        Args:
+            topic_id: A topic_constant criterion ID (look up via GAQL on
+                `topic_constant`, e.g. `SELECT topic_constant.id,
+                topic_constant.path FROM topic_constant WHERE
+                topic_constant.path LIKE '%Landscaping%'`).
+            negative: If True, EXCLUDES this topic instead of targeting it —
+                common for brand safety (e.g. excluding "Sensitive Subjects").
+        """
+        client = ctx.client.raw
+        topic_service = client.get_service("TopicConstantService")
+
+        operation = client.get_type("AdGroupCriterionOperation")
+        criterion = operation.create
+        criterion.ad_group = client.get_service("AdGroupService").ad_group_path(
+            customer_id.replace("-", ""), ad_group_id
+        )
+        criterion.negative = negative
+        criterion.topic.topic_constant = topic_service.topic_constant_path(topic_id)
+
+        verb = "Exclude" if negative else "Target"
+        description = f"{verb} topic {topic_id} on ad group {ad_group_id}"
+
+        def execute():
+            return ctx.client.mutate(
+                "AdGroupCriterionService", customer_id, [operation]
+            )
+
+        return ctx.safety.propose(
+            tool_name="add_topic_targeting",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "ad_group_id": ad_group_id,
+                "topic_id": topic_id,
+                "negative": negative,
+            },
+            execute=execute,
+        )
+
 
 def _hash_pii(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()

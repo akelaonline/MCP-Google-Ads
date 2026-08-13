@@ -1,5 +1,98 @@
 # Changelog
 
+## 0.11.0 — 2026-08-13
+
+### Added
+- **Callout and structured snippet extensions** (`tools/assets.py`) — the two remaining common Search extension types that weren't yet covered (sitelinks, calls, messages, images, and promotions already were).
+  - `create_callout_asset` — one or more short trust-signal callouts (e.g. "Envío gratis"), attached in a single call.
+  - `create_structured_snippet_asset` — a labeled list under a fixed header (e.g. "Servicios": ["Implantes", "Ortodoncia", ...]).
+
+### Notes
+- Round 6 of the coverage pass (started 0.6.0).
+
+## 0.10.0 — 2026-08-13
+
+### Added
+- **Affinity / In-Market / Custom-Intent + Topic targeting** (`tools/audiences.py`) — Google's predefined interest/purchase-intent segments and Display/YouTube topic targeting, distinct from remarketing/Customer Match lists (which were already covered).
+  - `search_user_interests` — look up segment IDs by name.
+  - `add_in_market_or_affinity_audience` — attach a segment to an ad group.
+  - `add_topic_targeting` — target or exclude a Display/YouTube topic on an ad group (e.g. brand-safety exclusions).
+
+### Notes
+- Round 5 of the coverage pass (started 0.6.0). Remaining known gaps are low-priority/rarely-used: Smart campaigns (small-advertiser simplified flow), legacy Display "similar audiences" (deprecated by Google), and a handful of read-only reports not yet wrapped. Flag anything specific still needed.
+
+## 0.9.0 — 2026-08-13
+
+### Added
+- **Shopping/Merchant performance reporting** (`tools/reporting.py`).
+  - `get_shopping_performance_report` — per-product (SKU-level) impressions/clicks/cost/conversions via `shopping_performance_view`, to see which products drive results vs. burn spend with none.
+  - `list_shopping_products` — distinct products currently eligible to serve, read from the Google Ads side (not Merchant Center itself — feed/catalog management stays out of scope, same disclaimer as `create_shopping_campaign`).
+- **Conversion Value Rules** (`tools/conversions.py`).
+  - `create_conversion_value_rule` — adjust reported conversion value by geography, audience, or device (MULTIPLY or SET), so value-based bidding optimizes toward the segments that actually matter.
+  - `list_conversion_value_rules` — read-only listing.
+- **PMax asset group signals** (`tools/performance_max.py`) — closes the one gap called out in the 0.6.0 module docstring.
+  - `add_asset_group_signal` — audience or search-theme signal to steer PMax's automated targeting.
+  - `list_asset_group_signals` — read-only listing.
+- **Campaign experiments (A/B trials)** (`tools/experiments.py`, new module).
+  - `create_experiment` — branch a trial arm off a base campaign with a traffic split; edit the trial arm afterward with the normal campaign/bidding/ads tools.
+  - `list_experiments`, `promote_experiment` (apply trial changes permanently — irreversible), `end_experiment` (discard trial, base campaign unaffected).
+
+### Notes
+- Round 4 of the coverage pass (started 0.6.0). This closes out every gap identified in the original audit except a handful of low-priority/rarely-used surfaces (e.g. Smart campaigns for very small advertisers, some legacy Display targeting types) — flag anything specific still missing and it goes in the next round.
+
+## 0.8.0 — 2026-08-13
+
+### Added
+- **Call Ads** (`tools/ads.py`).
+  - `create_call_ad` — phone-only ad format with no landing page, just a "Call" button; high-intent format for services/B2B where a phone conversation is the actual conversion. Created PAUSED.
+- **Demand Gen campaigns** (`tools/ads.py`) — formerly Discovery Ads, runs on Discover feed, Gmail, and YouTube in-feed/Shorts.
+  - `create_demand_gen_campaign` — campaign shell (Target CPA or Maximize Conversions), created PAUSED.
+  - `create_demand_gen_ad` — multi-asset ad (headlines/descriptions/business name/marketing+logo images), created PAUSED.
+- **Placement exclusions** (`tools/targeting.py`).
+  - `add_placement_exclusion` — exclude a specific Display/YouTube placement (website, YouTube channel/video, or mobile app) from a campaign, for when the placement report shows spend with no results.
+
+### Notes
+- Round 3 of the coverage pass (started 0.6.0). Still open for a future round: campaign experiments (A/B / Trials), asset group signals (PMax audience/search-theme signals), Conversion Value Rules, Shopping/Merchant performance reporting.
+
+## 0.7.0 — 2026-08-13
+
+### Added
+- **Advanced bidding strategies** (`tools/bidding.py`) — round 2 of the API coverage pass.
+  - `set_maximize_conversion_value` — optimize for total conversion value instead of count (e-commerce/Shopping).
+  - `set_target_impression_share` — bid for a target % share of a page location (ANYWHERE_ON_PAGE/TOP_OF_PAGE/ABSOLUTE_TOP_OF_PAGE), for brand-defense/visibility campaigns.
+  - `create_portfolio_bidding_strategy`, `attach_shared_bidding_strategy`, `list_portfolio_bidding_strategies` — shared (portfolio) TARGET_CPA/TARGET_ROAS strategies via `BiddingStrategyService`, so multiple campaigns can learn from one shared optimization pool.
+- **In-place keyword editing** (`tools/keywords.py`) — previously `update_keyword_status` could only change status, not bid or match type.
+  - `update_keyword_bid` — change max CPC without recreating the keyword.
+  - `update_keyword_match_type` — `match_type` is immutable on `KeywordInfo` in the API, so this does the correct workaround: adds the same keyword text under the new match type and removes the old one in a single atomic batch (preserving cpc_bid), so there's no gap in coverage.
+- **Bulk campaign status** (`tools/bulk.py`).
+  - `bulk_update_campaign_status` — pause/enable/remove many campaigns in one call, matching the existing bulk keyword/ad status tools.
+- **MCC/client account onboarding** (`tools/accounts.py`).
+  - `create_customer_client` — create a new client account under an MCC, auto-linked.
+  - `list_manager_links` / `accept_manager_link` — inspect and accept MCC access invitations for an existing client account (the counterpart flow when the client account already exists, vs. `create_customer_client` for a brand-new one).
+
+### Notes
+- Round 2 of the coverage pass started in 0.6.0. Still open for a future round: Call/Demand Gen ad formats, campaign experiments (A/B / Trials), asset group signals (PMax audience/search-theme signals), Conversion Value Rules, and placement exclusions.
+
+## 0.6.0 — 2026-08-13
+
+### Added
+- **RSA in-place editing** (`tools/ads.py`).
+  - `update_responsive_search_ad` — replace headlines/descriptions/final_urls/path1/path2 of an existing ad without removing and recreating it (which previously meant losing accumulated Ad Strength history and serving data).
+  - `get_ad_strength` — read-only report of RSA Ad Strength ratings (PENDING/NO_ADS/POOR/AVERAGE/GOOD/EXCELLENT) and policy approval status.
+- **Performance Max: images, video, status, and Shopping scoping** (`tools/performance_max.py`) — closes the two biggest documented gaps from 0.5.0 (image assets were explicitly "attach via the UI for now"; listing group filters and asset group status were unbuilt).
+  - `add_asset_group_image_asset` — download a public image URL and attach it to an asset group as MARKETING_IMAGE / SQUARE_MARKETING_IMAGE / PORTRAIT_MARKETING_IMAGE / LOGO / LANDSCAPE_LOGO.
+  - `add_asset_group_video_asset` — link an existing YouTube video into an asset group.
+  - `update_asset_group_status` — pause/enable a single asset group independent of the campaign.
+  - `add_asset_group_listing_filter` / `list_asset_group_listing_filters` — scope which products from a linked Shopping feed an asset group can advertise (by brand, item ID, product type, or condition), via `AssetGroupListingGroupFilterService`.
+- **Conversion action creation + Enhanced Conversions** (`tools/conversions.py`) — previously conversion actions could only be listed/edited, never created from the MCP.
+  - `create_conversion_action` — create a new WEBSITE conversion action (category + counting type + optional default value), created ENABLED.
+  - `upload_enhanced_conversion` — like `upload_offline_conversion` but with SHA-256-hashed email/phone user identifiers for better match rate as click-ID-only tracking degrades. Hashing happens locally; raw PII is never sent as-is.
+- **Policy/disapproval visibility** (`tools/reporting.py`).
+  - `get_disapproved_ads` — ads that are disapproved, policy-limited, or under review, with the specific policy topic. Read-only.
+
+### Notes
+- This is round 1 of a broader coverage pass against the full Google Ads API (see the audit that motivated this release). Still open for a future round: portfolio bidding strategies, Maximize Conversion Value, keyword bid/match-type editing in place, Call/Demand Gen ad formats, campaign experiments (A/B), CustomerClientLink management, and asset group signals.
+
 ## 0.5.0 — 2026-08-11
 
 ### New capabilities

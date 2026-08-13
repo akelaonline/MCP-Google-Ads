@@ -462,3 +462,138 @@ def register(mcp, ctx: AppContext) -> None:
             },
             execute=execute,
         )
+
+    @mcp.tool()
+    def create_callout_asset(
+        customer_id: str, campaign_id: str, callout_texts: list[str]
+    ) -> dict:
+        """Propose creating one or more callout extensions and attaching
+        them to a campaign — short, non-clickable trust signals shown
+        alongside the ad (e.g. "Envío gratis", "Atención 24/7", "Sin cargo
+        por consulta").
+
+        Args:
+            callout_texts: Each <=25 characters. Creates one asset per entry.
+        """
+        if any(len(t) > 25 for t in callout_texts):
+            raise ValueError("Each callout text must be 25 characters or fewer.")
+        if not callout_texts:
+            raise ValueError("Provide at least one callout text.")
+
+        client = ctx.client.raw
+        customer_id_clean = customer_id.replace("-", "")
+        campaign_resource_name = client.get_service("CampaignService").campaign_path(
+            customer_id_clean, campaign_id
+        )
+
+        asset_operations = []
+        for text in callout_texts:
+            op = client.get_type("AssetOperation")
+            op.create.callout_asset.callout_text = text
+            asset_operations.append(op)
+
+        description = (
+            f"Create {len(callout_texts)} callout(s) {callout_texts} and attach "
+            f"to campaign {campaign_id}"
+        )
+
+        def execute():
+            asset_result = ctx.client.mutate(
+                "AssetService", customer_id, asset_operations
+            )
+            asset_resource_names = [r.resource_name for r in asset_result.results]
+
+            campaign_asset_operations = []
+            for asset_resource_name in asset_resource_names:
+                op = client.get_type("CampaignAssetOperation")
+                op.create.campaign = campaign_resource_name
+                op.create.asset = asset_resource_name
+                op.create.field_type = client.enums.AssetFieldTypeEnum.CALLOUT
+                campaign_asset_operations.append(op)
+
+            link_result = ctx.client.mutate(
+                "CampaignAssetService", customer_id, campaign_asset_operations
+            )
+            return {
+                "asset_resource_names": asset_resource_names,
+                "campaign_asset_resource_names": [
+                    r.resource_name for r in link_result.results
+                ],
+            }
+
+        return ctx.safety.propose(
+            tool_name="create_callout_asset",
+            customer_id=customer_id,
+            description=description,
+            payload={"campaign_id": campaign_id, "callout_texts": callout_texts},
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def create_structured_snippet_asset(
+        customer_id: str, campaign_id: str, header: str, values: list[str]
+    ) -> dict:
+        """Propose creating a structured snippet extension and attaching it
+        to a campaign — a labeled list under a fixed header (e.g. header
+        "Servicios" with values ["Implantes", "Ortodoncia", "Blanqueamiento"]).
+
+        Args:
+            header: One of Google's fixed snippet headers, e.g. "Amenities",
+                "Brands", "Courses", "Degree programs", "Destinations",
+                "Featured hotels", "Insurance coverage", "Models",
+                "Neighborhoods", "Service catalog", "Shows", "Styles",
+                "Types". Pass the enum name in caps with underscores, e.g.
+                "SERVICE_CATALOG" — see HeaderEnum in the API reference for
+                the exact value if unsure.
+            values: 3-10 short strings, each <=25 characters.
+        """
+        if not (3 <= len(values) <= 10):
+            raise ValueError("Provide between 3 and 10 values.")
+        if any(len(v) > 25 for v in values):
+            raise ValueError("Each value must be 25 characters or fewer.")
+
+        client = ctx.client.raw
+        customer_id_clean = customer_id.replace("-", "")
+        campaign_resource_name = client.get_service("CampaignService").campaign_path(
+            customer_id_clean, campaign_id
+        )
+
+        asset_operation = client.get_type("AssetOperation")
+        asset = asset_operation.create
+        asset.structured_snippet_asset.header = header
+        asset.structured_snippet_asset.values.extend(values)
+
+        description = (
+            f"Create structured snippet '{header}': {values} and attach to "
+            f"campaign {campaign_id}"
+        )
+
+        def execute():
+            asset_result = ctx.client.mutate(
+                "AssetService", customer_id, [asset_operation]
+            )
+            asset_resource_name = asset_result.results[0].resource_name
+
+            campaign_asset_operation = client.get_type("CampaignAssetOperation")
+            campaign_asset = campaign_asset_operation.create
+            campaign_asset.campaign = campaign_resource_name
+            campaign_asset.asset = asset_resource_name
+            campaign_asset.field_type = (
+                client.enums.AssetFieldTypeEnum.STRUCTURED_SNIPPET
+            )
+
+            link_result = ctx.client.mutate(
+                "CampaignAssetService", customer_id, [campaign_asset_operation]
+            )
+            return {
+                "asset_resource_name": asset_resource_name,
+                "campaign_asset_resource_name": link_result.results[0].resource_name,
+            }
+
+        return ctx.safety.propose(
+            tool_name="create_structured_snippet_asset",
+            customer_id=customer_id,
+            description=description,
+            payload={"campaign_id": campaign_id, "header": header, "values": values},
+            execute=execute,
+        )
