@@ -55,7 +55,7 @@ def register(mcp, ctx: AppContext) -> None:
             customer_id=customer,
             billing_setup=billing_setup,
             issue_year=str(issue_year),
-            issue_month=month,
+            issue_month=ctx.client.raw.enums.MonthOfYearEnum[month].value,
             include_granular_level_invoice_details=include_granular_details,
         )
         invoices = [

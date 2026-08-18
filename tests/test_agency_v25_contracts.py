@@ -234,5 +234,5 @@ def test_invoice_tool_calls_v25_list_invoices_with_scoped_resource_name():
     assert kwargs["customer_id"] == "1234567890"
     assert kwargs["billing_setup"] == "customers/1234567890/billingSetups/999"
     assert kwargs["issue_year"] == "2026"
-    assert kwargs["issue_month"] == "JULY"
+    assert kwargs["issue_month"] == client.raw.enums.MonthOfYearEnum.JULY.value
     assert kwargs["include_granular_level_invoice_details"] is True
