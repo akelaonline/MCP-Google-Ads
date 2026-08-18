@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
+from datetime import date
 
 DEFAULT_EU_POLITICAL_ADVERTISING = "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING"
 _ALLOWED_EU_POLITICAL_VALUES = {
@@ -56,7 +55,7 @@ def apply_campaign_dates(
 
 def _date_to_api_datetime(value: str, *, end_of_day: bool) -> str:
     try:
-        parsed = datetime.strptime(value, "%Y-%m-%d")
+        parsed = date.fromisoformat(value)
     except ValueError as ex:
         raise ValueError(f"Invalid date '{value}'. Expected YYYY-MM-DD.") from ex
     suffix = "23:59:59" if end_of_day else "00:00:00"
