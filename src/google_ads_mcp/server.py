@@ -1,35 +1,35 @@
-"""Entry point: builds the FastMCP server, registers every tool module,
-and starts the requested transport.
-
-    python -m google_ads_mcp.server                    # stdio (default)
-    python -m google_ads_mcp.server --transport http --port 8080
-"""
+"""Entry point: build the FastMCP server and start the requested transport."""
 
 from __future__ import annotations
 
 import argparse
+import os
 
 from fastmcp import FastMCP
 
 from .context import build_context
 from .logging_config import setup_logging
+from .net import install_safe_urlopen
 
 MCP_INSTRUCTIONS = """
 Google Ads MCP — full read/write account management.
 
-Safety model: every write tool (create_*, update_*, remove_*, set_*, add_*,
-upload_*) does NOT touch the account immediately. It returns a preview and a
-pending_action_id. Call confirm_pending_action(action_id) to actually execute
-it, or cancel_pending_action(action_id) to discard it. Always show the user
-the preview before confirming unless they've explicitly asked you to proceed
-without asking each time.
+Safety model: every write tool does NOT touch the account immediately. It
+returns a preview and a pending_action_id. Call confirm_pending_action(action_id)
+to execute it, or cancel_pending_action(action_id) to discard it. Always show
+the user the preview before confirming unless they've explicitly asked you to
+proceed without asking each time.
 
-For reporting, prefer the pre-built tools (get_campaign_performance, etc.)
-and fall back to run_gaql_query for anything custom.
+For reporting, prefer the pre-built tools (get_campaign_performance, etc.) and
+fall back to run_gaql_query for anything custom.
 """
 
 
 def build_server() -> FastMCP:
+    # Tool modules use urllib for image uploads. Install the central SSRF guard
+    # before registering any tool so all current and future call sites inherit it.
+    install_safe_urlopen()
+
     ctx = build_context()
     mcp = FastMCP(name="google-ads-mcp", instructions=MCP_INSTRUCTIONS)
 
@@ -60,8 +60,13 @@ def _register_safety_tools(mcp: FastMCP, ctx) -> None:
 
     @mcp.tool()
     def get_recent_audit_log(limit: int = 20) -> dict:
-        """Show the most recent confirmed/auto-approved mutations from the audit trail."""
+        """Show recent confirmed/auto-approved mutation attempts and payloads."""
         return {"entries": ctx.audit.recent(limit)}
+
+    @mcp.tool()
+    def get_audit_action(action_id: str) -> dict:
+        """Show every audit attempt recorded for one action id."""
+        return {"action_id": action_id, "entries": ctx.audit.by_action_id(action_id)}
 
 
 def main() -> None:
@@ -80,6 +85,16 @@ def main() -> None:
     port = args.port or settings.http_port
 
     if transport == "http":
+        allow_insecure_http = os.environ.get(
+            "GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP", "false"
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        if not allow_insecure_http:
+            raise SystemExit(
+                "HTTP transport is disabled by default because this server exposes "
+                "write and confirmation tools but has no built-in remote authentication. "
+                "Use stdio, or explicitly set GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true "
+                "only behind your own authenticated/restricted proxy."
+            )
         server.run(transport="http", port=port)
     else:
         server.run()
