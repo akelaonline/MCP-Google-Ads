@@ -157,6 +157,31 @@ class ListingGroupFilterProductTypeLevelEnum(enum.Enum):
     LEVEL1 = 2
 
 
+class UserListMembershipStatusEnum(enum.Enum):
+    UNSPECIFIED = 0
+    OPEN = 2
+    CLOSED = 3
+
+
+class UserListPrepopulationStatusEnum(enum.Enum):
+    UNSPECIFIED = 0
+    REQUESTED = 2
+    FINISHED = 3
+    FAILED = 4
+
+
+class UserListStringRuleItemOperatorEnum(enum.Enum):
+    UNSPECIFIED = 0
+    CONTAINS = 2
+    EQUALS = 3
+
+
+class UserListFlexibleRuleOperatorEnum(enum.Enum):
+    UNSPECIFIED = 0
+    AND = 2
+    OR = 3
+
+
 class CustomerMatchUploadKeyTypeEnum(enum.Enum):
     UNSPECIFIED = 0
     CONTACT_INFO = 2
@@ -206,6 +231,22 @@ class DeviceEnum(enum.Enum):
     DESKTOP = 4
 
 
+class ExperimentTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    SEARCH_CUSTOM = 2
+
+
+class ExperimentStatusEnum(enum.Enum):
+    UNSPECIFIED = 0
+    SETUP = 2
+    INITIALIZING = 3
+    ENABLED = 4
+    GRADUATED = 5
+    REMOVED = 6
+    PROMOTED = 7
+    ENDED = 8
+
+
 class FakeEnums:
     AssetFieldTypeEnum = AssetFieldTypeEnum
     ConversionActionStatusEnum = ConversionActionStatusEnum
@@ -224,6 +265,10 @@ class FakeEnums:
     ListingGroupFilterListingSourceEnum = ListingGroupFilterListingSourceEnum
     ListingGroupFilterProductConditionEnum = ListingGroupFilterProductConditionEnum
     ListingGroupFilterProductTypeLevelEnum = ListingGroupFilterProductTypeLevelEnum
+    UserListMembershipStatusEnum = UserListMembershipStatusEnum
+    UserListPrepopulationStatusEnum = UserListPrepopulationStatusEnum
+    UserListStringRuleItemOperatorEnum = UserListStringRuleItemOperatorEnum
+    UserListFlexibleRuleOperatorEnum = UserListFlexibleRuleOperatorEnum
     DayOfWeekEnum = DayOfWeekEnum
     MinuteOfHourEnum = MinuteOfHourEnum
     DeviceEnum = DeviceEnum
@@ -231,6 +276,8 @@ class FakeEnums:
     OfflineUserDataJobTypeEnum = OfflineUserDataJobTypeEnum
     KeywordMatchTypeEnum = KeywordMatchTypeEnum
     KeywordPlanNetworkEnum = KeywordPlanNetworkEnum
+    ExperimentTypeEnum = ExperimentTypeEnum
+    ExperimentStatusEnum = ExperimentStatusEnum
 
 
 class AutoVivify:
@@ -307,7 +354,6 @@ class FakeRawClient:
         return FakePathService(name)
 
     def copy_from(self, target, source):
-        # Unit fakes only care that the operation was constructed and routed.
         return None
 
 
