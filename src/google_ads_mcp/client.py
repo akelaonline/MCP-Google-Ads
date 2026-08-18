@@ -1,8 +1,8 @@
 """Thin wrapper around google.ads.googleads.client.GoogleAdsClient.
 
 Centralizes client construction, GAQL search, compatibility normalization,
-and mutate execution so every tool module shares the same API version and
-error handling.
+customer isolation, and mutate execution so every tool module shares the same
+API version and production access policy.
 """
 
 from __future__ import annotations
@@ -23,6 +23,16 @@ class GoogleAdsClientWrapper:
     def __init__(self, settings: Settings):
         self._settings = settings
         self._client = None
+        self._allowed_customer_ids = frozenset(
+            normalize_customer_id(customer_id)
+            for customer_id in settings.allowed_customer_ids
+        )
+        self._require_customer_allowlist = settings.require_customer_allowlist
+        if self._require_customer_allowlist and not self._allowed_customer_ids:
+            raise GoogleAdsMcpError(
+                "Customer allowlist is required but empty. Configure "
+                "GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS before starting the MCP."
+            )
 
     @property
     def raw(self):
@@ -41,6 +51,31 @@ class GoogleAdsClientWrapper:
     def get_type(self, name: str):
         return self.raw.get_type(name)
 
+    def assert_customer_allowed(self, customer_id: str) -> str:
+        """Normalize a customer ID and enforce optional deployment isolation."""
+        normalized = normalize_customer_id(customer_id)
+        if self._require_customer_allowlist and not self._allowed_customer_ids:
+            raise GoogleAdsMcpError("Customer allowlist is required but empty.")
+        if self._allowed_customer_ids and normalized not in self._allowed_customer_ids:
+            raise GoogleAdsMcpError(
+                f"Customer {normalized} is outside GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS. "
+                "The request was blocked before contacting that Google Ads account."
+            )
+        return normalized
+
+    def filter_allowed_customer_ids(self, customer_ids: Iterable[str]) -> list[str]:
+        """Filter account-discovery results to this deployment's configured scope."""
+        normalized = [normalize_customer_id(customer_id) for customer_id in customer_ids]
+        if not self._allowed_customer_ids:
+            if self._require_customer_allowlist:
+                raise GoogleAdsMcpError("Customer allowlist is required but empty.")
+            return normalized
+        return [
+            customer_id
+            for customer_id in normalized
+            if customer_id in self._allowed_customer_ids
+        ]
+
     # ---- Reporting -----------------------------------------------------
 
     def search(self, customer_id: str, query: str) -> list[dict[str, Any]]:
@@ -48,7 +83,7 @@ class GoogleAdsClientWrapper:
         from google.ads.googleads.errors import GoogleAdsException
 
         ga_service = self.service("GoogleAdsService")
-        customer_id = normalize_customer_id(customer_id)
+        customer_id = self.assert_customer_allowed(customer_id)
 
         try:
             stream = ga_service.search_stream(customer_id=customer_id, query=query)
@@ -78,7 +113,7 @@ class GoogleAdsClientWrapper:
         from google.ads.googleads.errors import GoogleAdsException
 
         service = self.service(service_name)
-        customer_id = normalize_customer_id(customer_id)
+        customer_id = self.assert_customer_allowed(customer_id)
         operation_list = list(operations)
         if service_name == "CampaignService":
             for operation in operation_list:
@@ -123,7 +158,7 @@ class GoogleAdsClientWrapper:
         from google.ads.googleads.errors import GoogleAdsException
 
         service = self.service("GoogleAdsService")
-        customer_id = normalize_customer_id(customer_id)
+        customer_id = self.assert_customer_allowed(customer_id)
         operation_list = list(mutate_operations)
         for operation in operation_list:
             campaign_operation = getattr(operation, "campaign_operation", None)
@@ -168,8 +203,6 @@ def _normalize_campaign_create(client, operation) -> None:
     campaign = operation.create
     campaign_pb = getattr(campaign, "_pb", None)
 
-    # API v21+ requires an explicit EU political advertising declaration for
-    # campaign creation. Only fill it if the caller did not already provide one.
     political_value = getattr(campaign, "contains_eu_political_advertising", 0)
     if not political_value:
         campaign.contains_eu_political_advertising = (
@@ -182,9 +215,6 @@ def _normalize_campaign_create(client, operation) -> None:
     ):
         return
 
-    # PMax supports Maximize Conversions (+ optional target CPA) or Maximize
-    # Conversion Value (+ optional target ROAS). Older code in this repository
-    # used standalone TargetCpa/TargetRoas, which current PMax creation rejects.
     if campaign_pb is not None and campaign_pb.HasField("target_cpa"):
         target_cpa_micros = campaign.target_cpa.target_cpa_micros
         campaign_pb.ClearField("target_cpa")
