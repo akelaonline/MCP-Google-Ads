@@ -9,7 +9,6 @@ from fastmcp import FastMCP
 
 from .context import build_context
 from .logging_config import setup_logging
-from .net import install_safe_urlopen
 
 MCP_INSTRUCTIONS = """
 Google Ads MCP — full read/write account management.
@@ -26,10 +25,6 @@ fall back to run_gaql_query for anything custom.
 
 
 def build_server() -> FastMCP:
-    # Tool modules use urllib for image uploads. Install the central SSRF guard
-    # before registering any tool so all current and future call sites inherit it.
-    install_safe_urlopen()
-
     ctx = build_context()
     mcp = FastMCP(name="google-ads-mcp", instructions=MCP_INSTRUCTIONS)
 
