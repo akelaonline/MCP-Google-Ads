@@ -23,11 +23,13 @@ class GoogleAdsClientWrapper:
     def __init__(self, settings: Settings):
         self._settings = settings
         self._client = None
+        configured_ids = getattr(settings, "allowed_customer_ids", frozenset())
         self._allowed_customer_ids = frozenset(
-            normalize_customer_id(customer_id)
-            for customer_id in settings.allowed_customer_ids
+            normalize_customer_id(customer_id) for customer_id in configured_ids
         )
-        self._require_customer_allowlist = settings.require_customer_allowlist
+        self._require_customer_allowlist = getattr(
+            settings, "require_customer_allowlist", False
+        )
         if self._require_customer_allowlist and not self._allowed_customer_ids:
             raise GoogleAdsMcpError(
                 "Customer allowlist is required but empty. Configure "
@@ -76,14 +78,12 @@ class GoogleAdsClientWrapper:
             if customer_id in self._allowed_customer_ids
         ]
 
-    # ---- Reporting -----------------------------------------------------
-
     def search(self, customer_id: str, query: str) -> list[dict[str, Any]]:
         """Run a GAQL query, returning a list of flattened dicts."""
         from google.ads.googleads.errors import GoogleAdsException
 
-        ga_service = self.service("GoogleAdsService")
         customer_id = self.assert_customer_allowed(customer_id)
+        ga_service = self.service("GoogleAdsService")
 
         try:
             stream = ga_service.search_stream(customer_id=customer_id, query=query)
@@ -94,8 +94,6 @@ class GoogleAdsClientWrapper:
             return rows
         except GoogleAdsException as ex:
             raise GoogleAdsMcpError(format_google_ads_exception(ex)) from ex
-
-    # ---- Mutations -----------------------------------------------------
 
     def mutate(
         self,
@@ -112,8 +110,8 @@ class GoogleAdsClientWrapper:
 
         from google.ads.googleads.errors import GoogleAdsException
 
-        service = self.service(service_name)
         customer_id = self.assert_customer_allowed(customer_id)
+        service = self.service(service_name)
         operation_list = list(operations)
         if service_name == "CampaignService":
             for operation in operation_list:
@@ -157,8 +155,8 @@ class GoogleAdsClientWrapper:
         """Execute cross-resource operations atomically via GoogleAdsService.Mutate."""
         from google.ads.googleads.errors import GoogleAdsException
 
-        service = self.service("GoogleAdsService")
         customer_id = self.assert_customer_allowed(customer_id)
+        service = self.service("GoogleAdsService")
         operation_list = list(mutate_operations)
         for operation in operation_list:
             campaign_operation = getattr(operation, "campaign_operation", None)
