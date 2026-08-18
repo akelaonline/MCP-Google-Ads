@@ -12,9 +12,9 @@ Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation &
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Google Ads API v25](https://img.shields.io/badge/Google%20Ads%20API-v25-4285F4.svg)](https://developers.google.com/google-ads/api)
 [![CI](https://github.com/akelaonline/MCP-Google-Ads/actions/workflows/tests.yml/badge.svg)](https://github.com/akelaonline/MCP-Google-Ads/actions/workflows/tests.yml)
-[![Version](https://img.shields.io/badge/version-0.13.0-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.14.0-informational.svg)](CHANGELOG.md)
 
-[Quick start](#quick-start) · [Capabilities](#capabilities) · [Safety](#safety-by-default) · [v0.13 production policy](#v013-production-policy) · [Documentation](#documentation)
+[Quick start](#quick-start) · [Capabilities](#capabilities) · [Safety](#safety-by-default) · [v0.14 agency coverage](#v014-agency-coverage) · [Documentation](#documentation)
 
 </div>
 
@@ -25,6 +25,19 @@ Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation &
 Most Google Ads MCP servers stop at reporting and raw GAQL. This project is designed to **operate** accounts: inspect performance, create and edit campaigns, change budgets and bidding, manage keywords and negatives, work with assets and audiences, upload offline conversions, build Performance Max structures, run experiments, and apply or dismiss recommendations.
 
 Every normal write follows a **propose → preview → confirm → execute → audit** flow. The default configuration does not silently change live spend.
+
+## v0.14 agency coverage
+
+v0.14 expands the MCP into common agency administration workflows while keeping the v0.13 customer-isolation and risk policy underneath every operation.
+
+- Native customer labels plus campaign/ad-group label relationships.
+- Native shared negative keyword lists (`SharedSet` + `SharedCriterion` + `CampaignSharedSet`).
+- Account users and invitations: list, invite, change roles, remove access, revoke invitations.
+- Read-only billing setup and invoice retrieval.
+- Conversion retractions and value restatements with explicit partial-failure parsing.
+- Real Google Ads API v25 contract tests for every new protobuf-heavy write path.
+
+See [`docs/AGENCY_TOOLS.md`](docs/AGENCY_TOOLS.md) for signatures and operational notes.
 
 ## v0.13 production policy
 
@@ -84,7 +97,7 @@ Key changes:
 
 | Domain | Capabilities |
 |---|---|
-| **Accounts & MCC** | Accessible customers, account hierarchy, summaries, create client accounts, manager-link acceptance |
+| **Accounts & MCC** | Accessible customers, account hierarchy, summaries, create client accounts, manager-link acceptance, users, roles and invitations |
 | **Reporting** | Campaign, ad group, keyword, ad, search term, device, geography, asset, audience, quality score, disapproval, shopping and change-history reports; raw GAQL fallback |
 | **Campaigns** | Create, rename, pause/enable/remove; Search and other supported generic channels; Standard Shopping; Performance Max; Demand Gen; experiments |
 | **Budgets** | Create and update daily/shared budgets |
@@ -92,14 +105,16 @@ Key changes:
 | **Ad groups** | Campaign-aware creation, status changes, CPC updates |
 | **Ads** | Responsive Search, Responsive Display, Demand Gen image/video creatives; RSA edits; legacy Call Ad compatibility via RSA + Call Asset; legacy VIDEO writes blocked safely |
 | **Assets** | Sitelinks, calls, images, promotions, callouts, structured snippets, Business Message / WhatsApp; attach/detach |
-| **Keywords** | Add, bid updates, match-type recreation, pause/enable/remove, campaign/ad-group negatives, bulk operations |
+| **Keywords** | Add, bid updates, match-type recreation, pause/enable/remove, campaign/ad-group negatives, native shared negative lists, bulk operations |
 | **Keyword research** | Keyword ideas and historical metrics through Keyword Planner |
 | **Audiences** | Website remarketing rules, Customer Match, affinity/in-market, topics, attach/detach |
 | **Targeting** | Live geo resolution, languages, schedules, device modifiers, placement exclusions |
-| **Conversions** | List/create actions, offline click uploads, enhanced conversions, primary/secondary behavior, value rules |
+| **Conversions** | List/create actions, offline click uploads, enhanced conversions, retractions/restatements, primary/secondary behavior, value rules |
 | **Recommendations** | List active/dismissed recommendations, apply, dismiss |
 | **Performance Max** | Campaigns, complete asset groups, text/image/video assets, listing filters, audience/search-theme signals |
 | **Experiments** | System-managed experiment setup, arm inspection, promotion and ending |
+| **Labels** | Create/update/remove labels; attach/detach on campaigns and ad groups |
+| **Billing** | Billing setup visibility and invoice retrieval by month/year |
 
 Full signatures and operational notes live in [`docs/TOOLS.md`](docs/TOOLS.md).
 

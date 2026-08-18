@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.14.0 — 2026-08-18
+
+### Added
+- Native customer labels with campaign/ad-group label relationships.
+- Native shared negative keyword lists using `SharedSet`, `SharedCriterion`, and `CampaignSharedSet`.
+- Account user/invitation administration with ADMIN, STANDARD, READ_ONLY, and EMAIL_ONLY roles.
+- Read-only billing setup and monthly invoice retrieval.
+- Conversion retractions and value restatements through `ConversionAdjustmentUploadService`.
+- `docs/AGENCY_TOOLS.md` and real-v25 agency contract tests.
+
+### Safety
+- Account-access writes are classified sensitive/destructive by the v0.13 policy layer.
+- Conversion adjustments are classified sensitive.
+- Required conversion-adjustment `partial_failure=true` responses are explicitly parsed; row-level failures raise `GoogleAdsMcpError` instead of returning false success.
+- Existing customer allowlists apply to all new scoped reads and writes.
+
+### Compatibility
+- Adds exact v25 irregular/singular mutate RPC mappings for shared criteria and customer user-access services.
+- Existing v0.13 tool signatures and deployment policy remain unchanged.
+
+See `docs/RELEASE_0.14.0.md` for full release notes.
+
 ## 0.13.0 — 2026-08-18
 
 ### Added
