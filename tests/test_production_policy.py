@@ -37,6 +37,9 @@ def _settings(
 def _safety(**kwargs) -> SafetyLayer:
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
         audit = AuditLog(tmp.name)
+    kwargs.setdefault("auto_approve_spend", False)
+    kwargs.setdefault("auto_approve_destructive", False)
+    kwargs.setdefault("auto_approve_sensitive", False)
     return SafetyLayer(ttl_minutes=30, audit_log=audit, **kwargs)
 
 
