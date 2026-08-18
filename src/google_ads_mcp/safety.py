@@ -1,9 +1,9 @@
 """Human-in-the-loop safety policy for every mutating tool.
 
 Write tools call ``SafetyLayer.propose(...)`` with a callable that performs the
-actual Google Ads mutation. By default writes require confirmation. When global
-auto-approve is enabled, only standard-risk writes are auto-executed unless a
-separate explicit opt-in exists for spend, destructive, or sensitive actions.
+actual Google Ads mutation. Production context passes explicit high-risk policy
+flags; the optional ``None`` defaults preserve compatibility for older internal
+callers that used ``SafetyLayer(auto_approve=True)`` as an execution harness.
 """
 
 from __future__ import annotations
@@ -38,9 +38,7 @@ _SENSITIVE_TOOLS = {
     "create_customer_client",
 }
 
-_DESTRUCTIVE_TOOLS = {
-    "end_experiment",
-}
+_DESTRUCTIVE_TOOLS = {"end_experiment"}
 
 _SPEND_TOOLS = {
     "create_campaign_budget",
@@ -92,16 +90,28 @@ class SafetyLayer:
         auto_approve: bool,
         ttl_minutes: int,
         audit_log: AuditLog,
-        auto_approve_spend: bool = False,
-        auto_approve_destructive: bool = False,
-        auto_approve_sensitive: bool = False,
+        auto_approve_spend: bool | None = None,
+        auto_approve_destructive: bool | None = None,
+        auto_approve_sensitive: bool | None = None,
         allowed_customer_ids: Iterable[str] | None = None,
         require_customer_allowlist: bool = False,
     ):
         self._auto_approve = auto_approve
-        self._auto_approve_spend = auto_approve_spend
-        self._auto_approve_destructive = auto_approve_destructive
-        self._auto_approve_sensitive = auto_approve_sensitive
+        # Backward compatibility for direct/internal SafetyLayer callers:
+        # omitted high-risk flags inherit the legacy global auto-approve value.
+        # Production build_context always passes explicit Settings booleans,
+        # whose defaults are False, so live deployments get the safer policy.
+        self._auto_approve_spend = (
+            auto_approve if auto_approve_spend is None else auto_approve_spend
+        )
+        self._auto_approve_destructive = (
+            auto_approve
+            if auto_approve_destructive is None
+            else auto_approve_destructive
+        )
+        self._auto_approve_sensitive = (
+            auto_approve if auto_approve_sensitive is None else auto_approve_sensitive
+        )
         self._ttl_seconds = ttl_minutes * 60
         self._audit = audit_log
         self._pending: dict[str, PendingAction] = {}
@@ -158,12 +168,13 @@ class SafetyLayer:
             execute=execute,
             risk_level=risk_level,
         )
-        reason = _confirmation_reason(risk_level, self._auto_approve)
         return {
             "status": "pending_confirmation",
             "pending_action_id": action_id,
             "risk_level": risk_level.value,
-            "confirmation_reason": reason,
+            "confirmation_reason": _confirmation_reason(
+                risk_level, self._auto_approve
+            ),
             "description": description,
             "expires_in_minutes": self._ttl_seconds // 60,
             "next_step": (
@@ -184,8 +195,6 @@ class SafetyLayer:
 
         self._assert_customer_allowed(action.customer_id)
         action.attempts += 1
-        # Pop only after a successful execution. If _run raises, the pending
-        # action stays available for retry under the same action/audit id.
         result = self._run(
             action.action_id,
             action.tool_name,
@@ -341,7 +350,6 @@ def _safe_result(result: Any) -> Any:
         return result
 
     try:
-        # Resource-specific service responses expose ``results``.
         results = getattr(result, "results", None)
         if results is not None:
             return {
@@ -352,7 +360,6 @@ def _safe_result(result: Any) -> Any:
                 ]
             }
 
-        # GoogleAdsService.Mutate exposes ``mutate_operation_responses``.
         responses = getattr(result, "mutate_operation_responses", None)
         if responses is not None:
             resource_names: list[str] = []
