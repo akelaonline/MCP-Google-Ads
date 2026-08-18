@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.15.0 — 2026-08-18
+
+### Added
+- Controlled Google Ads Batch Jobs with reviewed manifests, job listing and paginated result inspection.
+- Seven supported batch operation kinds for common campaign/ad-group/ad/keyword/budget workflows without exposing arbitrary raw protobuf mutations.
+- Smart Bidding seasonality adjustments: list/create/remove with channel/campaign/device scope.
+- Smart Bidding data exclusions: list/create/remove for conversion-measurement incidents.
+- Search keyword recommendation generation through `RecommendationService.GenerateRecommendations` with `seed_info`.
+- `docs/BATCH_SMART_BIDDING.md` and real-v25 contract coverage for the new surfaces.
+
+### Safety
+- `submit_batch_job` is classified sensitive; the entire manifest is validated, previewed and audited before job creation/run.
+- Smart Bidding event creation is spend-risk; removals are destructive.
+- Existing v0.13 customer allowlists protect every new customer-scoped read/write.
+- Batch partial-success semantics are explicit: successful rows are not silently described as rolled back when another row fails.
+
+### Compatibility
+- Existing v0.14 tool signatures and deployment-policy environment variables are unchanged.
+- Continues to target Google Ads API v25 on the tested Google Ads Python 31.x client line.
+
+See `docs/RELEASE_0.15.0.md` for release details.
+
 ## 0.14.0 — 2026-08-18
 
 ### Added

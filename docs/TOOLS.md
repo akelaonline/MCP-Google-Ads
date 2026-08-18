@@ -1,6 +1,6 @@
-# Tool reference — v0.14 / Google Ads API v25
+# Tool reference — v0.15 / Google Ads API v25
 
-All normal write tools go through the shared safety layer. v0.14 agency-management additions are also indexed in [`AGENCY_TOOLS.md`](AGENCY_TOOLS.md).
+All normal write tools go through the shared safety layer. v0.14 agency-management additions are indexed in [`AGENCY_TOOLS.md`](AGENCY_TOOLS.md); v0.15 Batch/Smart Bidding operations are documented in [`BATCH_SMART_BIDDING.md`](BATCH_SMART_BIDDING.md).
 
 Default write response:
 
@@ -546,3 +546,40 @@ Every recorded attempt for one stable action ID.
 - `create_call_ad` and `create_message_asset` retain their public names only as compatibility wrappers around current supported structures.
 - Image URLs must be public HTTPS and pass the SSRF/content/size safety checks.
 - Raw HTTP transport is blocked by default; see `docs/SETUP.md`.
+
+---
+
+## Batch Jobs — v0.15
+
+### `list_batch_jobs(customer_id, status_filter=None, limit=100)`
+Read-only. Lists recent Batch Jobs. `status_filter` accepts `PENDING`, `RUNNING`, or `DONE`.
+
+### `submit_batch_job(customer_id, operations)` `[write: sensitive]`
+Validates and proposes one controlled mixed-resource Batch Job. The whole manifest is previewed/audited before Google creates the job. Supported kinds: `campaign_status`, `ad_group_status`, `ad_status`, `keyword_status`, `campaign_budget_amount`, `keyword_bid`, `add_campaign_negative_keyword`. Maximum 10,000 operations and 20 MiB JSON per MCP submission. Batch Jobs have partial-success semantics; confirm results afterward.
+
+### `get_batch_job_results(customer_id, batch_job_resource_name, page_size=1000, page_token=None, return_mutable_resource=False)`
+Read-only. Returns one result page for a Batch Job, including row-level errors/results exposed by Google.
+
+## Smart Bidding controls — v0.15
+
+### `list_seasonality_adjustments(customer_id, limit=100)`
+Read-only.
+
+### `create_seasonality_adjustment(customer_id, name, start_date_time, end_date_time, conversion_rate_modifier, scope="CHANNEL", advertising_channel_types=None, campaign_ids=None, devices=None, description=None)` `[write: spend]`
+Creates a short expected conversion-rate event. Supports CHANNEL or CAMPAIGN scope, SEARCH/DISPLAY/SHOPPING, optional DESKTOP/MOBILE/TABLET, up to 2,000 campaigns, interval <=14 days, modifier 0.1–10.0.
+
+### `remove_seasonality_adjustment(customer_id, adjustment_id)` `[write: destructive]`
+Removes a seasonality adjustment.
+
+### `list_data_exclusions(customer_id, limit=100)`
+Read-only.
+
+### `create_data_exclusion(customer_id, name, start_date_time, end_date_time, scope="CHANNEL", advertising_channel_types=None, campaign_ids=None, devices=None, description=None)` `[write: spend]`
+Creates a conversion-data exclusion for a measurement incident. Same channel/campaign/device and interval limits as seasonality adjustments.
+
+### `remove_data_exclusion(customer_id, data_exclusion_id)` `[write: destructive]`
+Removes a data exclusion.
+
+### `generate_keyword_recommendations(customer_id, seed_keywords, url_seed=None)`
+Read-only. Calls `RecommendationService.GenerateRecommendations` for Search `KEYWORD` recommendations using 1–20 keyword seeds and an optional URL seed. Generation does not apply the recommendation.
+

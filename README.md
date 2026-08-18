@@ -12,9 +12,9 @@ Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation &
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Google Ads API v25](https://img.shields.io/badge/Google%20Ads%20API-v25-4285F4.svg)](https://developers.google.com/google-ads/api)
 [![CI](https://github.com/akelaonline/MCP-Google-Ads/actions/workflows/tests.yml/badge.svg)](https://github.com/akelaonline/MCP-Google-Ads/actions/workflows/tests.yml)
-[![Version](https://img.shields.io/badge/version-0.14.0-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.15.0-informational.svg)](CHANGELOG.md)
 
-[Quick start](#quick-start) · [Capabilities](#capabilities) · [Safety](#safety-by-default) · [v0.14 agency coverage](#v014-agency-coverage) · [Documentation](#documentation)
+[Quick start](#quick-start) · [Capabilities](#capabilities) · [Safety](#safety-by-default) · [v0.15 batch & Smart Bidding](#v015-batch--smart-bidding-operations) · [Documentation](#documentation)
 
 </div>
 
@@ -25,6 +25,22 @@ Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation &
 Most Google Ads MCP servers stop at reporting and raw GAQL. This project is designed to **operate** accounts: inspect performance, create and edit campaigns, change budgets and bidding, manage keywords and negatives, work with assets and audiences, upload offline conversions, build Performance Max structures, run experiments, and apply or dismiss recommendations.
 
 Every normal write follows a **propose → preview → confirm → execute → audit** flow. The default configuration does not silently change live spend.
+
+## v0.15 batch & Smart Bidding operations
+
+v0.15 adds controlled agency-scale asynchronous writes and Smart Bidding event controls without weakening the v0.13/v0.14 production policy.
+
+- **Batch Jobs:** submit a reviewed manifest of campaign/ad-group/ad/keyword status changes, budget changes, keyword bids and campaign negatives; then inspect asynchronous row-level results.
+- Batch manifests are validated and confirmation-gated **before** Google creates or runs a job. Arbitrary raw protobuf mutations are intentionally not exposed.
+- **Seasonality Adjustments:** create/list/remove short expected conversion-rate events for SEARCH, DISPLAY and SHOPPING.
+- **Data Exclusions:** create/list/remove short measurement-incident windows that Smart Bidding should ignore.
+- Smart Bidding event creation is spend-risk; removal is destructive. Batch submission is sensitive.
+- **Recommendation generation:** generate fresh Search keyword recommendations from seed keywords and an optional URL without applying them.
+- Real Google Ads API v25 contract tests cover all new protobuf-heavy paths.
+
+Batch Jobs can partially succeed: successful rows are not rolled back when another row fails. Always inspect `get_batch_job_results` before treating a batch as completely successful.
+
+See [`docs/BATCH_SMART_BIDDING.md`](docs/BATCH_SMART_BIDDING.md) and [`docs/RELEASE_0.15.0.md`](docs/RELEASE_0.15.0.md).
 
 ## v0.14 agency coverage
 
@@ -110,7 +126,9 @@ Key changes:
 | **Audiences** | Website remarketing rules, Customer Match, affinity/in-market, topics, attach/detach |
 | **Targeting** | Live geo resolution, languages, schedules, device modifiers, placement exclusions |
 | **Conversions** | List/create actions, offline click uploads, enhanced conversions, retractions/restatements, primary/secondary behavior, value rules |
-| **Recommendations** | List active/dismissed recommendations, apply, dismiss |
+| **Recommendations** | List active/dismissed recommendations; generate Search keyword recommendations; apply/dismiss through safety policy |
+| **Batch operations** | Controlled asynchronous Batch Jobs with reviewed manifests, status/result inspection and row-level outcomes |
+| **Smart Bidding controls** | Seasonality adjustments and conversion-data exclusions with channel/campaign/device scoping |
 | **Performance Max** | Campaigns, complete asset groups, text/image/video assets, listing filters, audience/search-theme signals |
 | **Experiments** | System-managed experiment setup, arm inspection, promotion and ending |
 | **Labels** | Create/update/remove labels; attach/detach on campaigns and ad groups |
