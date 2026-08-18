@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from conftest import FakeMutateResult, build_ctx, register_module
+from conftest import build_ctx, register_module
 
 from google_ads_mcp import tools
 
@@ -125,26 +125,12 @@ def test_create_responsive_display_ad_is_atomic(monkeypatch):
     assert result["result"]["atomic"] is True
 
 
-def test_create_video_ad_validates_headline_length():
-    ctx = build_ctx(lambda *a, **k: None)
-    tool_fns = register_module(tools.ads, ctx)
-
-    with pytest.raises(ValueError, match="1-15"):
-        tool_fns["create_video_ad"](
-            customer_id="123",
-            ad_group_id="1",
-            youtube_video_id="dQw4w9WgXcQ",
-            headline="This headline is way too long",
-            final_urls=["https://example.com"],
-        )
-
-
-def test_create_video_ad_creates_ad_group_ad():
+def test_create_video_ad_legacy_compatibility_never_mutates():
     calls = []
 
     def fake_mutate(service_name, customer_id, operations, **kwargs):
         calls.append(service_name)
-        return FakeMutateResult("customers/123/adGroupAds/1~3")
+        return {"unexpected": True}
 
     ctx = build_ctx(fake_mutate)
     tool_fns = register_module(tools.ads, ctx)
@@ -152,9 +138,31 @@ def test_create_video_ad_creates_ad_group_ad():
         customer_id="123",
         ad_group_id="1",
         youtube_video_id="dQw4w9WgXcQ",
-        headline="Mirá el video",
+        headline="This legacy argument is intentionally ignored",
         final_urls=["https://cambridge.com.ar"],
     )
 
-    assert calls == ["AdGroupAdService"]
-    assert result["status"] == "executed"
+    assert calls == []
+    assert result["status"] == "unsupported"
+    assert result["replacement_tool"] == "create_demand_gen_video_ad"
+    assert "No Google Ads mutation was attempted" in result["reason"]
+
+
+def test_create_video_ad_preserves_old_signature_for_clients():
+    ctx = build_ctx(lambda *a, **k: None)
+    tool_fns = register_module(tools.ads, ctx)
+    result = tool_fns["create_video_ad"](
+        customer_id="123",
+        ad_group_id="1",
+        youtube_video_id="dQw4w9WgXcQ",
+        headline="Mirá el video",
+        final_urls=["https://cambridge.com.ar"],
+        description1="Compat",
+        description2="Compat",
+        companion_banner_asset_resource_name="customers/123/assets/1",
+    )
+
+    assert result["status"] == "unsupported"
+    assert result["customer_id"] == "123"
+    assert result["ad_group_id"] == "1"
+    assert result["youtube_video_id"] == "dQw4w9WgXcQ"
