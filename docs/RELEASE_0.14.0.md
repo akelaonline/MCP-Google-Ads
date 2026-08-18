@@ -78,6 +78,8 @@ v0.14 adds real Google Ads v25 contract tests for:
 
 The source guardrail allows `partial_failure=true` only in explicitly parsed conversion upload modules and requires those modules to contain `partial_failure_error` handling and `GoogleAdsMcpError` escalation.
 
+The release candidate is validated by the normal CI matrix on Python 3.11, 3.12 and 3.13 with dependency verification, MCP smoke registration, Ruff and the complete pytest suite before merge.
+
 ## Agency reference
 
 See `docs/AGENCY_TOOLS.md` for the v0.14 signatures and operational notes.
