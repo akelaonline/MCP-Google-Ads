@@ -34,6 +34,8 @@ _SENSITIVE_TOOLS = {
     "upload_customer_match_members",
     "upload_enhanced_conversion",
     "upload_offline_conversion",
+    "retract_conversion",
+    "restate_conversion_value",
     "accept_manager_link",
     "create_customer_client",
     "invite_account_user",
