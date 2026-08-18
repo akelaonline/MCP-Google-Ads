@@ -70,7 +70,6 @@ def test_legacy_local_campaign_never_mutates():
 
     def fake_mutate(*args, **kwargs):
         calls.append(args)
-        return None
 
     ctx = build_ctx(fake_mutate)
     tool_fns = register_module(tools.campaign_types, ctx)
