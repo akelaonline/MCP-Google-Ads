@@ -2,13 +2,24 @@
 
 from __future__ import annotations
 
-import calendar
-
 import proto
 
 from ..context import AppContext
 
-_MONTHS = {name.upper() for name in calendar.month_name if name}
+_MONTHS = {
+    "JANUARY",
+    "FEBRUARY",
+    "MARCH",
+    "APRIL",
+    "MAY",
+    "JUNE",
+    "JULY",
+    "AUGUST",
+    "SEPTEMBER",
+    "OCTOBER",
+    "NOVEMBER",
+    "DECEMBER",
+}
 
 
 def register(mcp, ctx: AppContext) -> None:
