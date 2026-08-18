@@ -69,7 +69,7 @@ def register(mcp, ctx: AppContext) -> None:
             raise ValueError("seed_keywords supports at most 20 keywords.")
         if url_seed is not None:
             url = url_seed.strip()
-            if not (url.startswith("https://") or url.startswith("http://")):
+            if not url.startswith(("https://", "http://")):
                 raise ValueError("url_seed must be an http:// or https:// URL.")
         else:
             url = None
