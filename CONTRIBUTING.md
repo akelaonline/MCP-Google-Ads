@@ -1,20 +1,87 @@
 # Contributing
 
-This project was created and is maintained by **[Akela](https://github.com/akelaonline)**. Contributions are welcome — please keep the following in mind:
+Thanks for helping improve Google Ads MCP.
 
-## Ground rules
+## Development setup
 
-1. **Every mutation goes through the safety layer.** New write tools must call `ctx.safety.propose(...)` — never call `ctx.client.mutate(...)` directly from a tool. This is the core design guarantee of this server: nothing touches a live account without an explicit `confirm_pending_action` (unless the operator opted into auto-approve).
-2. **Every write tool needs a test** covering at least the propose → confirm path (see `tests/test_safety.py` for the pattern).
-3. **Docstrings are the tool description the LLM sees.** Write them for an agent, not just a human — mention units (currency vs. micros), valid enum values, and constraints (character limits, required combinations of args).
-4. Run `pytest` before opening a PR.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+make check
+```
 
-## Adding a new tool domain
+The current release targets **Google Ads API v25** through the tested 31.x `google-ads` Python client line.
 
-1. Create `src/google_ads_mcp/tools/<domain>.py` with a `register(mcp, ctx)` function.
-2. Add it to `ALL_MODULES` in `src/google_ads_mcp/tools/__init__.py`.
-3. Document it in `docs/TOOLS.md`.
+## Pull requests
 
-## Attribution
+Keep changes focused and explain:
 
-If you fork or substantially reuse this project, please keep the credit to Akela in the README and LICENSE, and consider linking back to [akelaonline/MCP-Google-Ads](https://github.com/akelaonline/MCP-Google-Ads).
+- what changed;
+- why it changed;
+- whether it affects reads, writes or both;
+- which Google Ads API resource/service contract it relies on;
+- how it was validated.
+
+## Non-negotiable write-safety rule
+
+Every mutating MCP tool must go through:
+
+```python
+ctx.safety.propose(...)
+```
+
+The actual Google Ads mutation belongs inside the `execute` callable supplied to the safety layer. Do not call a live mutate directly from the outer tool body.
+
+## Multi-resource writes
+
+If several resources must exist together, prefer the atomic `GoogleAdsService.Mutate` path exposed by the client wrapper.
+
+Examples:
+
+- create Asset + attach CampaignAsset;
+- create image assets + visual ad;
+- create PMax assets + AssetGroup + AssetGroupAsset links.
+
+Do not claim a flow is atomic when it is implemented as independent mutate RPCs.
+
+## Google Ads API compatibility
+
+Do not rely only on permissive test fakes for protobuf-heavy code.
+
+When a change touches Google Ads fields, enums, operation types, service paths or resource shapes:
+
+1. check the current v25 generated client/docs;
+2. add/update a test that instantiates the real `google-ads` v25 protobuf type where practical;
+3. never reintroduce removed patterns guarded by `tests/test_source_guardrails.py` or `tests/test_v25_source_guardrails_extended.py`.
+
+When the project moves to a new API version, update the explicit version and dependency constraint together with the contract suite.
+
+## Image/network inputs
+
+Tool modules must use the central safe public-HTTPS image fetcher. Do not add direct `urllib`, `requests`, `httpx` or socket downloads for user/model-controlled image URLs without equivalent SSRF protections.
+
+## PII
+
+Do not place raw Customer Match / enhanced-conversion identifiers in audit payloads or logs. Normalize/hash locally where the Google Ads contract requires hashed identifiers.
+
+## Style and checks
+
+Before opening or updating a PR:
+
+```bash
+make check
+```
+
+This runs dependency validation, smoke test, Ruff and pytest.
+
+Format with:
+
+```bash
+ruff format src tests scripts
+```
+
+## Documentation
+
+If a public tool signature or behavior changes, update `docs/TOOLS.md` and relevant examples/FAQ in the same PR.
