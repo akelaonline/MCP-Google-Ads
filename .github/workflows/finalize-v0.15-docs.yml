@@ -1,0 +1,33 @@
+name: Finalize v0.15 docs
+
+on:
+  push:
+    branches:
+      - agent/v0.15-batch-smart-bidding
+    paths:
+      - '.github/workflows/finalize-v0.15-docs.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/v0.15-batch-smart-bidding
+      - name: Apply final documentation edits
+        run: python scripts/_finalize_v015.py
+      - name: Remove one-shot machinery and commit
+        run: |
+          rm -f scripts/_finalize_v015.py .github/workflows/finalize-v0.15-docs.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "docs: finalize v0.15 release documentation"
+            git push origin HEAD:agent/v0.15-batch-smart-bidding
+          fi
