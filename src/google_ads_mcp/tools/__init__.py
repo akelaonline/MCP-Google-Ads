@@ -1,12 +1,14 @@
 """All tool modules, in the order they get registered on the MCP server."""
 
 from . import (
+    account_access,
     accounts,
     ad_groups,
     ads,
     assets,
     audiences,
     bidding,
+    billing,
     budgets,
     bulk,
     campaign_types,
@@ -15,15 +17,19 @@ from . import (
     experiments,
     keyword_planner,
     keywords,
+    labels,
     performance_max,
     recommendations,
     reporting,
+    shared_sets,
     targeting,
 )
 
 ALL_MODULES = [
     accounts,
+    account_access,
     reporting,
+    billing,
     campaigns,
     campaign_types,
     budgets,
@@ -32,7 +38,9 @@ ALL_MODULES = [
     ad_groups,
     ads,
     assets,
+    labels,
     keywords,
+    shared_sets,
     keyword_planner,
     bulk,
     audiences,
