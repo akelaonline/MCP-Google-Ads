@@ -24,17 +24,6 @@ _ALLOWED_CONTENT_TYPES = {
 }
 
 
-def install_safe_urlopen() -> None:
-    """Replace urllib.request.urlopen with a public-HTTPS-only wrapper.
-
-    Existing tool modules use urllib directly. Installing this once during
-    server startup protects all of those call sites, including redirects,
-    without relying on every future tool to remember the SSRF checks.
-    """
-    if urllib.request.urlopen is not safe_public_urlopen:
-        urllib.request.urlopen = safe_public_urlopen
-
-
 def safe_public_urlopen(
     url,
     data=None,
