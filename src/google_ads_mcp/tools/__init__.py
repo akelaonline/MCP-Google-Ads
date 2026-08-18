@@ -7,6 +7,7 @@ from . import (
     ads,
     assets,
     audiences,
+    batch_jobs,
     bidding,
     billing,
     budgets,
@@ -23,6 +24,7 @@ from . import (
     recommendations,
     reporting,
     shared_sets,
+    smart_bidding_controls,
     targeting,
 )
 
@@ -35,6 +37,7 @@ ALL_MODULES = [
     campaign_types,
     budgets,
     bidding,
+    smart_bidding_controls,
     targeting,
     ad_groups,
     ads,
@@ -44,6 +47,7 @@ ALL_MODULES = [
     shared_sets,
     keyword_planner,
     bulk,
+    batch_jobs,
     audiences,
     conversions,
     conversion_adjustments,
