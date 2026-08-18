@@ -188,39 +188,60 @@ class SafetyLayer:
 
 
 def _safe_result(result: Any) -> Any:
-    """Best-effort conversion of a Google Ads API response into JSON-able data."""
+    """Best-effort conversion of Google Ads mutate responses into JSON data."""
     if result is None:
         return None
     if isinstance(result, (str, int, float, bool, list, dict)):
         return result
+
     try:
+        # Resource-specific service responses expose ``results``.
         results = getattr(result, "results", None)
         if results is not None:
-            resource_names = []
-            for item in results:
-                resource_name = getattr(item, "resource_name", None)
-                if resource_name:
-                    resource_names.append(resource_name)
+            return {
+                "resource_names": [
+                    resource_name
+                    for item in results
+                    if (resource_name := getattr(item, "resource_name", None))
+                ]
+            }
+
+        # GoogleAdsService.Mutate exposes ``mutate_operation_responses``.
+        responses = getattr(result, "mutate_operation_responses", None)
+        if responses is not None:
+            resource_names: list[str] = []
+            operation_results: list[dict[str, Any]] = []
+            for response in responses:
+                response_pb = getattr(response, "_pb", None)
+                field_name = (
+                    response_pb.WhichOneof("response") if response_pb is not None else None
+                )
+                if not field_name:
+                    # Proto schemas have used both "response" and "operation" as
+                    # oneof names across generated surfaces; probe defensively.
+                    if response_pb is not None:
+                        for oneof_name in ("operation", "result"):
+                            try:
+                                field_name = response_pb.WhichOneof(oneof_name)
+                            except ValueError:
+                                continue
+                            if field_name:
+                                break
+                if not field_name:
+                    operation_results.append({"type": "unknown"})
                     continue
-                # GoogleAdsService.Mutate wraps resource-specific results.
-                for field_name in (
-                    "campaign_result",
-                    "campaign_budget_result",
-                    "ad_group_result",
-                    "ad_group_ad_result",
-                    "ad_result",
-                    "asset_result",
-                    "campaign_asset_result",
-                    "ad_group_asset_result",
-                    "asset_group_result",
-                    "asset_group_asset_result",
-                ):
-                    nested = getattr(item, field_name, None)
-                    nested_name = getattr(nested, "resource_name", None) if nested else None
-                    if nested_name:
-                        resource_names.append(nested_name)
-                        break
-            return {"resource_names": resource_names}
+                nested = getattr(response, field_name, None)
+                resource_name = getattr(nested, "resource_name", None)
+                item = {"type": field_name}
+                if resource_name:
+                    item["resource_name"] = resource_name
+                    resource_names.append(resource_name)
+                operation_results.append(item)
+            return {
+                "resource_names": resource_names,
+                "operations": operation_results,
+            }
     except Exception:
         logger.debug("Could not convert result to JSON-safe form", exc_info=True)
+
     return str(result)
