@@ -1,7 +1,7 @@
 """Thin wrapper around google.ads.googleads.client.GoogleAdsClient.
 
-Centralizes client construction, GAQL search, and mutate execution so
-every tool module shares the same retry/error handling.
+Centralizes client construction, GAQL search, and mutate execution so every
+tool module shares the same API version and error handling.
 """
 
 from __future__ import annotations
@@ -13,12 +13,7 @@ from .config import Settings
 from .errors import GoogleAdsMcpError, format_google_ads_exception
 from .helpers import normalize_customer_id
 
-# Intentionally not pinning a specific Google Ads API version here. The
-# `google-ads` PyPI package periodically drops the oldest supported API
-# version (e.g. 31.x dropped v20 support entirely) — pinning a literal
-# string like "v20" breaks on every upgrade. Omitting `version` makes
-# GoogleAdsClient use whatever DEFAULT_VERSION ships with the installed
-# library, which is always one it actually supports.
+GOOGLE_ADS_API_VERSION = "v25"
 
 
 class GoogleAdsClientWrapper:
@@ -34,7 +29,8 @@ class GoogleAdsClientWrapper:
             from google.ads.googleads.client import GoogleAdsClient
 
             self._client = GoogleAdsClient.load_from_dict(
-                self._settings.google_ads_yaml_dict
+                self._settings.google_ads_yaml_dict,
+                version=GOOGLE_ADS_API_VERSION,
             )
         return self._client
 
@@ -63,7 +59,7 @@ class GoogleAdsClientWrapper:
         except GoogleAdsException as ex:
             raise GoogleAdsMcpError(format_google_ads_exception(ex)) from ex
 
-    # ---- Mutations -------------------------------------------------------
+    # ---- Mutations -----------------------------------------------------
 
     def mutate(
         self,
@@ -75,7 +71,7 @@ class GoogleAdsClientWrapper:
         partial_failure: bool = False,
         validate_only: bool = False,
     ):
-        """Execute a mutate call. Callers build the typed operation(s) first."""
+        """Execute a resource-specific mutate call."""
         import inspect
 
         from google.ads.googleads.errors import GoogleAdsException
@@ -95,15 +91,10 @@ class GoogleAdsClientWrapper:
             "customer_id": customer_id,
             operations_field: list(operations),
         }
-        # Not every mutate RPC accepts partial_failure / validate_only (e.g.
-        # CampaignBudgetService.mutate_campaign_budgets does not in some API
-        # versions). Only pass what the underlying method actually declares.
         try:
             accepted_params = set(inspect.signature(method).parameters)
         except (TypeError, ValueError):
-            accepted_params = (
-                None  # signature unavailable (e.g. C-extension) — be permissive
-            )
+            accepted_params = None
 
         if accepted_params is None or "partial_failure" in accepted_params:
             kwargs["partial_failure"] = partial_failure
@@ -115,10 +106,34 @@ class GoogleAdsClientWrapper:
         except GoogleAdsException as ex:
             raise GoogleAdsMcpError(format_google_ads_exception(ex)) from ex
 
+    def mutate_atomic(
+        self,
+        customer_id: str,
+        mutate_operations: Iterable[Any],
+        *,
+        validate_only: bool = False,
+    ):
+        """Execute cross-resource operations atomically via GoogleAdsService.Mutate.
 
-# Google Ads API service -> mutate method names that don't follow the regular
-# "add a trailing s" pluralization (e.g. Criterion -> Criteria, not Criterions).
-# Keep this list alphabetized and add to it whenever a new irregular shows up.
+        This is the correct path for workflows that create one resource and link
+        it to another in the same logical action. ``partial_failure`` is always
+        false so either the whole transaction succeeds or none of it does.
+        """
+        from google.ads.googleads.errors import GoogleAdsException
+
+        service = self.service("GoogleAdsService")
+        customer_id = normalize_customer_id(customer_id)
+        try:
+            return service.mutate(
+                customer_id=customer_id,
+                mutate_operations=list(mutate_operations),
+                partial_failure=False,
+                validate_only=validate_only,
+            )
+        except GoogleAdsException as ex:
+            raise GoogleAdsMcpError(format_google_ads_exception(ex)) from ex
+
+
 _IRREGULAR_MUTATE_METHODS: dict[str, str] = {
     "AdGroupCriterionService": "mutate_ad_group_criteria",
     "AssetGroupCriterionService": "mutate_asset_group_criteria",
@@ -128,9 +143,6 @@ _IRREGULAR_MUTATE_METHODS: dict[str, str] = {
 
 
 def _mutate_method_name(service_name: str) -> str:
-    # e.g. "CampaignService" -> "mutate_campaigns"
-    # e.g. "CampaignBudgetService" -> "mutate_campaign_budgets"
-    # e.g. "CampaignCriterionService" -> "mutate_campaign_criteria" (irregular plural)
     if service_name in _IRREGULAR_MUTATE_METHODS:
         return _IRREGULAR_MUTATE_METHODS[service_name]
 
