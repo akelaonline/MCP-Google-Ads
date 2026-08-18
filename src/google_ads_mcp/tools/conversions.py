@@ -8,6 +8,7 @@ import re
 from google.protobuf import field_mask_pb2
 
 from ..context import AppContext
+from ..errors import GoogleAdsMcpError
 
 
 def register(mcp, ctx: AppContext) -> None:
@@ -159,10 +160,10 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
         def execute():
-            return conversion_upload_service.upload_click_conversions(
-                customer_id=customer_id.replace("-", ""),
-                conversions=[click_conversion],
-                partial_failure=True,
+            return _upload_click_conversion(
+                conversion_upload_service,
+                customer_id,
+                click_conversion,
             )
 
         return ctx.safety.propose(
@@ -237,7 +238,11 @@ def register(mcp, ctx: AppContext) -> None:
             field_mask_pb2.FieldMask(paths=["primary_for_goal"])
         )
 
-        verb = "primary/biddable" if include_in_conversions_metric else "secondary/non-biddable"
+        verb = (
+            "primary/biddable"
+            if include_in_conversions_metric
+            else "secondary/non-biddable"
+        )
         description = (
             f"Set conversion action {conversion_action_id} -> {verb} "
             "using primary_for_goal"
@@ -291,10 +296,10 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
         def execute():
-            return conversion_upload_service.upload_click_conversions(
-                customer_id=customer_id.replace("-", ""),
-                conversions=[click_conversion],
-                partial_failure=True,
+            return _upload_click_conversion(
+                conversion_upload_service,
+                customer_id,
+                click_conversion,
             )
 
         return ctx.safety.propose(
@@ -394,6 +399,28 @@ def register(mcp, ctx: AppContext) -> None:
         """
         rows = ctx.client.search(customer_id, query)
         return {"conversion_value_rules": rows, "count": len(rows)}
+
+
+def _upload_click_conversion(service, customer_id: str, click_conversion):
+    """Upload one click conversion and turn partial row failures into errors.
+
+    Google requires partial_failure=True for conversion imports. Because this MCP
+    currently uploads one conversion per tool call, any partial failure means the
+    requested write did not succeed and must be surfaced to the safety/audit layer.
+    """
+    response = service.upload_click_conversions(
+        customer_id=customer_id.replace("-", ""),
+        conversions=[click_conversion],
+        partial_failure=True,
+    )
+    partial_error = getattr(response, "partial_failure_error", None)
+    if partial_error is not None:
+        code = int(getattr(partial_error, "code", 0) or 0)
+        message = str(getattr(partial_error, "message", "") or "").strip()
+        if code or message:
+            detail = f"code={code}" + (f", {message}" if message else "")
+            raise GoogleAdsMcpError(f"Google Ads rejected the conversion upload ({detail}).")
+    return response
 
 
 def _ensure_upload_click_action(
