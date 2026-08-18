@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "google-ads-mcp"
-version = "0.12.1"
+version = "0.13.0"
 description = "Full read/write Model Context Protocol server for Google Ads, with human-in-the-loop safety and audit logging."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -33,3 +33,14 @@ Repository = "https://github.com/akelaonline/MCP-Google-Ads"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
