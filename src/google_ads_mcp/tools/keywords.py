@@ -344,7 +344,7 @@ def _normalize_keywords(keywords: list[dict]) -> list[dict[str, str]]:
     normalized = []
     for index, keyword in enumerate(keywords):
         if not isinstance(keyword, dict):
-            raise ValueError(f"keywords[{index}] must be an object.")
+            raise TypeError(f"keywords[{index}] must be an object.")
         text = str(keyword.get("text", "")).strip()
         if not text:
             raise ValueError(f"keywords[{index}].text must not be empty.")
