@@ -36,9 +36,14 @@ _SENSITIVE_TOOLS = {
     "upload_offline_conversion",
     "accept_manager_link",
     "create_customer_client",
+    "invite_account_user",
+    "update_user_access_role",
 }
 
-_DESTRUCTIVE_TOOLS = {"end_experiment"}
+_DESTRUCTIVE_TOOLS = {
+    "end_experiment",
+    "revoke_user_access_invitation",
+}
 
 _SPEND_TOOLS = {
     "create_campaign_budget",
@@ -97,10 +102,6 @@ class SafetyLayer:
         require_customer_allowlist: bool = False,
     ):
         self._auto_approve = auto_approve
-        # Backward compatibility for direct/internal SafetyLayer callers:
-        # omitted high-risk flags inherit the legacy global auto-approve value.
-        # Production build_context always passes explicit Settings booleans,
-        # whose defaults are False, so live deployments get the safer policy.
         self._auto_approve_spend = (
             auto_approve if auto_approve_spend is None else auto_approve_spend
         )
@@ -359,6 +360,17 @@ def _safe_result(result: Any) -> Any:
                     if (resource_name := getattr(item, "resource_name", None))
                 ]
             }
+
+        single_result = getattr(result, "result", None)
+        if single_result is not None:
+            resource_name = getattr(single_result, "resource_name", None)
+            safe_single: dict[str, Any] = {}
+            if resource_name:
+                safe_single["resource_name"] = resource_name
+            review = getattr(single_result, "multi_party_auth_review", None)
+            if review:
+                safe_single["multi_party_auth_review"] = str(review)
+            return safe_single or str(single_result)
 
         responses = getattr(result, "mutate_operation_responses", None)
         if responses is not None:
