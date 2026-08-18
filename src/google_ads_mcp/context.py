@@ -26,5 +26,10 @@ def build_context() -> AppContext:
         auto_approve=settings.auto_approve,
         ttl_minutes=settings.pending_ttl_minutes,
         audit_log=audit,
+        auto_approve_spend=settings.auto_approve_spend,
+        auto_approve_destructive=settings.auto_approve_destructive,
+        auto_approve_sensitive=settings.auto_approve_sensitive,
+        allowed_customer_ids=settings.allowed_customer_ids,
+        require_customer_allowlist=settings.require_customer_allowlist,
     )
     return AppContext(settings=settings, client=client, safety=safety, audit=audit)
