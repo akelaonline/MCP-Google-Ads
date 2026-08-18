@@ -1,6 +1,8 @@
-"""Google Ads recommendation tools: read, apply, and dismiss them."""
+"""Google Ads recommendation tools: read, generate, apply, and dismiss them."""
 
 from __future__ import annotations
+
+import proto
 
 from ..context import AppContext
 from ..errors import GoogleAdsMcpError, format_google_ads_exception
@@ -46,6 +48,62 @@ def register(mcp, ctx: AppContext) -> None:
         """
         rows = ctx.client.search(customer_id, query)
         return {"recommendations": rows, "count": len(rows)}
+
+    @mcp.tool()
+    def generate_keyword_recommendations(
+        customer_id: str,
+        seed_keywords: list[str],
+        url_seed: str | None = None,
+    ) -> dict:
+        """Generate fresh Search keyword recommendations from keyword/URL seeds.
+
+        This uses RecommendationService.GenerateRecommendations rather than the
+        account's existing recommendation feed. Google can legitimately return
+        an empty list when the supplied signals are insufficient or no change is
+        recommended.
+        """
+        seeds = [str(value).strip() for value in seed_keywords if str(value).strip()]
+        if not seeds:
+            raise ValueError("seed_keywords must contain at least one keyword.")
+        if len(seeds) > 20:
+            raise ValueError("seed_keywords supports at most 20 keywords.")
+        if url_seed is not None:
+            url = url_seed.strip()
+            if not url.startswith(("https://", "http://")):
+                raise ValueError("url_seed must be an http:// or https:// URL.")
+        else:
+            url = None
+
+        customer = ctx.client.assert_customer_allowed(customer_id)
+        raw = ctx.client.raw
+        request = raw.get_type("GenerateRecommendationsRequest")
+        request.customer_id = customer
+        request.advertising_channel_type = raw.enums.AdvertisingChannelTypeEnum.SEARCH
+        request.recommendation_types.append(raw.enums.RecommendationTypeEnum.KEYWORD)
+        request.seed_info.keyword_seeds.extend(seeds)
+        if url:
+            request.seed_info.url_seed = url
+
+        service = ctx.client.service("RecommendationService")
+        from google.ads.googleads.errors import GoogleAdsException
+
+        try:
+            response = service.generate_recommendations(request=request)
+        except GoogleAdsException as ex:
+            raise GoogleAdsMcpError(format_google_ads_exception(ex)) from ex
+
+        recommendations = [
+            proto.Message.to_dict(item, preserving_proto_field_name=True)
+            for item in response.recommendations
+        ]
+        return {
+            "recommendation_type": "KEYWORD",
+            "advertising_channel_type": "SEARCH",
+            "seed_keywords": seeds,
+            "url_seed": url,
+            "recommendations": recommendations,
+            "count": len(recommendations),
+        }
 
     @mcp.tool()
     def apply_recommendation(customer_id: str, resource_name: str) -> dict:
