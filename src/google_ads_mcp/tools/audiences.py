@@ -1,9 +1,4 @@
-"""Audience / remarketing list tools.
-
-Covers three layers: reading existing lists, creating new ones (remarketing
-from a site tag, or customer match from an uploaded contact list), and
-attaching a list to an ad group for targeting/observation.
-"""
+"""Audience / remarketing list tools."""
 
 from __future__ import annotations
 
@@ -32,12 +27,9 @@ def register(mcp, ctx: AppContext) -> None:
         user_list_resource_name: str,
         bid_modifier: float | None = None,
     ) -> dict:
-        """Propose attaching an audience (user list) to an ad group for observation or targeting.
-
-        Args:
-            user_list_resource_name: e.g. "customers/123/userLists/456" (from list_user_lists).
-            bid_modifier: Optional bid modifier, e.g. 1.2 for +20%.
-        """
+        """Propose attaching a user-list audience to an ad group."""
+        if bid_modifier is not None and bid_modifier <= 0:
+            raise ValueError("bid_modifier must be greater than 0.")
         client = ctx.client.raw
         operation = client.get_type("AdGroupCriterionOperation")
         criterion = operation.create
@@ -74,13 +66,7 @@ def register(mcp, ctx: AppContext) -> None:
     def remove_audience_from_ad_group(
         customer_id: str, ad_group_id: str, criterion_id: str
     ) -> dict:
-        """Propose detaching an audience criterion from an ad group.
-
-        Args:
-            criterion_id: The ad_group_criterion.criterion_id of the audience
-                attachment (visible in get_ad_group_performance / GAQL on
-                ad_group_criterion where criterion.type = 'USER_LIST').
-        """
+        """Propose detaching an audience criterion from an ad group."""
         client = ctx.client.raw
         operation = client.get_type("AdGroupCriterionOperation")
         operation.remove = client.get_service(
@@ -112,20 +98,26 @@ def register(mcp, ctx: AppContext) -> None:
         name: str,
         membership_days: int = 30,
         description: str | None = None,
+        url_contains: str | None = None,
+        prepopulate: bool = True,
     ) -> dict:
         """Propose creating a website-visitor remarketing list.
 
-        Requires the account's Google Ads tag to already be firing on the
-        site — this creates the list definition, it does not install the tag.
-        New visitors start populating the list after creation; it does not
-        backfill past traffic.
-
-        Args:
-            membership_days: How long a visitor stays on the list after their
-                last matching visit, 1-540.
+        Google Ads requires an actual rule for a rule-based website audience;
+        an empty FlexibleRuleUserList is not an "all visitors" wildcard. Pass
+        ``url_contains`` as a hostname or URL fragment that every desired page
+        contains (for example ``example.com`` for all pages on that domain).
+        The Google Ads tag must already be installed and firing.
         """
         if not (1 <= membership_days <= 540):
             raise ValueError("membership_days must be between 1 and 540.")
+        if not name.strip():
+            raise ValueError("name must not be empty.")
+        if not url_contains or not url_contains.strip():
+            raise ValueError(
+                "url_contains is required. Use the site hostname (for example "
+                "'example.com') to create an all-pages remarketing list."
+            )
 
         client = ctx.client.raw
         operation = client.get_type("UserListOperation")
@@ -133,18 +125,37 @@ def register(mcp, ctx: AppContext) -> None:
         user_list.name = name
         if description:
             user_list.description = description
+        user_list.membership_status = client.enums.UserListMembershipStatusEnum.OPEN
         user_list.membership_life_span = membership_days
-        # An empty rule-based user list with no rule_item_groups matches "all
-        # visitors" once linked to a remarketing tag — the common case for a
-        # general "all site visitors" list. For narrower rules (e.g. "visited
-        # /checkout"), edit rule_item_groups after creation in the UI or via
-        # a follow-up GAQL-informed mutate; the API surface for arbitrary URL
-        # rules is intentionally not wrapped here to avoid a footgun tool
-        # that silently creates a list matching nobody.
-        user_list.rule_based_user_list.flexible_rule_user_list.SetInParent()
+        if prepopulate:
+            user_list.rule_based_user_list.prepopulation_status = (
+                client.enums.UserListPrepopulationStatusEnum.REQUESTED
+            )
+
+        # Official v25 rule shape: URL built-in variable + CONTAINS condition,
+        # wrapped in a flexible rule with one inclusive operand.
+        rule_item = client.get_type("UserListRuleItemInfo")
+        rule_item.name = "url__"
+        rule_item.string_rule_item.operator = (
+            client.enums.UserListStringRuleItemOperatorEnum.CONTAINS
+        )
+        rule_item.string_rule_item.value = url_contains.strip()
+
+        rule_group = client.get_type("UserListRuleItemGroupInfo")
+        rule_group.rule_items.append(rule_item)
+
+        flexible_rule = user_list.rule_based_user_list.flexible_rule_user_list
+        flexible_rule.inclusive_rule_operator = (
+            client.enums.UserListFlexibleRuleOperatorEnum.AND
+        )
+        operand = client.get_type("FlexibleRuleOperandInfo")
+        operand.rule.rule_item_groups.append(rule_group)
+        operand.lookback_window_days = membership_days
+        flexible_rule.inclusive_operands.append(operand)
 
         description_text = (
-            f"Create remarketing list '{name}' ({membership_days}-day membership)"
+            f"Create remarketing list '{name}' ({membership_days}-day membership) "
+            f"for URLs containing '{url_contains.strip()}'"
         )
 
         def execute():
@@ -158,6 +169,8 @@ def register(mcp, ctx: AppContext) -> None:
                 "name": name,
                 "membership_days": membership_days,
                 "description": description,
+                "url_contains": url_contains.strip(),
+                "prepopulate": prepopulate,
             },
             execute=execute,
         )
@@ -168,13 +181,9 @@ def register(mcp, ctx: AppContext) -> None:
         name: str,
         description: str | None = None,
     ) -> dict:
-        """Propose creating an empty Customer Match list (contact-based audience).
-
-        Creates the list container only — use upload_customer_match_members
-        to add hashed emails/phones afterward. Requires the account to be
-        enrolled in Customer Match (subject to Google's policy approval,
-        checked at upload time, not at list-creation time).
-        """
+        """Propose creating an empty Customer Match list."""
+        if not name.strip():
+            raise ValueError("name must not be empty.")
         client = ctx.client.raw
         operation = client.get_type("UserListOperation")
         user_list = operation.create
@@ -207,33 +216,28 @@ def register(mcp, ctx: AppContext) -> None:
         emails: list[str] | None = None,
         phone_numbers: list[str] | None = None,
     ) -> dict:
-        """Propose uploading contacts to a Customer Match list.
-
-        Emails and phone numbers are normalized and SHA-256 hashed locally
-        before sending — Google Ads requires hashed PII, raw contact data is
-        never transmitted in the clear by this tool.
-
-        Args:
-            user_list_resource_name: e.g. "customers/123/userLists/456"
-                (from create_customer_match_list or list_user_lists).
-            emails: Plain email addresses; lowercased and trimmed before hashing.
-            phone_numbers: Phone numbers in E.164 format (e.g. "+5491112345678");
-                hashed as-is, so normalize to E.164 before calling.
-        """
+        """Propose uploading locally SHA-256-hashed Customer Match members."""
         if not emails and not phone_numbers:
             raise ValueError("Provide at least one of emails or phone_numbers.")
 
         client = ctx.client.raw
-
         operations = []
         for email in emails or []:
+            normalized = email.strip().lower()
+            if not normalized:
+                continue
             identifier = client.get_type("UserIdentifier")
-            identifier.hashed_email = _hash_pii(email.strip().lower())
-            operations.append(("email", identifier))
+            identifier.hashed_email = _hash_pii(normalized)
+            operations.append(identifier)
         for phone in phone_numbers or []:
+            normalized = phone.strip()
+            if not normalized:
+                continue
             identifier = client.get_type("UserIdentifier")
-            identifier.hashed_phone_number = _hash_pii(phone.strip())
-            operations.append(("phone", identifier))
+            identifier.hashed_phone_number = _hash_pii(normalized)
+            operations.append(identifier)
+        if not operations:
+            raise ValueError("No non-empty email or phone identifiers were supplied.")
 
         description = (
             f"Upload {len(emails or [])} email(s) and {len(phone_numbers or [])} phone(s) "
@@ -242,7 +246,6 @@ def register(mcp, ctx: AppContext) -> None:
 
         def execute():
             job_service = client.get_service("OfflineUserDataJobService")
-            # Create the offline user data job.
             new_job = client.get_type("OfflineUserDataJob")
             new_job.type_ = (
                 client.enums.OfflineUserDataJobTypeEnum.CUSTOMER_MATCH_USER_LIST
@@ -257,13 +260,15 @@ def register(mcp, ctx: AppContext) -> None:
             job_resource_name = create_job_response.resource_name
 
             add_ops = []
-            for kind, identifier in operations:
+            for identifier in operations:
                 op = client.get_type("OfflineUserDataJobOperation")
                 op.create.user_identifiers.append(identifier)
                 add_ops.append(op)
 
             job_service.add_offline_user_data_job_operations(
-                resource_name=job_resource_name, operations=add_ops
+                resource_name=job_resource_name,
+                operations=add_ops,
+                enable_partial_failure=True,
             )
             job_service.run_offline_user_data_job(resource_name=job_resource_name)
             return {
@@ -285,21 +290,15 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def search_user_interests(customer_id: str, name_query: str) -> dict:
-        """Look up Affinity / In-Market / Custom-Intent segment IDs by name
-        (Google's predefined interest/purchase-intent categories — distinct
-        from your own remarketing/customer-match lists). Use the returned
-        `user_interest_id` with add_in_market_or_affinity_audience.
-
-        Args:
-            name_query: Partial, case-sensitive-insensitive match against
-                the segment's display name, e.g. "Sporting Goods" or
-                "Cooking Enthusiasts".
-        """
+        """Look up affinity/in-market user-interest segment IDs by name."""
+        if not name_query.strip():
+            raise ValueError("name_query must not be empty.")
+        safe_query = name_query.replace("\\", "\\\\").replace("'", "\\'")
         query = f"""
             SELECT user_interest.user_interest_id, user_interest.name,
                    user_interest.taxonomy_type
             FROM user_interest
-            WHERE user_interest.name LIKE '%{name_query}%'
+            WHERE user_interest.name LIKE '%{safe_query}%'
             LIMIT 50
         """
         rows = ctx.client.search(customer_id, query)
@@ -312,15 +311,9 @@ def register(mcp, ctx: AppContext) -> None:
         user_interest_id: str,
         bid_modifier: float | None = None,
     ) -> dict:
-        """Propose adding an Affinity / In-Market / Custom-Intent segment to
-        an ad group — Google's predefined interest/purchase-intent
-        categories, distinct from your own remarketing or Customer Match
-        lists (use attach_audience_to_ad_group for those).
-
-        Args:
-            user_interest_id: From search_user_interests.
-            bid_modifier: Optional, e.g. 1.2 for +20%.
-        """
+        """Propose adding an affinity/in-market segment to an ad group."""
+        if bid_modifier is not None and bid_modifier <= 0:
+            raise ValueError("bid_modifier must be greater than 0.")
         client = ctx.client.raw
         operation = client.get_type("AdGroupCriterionOperation")
         criterion = operation.create
@@ -362,21 +355,9 @@ def register(mcp, ctx: AppContext) -> None:
         topic_id: str,
         negative: bool = False,
     ) -> dict:
-        """Propose adding (or excluding) Display/YouTube topic targeting on
-        an ad group — targets pages/videos about a subject (e.g. "Home &
-        Garden > Landscaping") rather than a specific placement or audience.
-
-        Args:
-            topic_id: A topic_constant criterion ID (look up via GAQL on
-                `topic_constant`, e.g. `SELECT topic_constant.id,
-                topic_constant.path FROM topic_constant WHERE
-                topic_constant.path LIKE '%Landscaping%'`).
-            negative: If True, EXCLUDES this topic instead of targeting it —
-                common for brand safety (e.g. excluding "Sensitive Subjects").
-        """
+        """Propose adding or excluding Display/YouTube topic targeting."""
         client = ctx.client.raw
         topic_service = client.get_service("TopicConstantService")
-
         operation = client.get_type("AdGroupCriterionOperation")
         criterion = operation.create
         criterion.ad_group = client.get_service("AdGroupService").ad_group_path(
