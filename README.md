@@ -2,7 +2,7 @@
 
 # Google Ads MCP
 
-**Read/write Model Context Protocol server for operating Google Ads accounts from an AI client — with explicit confirmation, audit logging, and Google Ads API v25 contracts.**
+**Read/write Model Context Protocol server for operating Google Ads accounts from an AI client — with explicit confirmation, audit logging, customer isolation, and Google Ads API v25 contracts.**
 
 Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation & AI workflows
 
@@ -12,9 +12,9 @@ Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation &
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Google Ads API v25](https://img.shields.io/badge/Google%20Ads%20API-v25-4285F4.svg)](https://developers.google.com/google-ads/api)
 [![CI](https://github.com/akelaonline/MCP-Google-Ads/actions/workflows/tests.yml/badge.svg)](https://github.com/akelaonline/MCP-Google-Ads/actions/workflows/tests.yml)
-[![Version](https://img.shields.io/badge/version-0.12.1-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.13.0-informational.svg)](CHANGELOG.md)
 
-[Quick start](#quick-start) · [Capabilities](#capabilities) · [Safety](#safety-by-default) · [v0.12 hardening](#v012-compatibility--hardening) · [Documentation](#documentation)
+[Quick start](#quick-start) · [Capabilities](#capabilities) · [Safety](#safety-by-default) · [v0.13 production policy](#v013-production-policy) · [Documentation](#documentation)
 
 </div>
 
@@ -25,6 +25,31 @@ Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation &
 Most Google Ads MCP servers stop at reporting and raw GAQL. This project is designed to **operate** accounts: inspect performance, create and edit campaigns, change budgets and bidding, manage keywords and negatives, work with assets and audiences, upload offline conversions, build Performance Max structures, run experiments, and apply or dismiss recommendations.
 
 Every normal write follows a **propose → preview → confirm → execute → audit** flow. The default configuration does not silently change live spend.
+
+## v0.13 production policy
+
+v0.13 hardens the MCP for agencies and other deployments operating multiple live Google Ads customers.
+
+- Optional `GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS` scopes the deployment to known customer IDs across reads and writes.
+- `GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true` makes that scope mandatory and refuses startup when it is empty.
+- Account discovery is filtered to the deployment scope.
+- Mutations are centrally classified as `standard`, `spend`, `destructive`, or `sensitive`.
+- `GOOGLE_ADS_MCP_AUTO_APPROVE=true` auto-executes only standard-risk writes by default in the production context.
+- Spend, destructive, and sensitive/account-access actions each have a separate explicit auto-approve opt-in and remain confirmation-gated by default.
+- Customer scope is enforced in both the Google Ads client wrapper and the safety layer for defense in depth.
+
+For a customer-specific production instance, start from:
+
+```dotenv
+GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS=123-456-7890
+GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true
+GOOGLE_ADS_MCP_AUTO_APPROVE=false
+GOOGLE_ADS_MCP_AUTO_APPROVE_SPEND=false
+GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
+GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
+```
+
+See [`docs/SETUP.md`](docs/SETUP.md) and [`docs/SAFETY.md`](docs/SAFETY.md) for the production deployment model.
 
 ## v0.12.1 video hotfix
 
@@ -82,19 +107,25 @@ Full signatures and operational notes live in [`docs/TOOLS.md`](docs/TOOLS.md).
 
 ```mermaid
 flowchart LR
-    A[AI proposes change] --> B{Auto-approve?}
+    A[AI proposes change] --> S{Customer allowed?}
+    S -- no --> X[Blocked before account mutation]
+    S -- yes --> B{Auto-approve?}
     B -- no, default --> C[Preview + pending_action_id]
+    B -- yes --> R{Risk class}
+    R -- standard --> E[Google Ads API]
+    R -- spend / destructive / sensitive --> H{Separate opt-in?}
+    H -- no --> C
+    H -- yes --> E
     C --> D[confirm_pending_action]
-    D --> E[Google Ads API]
-    B -- explicit opt-in --> E
+    D --> E
     E --> F[(SQLite audit log)]
 ```
 
-Writes are proposed first unless `GOOGLE_ADS_MCP_AUTO_APPROVE=true` is explicitly configured. A pending action expires after 30 minutes by default.
+With the recommended production defaults, writes are proposed first and require confirmation. If global auto-approve is deliberately enabled, high-risk spend, destructive, and sensitive actions remain gated unless their own policy flag is also enabled.
 
 If Google or the network fails during confirmation, the action **stays pending** and can be retried with the same ID. The audit log records failed and successful attempts under that same action ID.
 
-For real-spend accounts, keep auto-approve disabled.
+For customer-specific deployments, configure a customer allowlist in addition to keeping high-risk auto-approve flags disabled.
 
 See [`docs/SAFETY.md`](docs/SAFETY.md).
 
@@ -193,6 +224,7 @@ This MCP wraps the **Google Ads API**, not every adjacent Google advertising pro
 - Google Business Profile linking is separate from campaign operations.
 - Legacy Local Campaign and Smart Shopping creation are intentionally not emulated on obsolete API shapes; use Performance Max workflows.
 - Old Call Ads are represented by the supported RSA + Call Asset replacement.
+- Traditional legacy `VIDEO` campaign creation/update is not emulated; use the supported Demand Gen video workflow.
 
 ## Tests
 
@@ -200,6 +232,7 @@ CI runs on Python **3.11, 3.12 and 3.13** and includes:
 
 - installation smoke test;
 - unit tests for MCP behavior and safety;
+- production-policy tests for customer isolation and risk-aware approvals;
 - source guardrails preventing removed API patterns from returning;
 - real `google-ads` **v25 generated protobuf contract tests** for critical write paths.
 
@@ -218,7 +251,7 @@ ruff check src tests scripts
 | [`CHANGELOG.md`](CHANGELOG.md) | Release history and migration notes |
 | [`docs/SETUP.md`](docs/SETUP.md) | Google Cloud, OAuth, Developer Token, MCP config, troubleshooting |
 | [`docs/TOOLS.md`](docs/TOOLS.md) | Tool signatures and operational notes |
-| [`docs/SAFETY.md`](docs/SAFETY.md) | Confirmation, retries, audit trail, HTTP safety |
+| [`docs/SAFETY.md`](docs/SAFETY.md) | Customer isolation, risk-aware confirmation, retries, audit and HTTP safety |
 | [`docs/EXAMPLES.md`](docs/EXAMPLES.md) | Example workflows and GAQL patterns |
 | [`docs/FAQ.md`](docs/FAQ.md) | Common questions |
 
