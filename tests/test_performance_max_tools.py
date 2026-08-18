@@ -1,4 +1,4 @@
-"""Tests for tools/performance_max.py — campaign shell + asset group creation."""
+"""Tests for tools/performance_max.py."""
 
 from __future__ import annotations
 
@@ -31,7 +31,6 @@ def test_create_performance_max_campaign_defaults_to_maximize_conversions():
 
     ctx = build_ctx(fake_mutate)
     tool_fns = register_module(tools.performance_max, ctx)
-
     result = tool_fns["create_performance_max_campaign"](
         customer_id="123",
         name="PMax Test",
@@ -42,23 +41,19 @@ def test_create_performance_max_campaign_defaults_to_maximize_conversions():
     assert result["status"] == "executed"
 
 
-def test_create_asset_group_creates_assets_then_group_then_links():
+def test_create_asset_group_is_one_atomic_mutation(monkeypatch):
     calls = []
 
     def fake_mutate(service_name, customer_id, operations, **kwargs):
-        op_count = len(list(operations))
-        calls.append((service_name, op_count))
-        if service_name == "AssetService":
-            # 4 headlines + 1 long headline + 2 descriptions + 1 business name = 8
-            return FakeMutateResult(
-                *[f"customers/123/assets/{i}" for i in range(op_count)]
-            )
-        if service_name == "AssetGroupService":
-            return FakeMutateResult("customers/123/assetGroups/555")
-        if service_name == "AssetGroupAssetService":
-            return FakeMutateResult(*[f"link-{i}" for i in range(op_count)])
-        raise AssertionError(f"unexpected service {service_name}")
+        operation_list = list(operations)
+        calls.append((service_name, len(operation_list)))
+        return {"atomic": True, "operation_count": len(operation_list)}
 
+    monkeypatch.setattr(
+        tools.performance_max,
+        "fetch_public_https_image",
+        lambda *a, **k: b"fake-image-bytes",
+    )
     ctx = build_ctx(fake_mutate)
     tool_fns = register_module(tools.performance_max, ctx)
 
@@ -67,41 +62,46 @@ def test_create_asset_group_creates_assets_then_group_then_links():
         campaign_id="456",
         name="AG Cambridge",
         final_urls=["https://cambridge.com.ar"],
-        headlines=[
-            "Aprendé inglés",
-            "Cambridge oficial",
-            "Cursos 2026",
-            "Certificación",
-        ],
+        headlines=["Aprendé inglés", "Cambridge oficial", "Cursos 2026"],
         long_headline="El instituto de inglés más reconocido de Buenos Aires",
         descriptions=["Inscribite ya", "Clases presenciales y online"],
         business_name="Instituto Cambridge",
+        marketing_image_urls=["https://example.com/landscape.jpg"],
+        square_marketing_image_urls=["https://example.com/square.jpg"],
+        logo_image_urls=["https://example.com/logo.jpg"],
     )
 
-    service_order = [c[0] for c in calls]
-    assert service_order == [
-        "AssetService",
-        "AssetGroupService",
-        "AssetGroupAssetService",
-    ]
-
-    asset_call = next(c for c in calls if c[0] == "AssetService")
-    # 4 headlines + 1 long_headline + 2 descriptions + 1 business_name = 8 text assets
-    assert asset_call[1] == 8
-
-    link_call = next(c for c in calls if c[0] == "AssetGroupAssetService")
-    assert link_call[1] == 8  # one link per text asset
-
+    assert len(calls) == 1
+    assert calls[0][0] == "GoogleAdsService"
+    # 3 headlines + long + 2 descriptions + business + 3 images = 10 assets,
+    # plus 1 AssetGroup and 10 AssetGroupAsset links = 21 operations.
+    assert calls[0][1] == 21
     assert result["status"] == "executed"
-    assert result["result"]["assets_created"] == 8
-    assert result["result"]["assets_linked"] == 8
+    assert result["result"]["atomic"] is True
+
+
+def test_create_asset_group_rejects_missing_required_images():
+    ctx = build_ctx(lambda *a, **k: None)
+    tool_fns = register_module(tools.performance_max, ctx)
+
+    with pytest.raises(ValueError, match="landscape marketing image"):
+        tool_fns["create_asset_group"](
+            customer_id="123",
+            campaign_id="456",
+            name="AG",
+            final_urls=["https://example.com"],
+            headlines=["a", "b", "c"],
+            long_headline="Long headline",
+            descriptions=["Short desc", "Second description"],
+            business_name="Biz",
+        )
 
 
 def test_create_asset_group_rejects_too_few_headlines():
     ctx = build_ctx(lambda *a, **k: None)
     tool_fns = register_module(tools.performance_max, ctx)
 
-    with pytest.raises(ValueError, match="3 and 5 headlines"):
+    with pytest.raises(ValueError, match="3-15 headlines"):
         tool_fns["create_asset_group"](
             customer_id="123",
             campaign_id="456",
@@ -109,23 +109,29 @@ def test_create_asset_group_rejects_too_few_headlines():
             final_urls=["https://example.com"],
             headlines=["Only one"],
             long_headline="x",
-            descriptions=["y"],
+            descriptions=["one", "two"],
             business_name="Biz",
+            marketing_image_urls=["https://example.com/a.jpg"],
+            square_marketing_image_urls=["https://example.com/b.jpg"],
+            logo_image_urls=["https://example.com/c.jpg"],
         )
 
 
-def test_create_asset_group_rejects_long_long_headline():
+def test_create_asset_group_requires_short_description():
     ctx = build_ctx(lambda *a, **k: None)
     tool_fns = register_module(tools.performance_max, ctx)
 
-    with pytest.raises(ValueError, match="90 characters"):
+    with pytest.raises(ValueError, match="60 characters"):
         tool_fns["create_asset_group"](
             customer_id="123",
             campaign_id="456",
             name="AG",
             final_urls=["https://example.com"],
             headlines=["a", "b", "c"],
-            long_headline="x" * 91,
-            descriptions=["y"],
+            long_headline="x",
+            descriptions=["x" * 61, "y" * 61],
             business_name="Biz",
+            marketing_image_urls=["https://example.com/a.jpg"],
+            square_marketing_image_urls=["https://example.com/b.jpg"],
+            logo_image_urls=["https://example.com/c.jpg"],
         )
