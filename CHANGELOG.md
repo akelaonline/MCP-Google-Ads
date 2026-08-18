@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.12.1 — 2026-08-18
+
+### Fixed
+- **P0 production safety:** `create_video_ad` no longer attempts an unsupported legacy VIDEO mutation. Google Ads API v25 only permits fetching/reporting for legacy VIDEO campaigns; the compatibility endpoint now fails safe with a structured `unsupported` result and zero mutation.
+- Added real-v25 contract coverage so a legacy `ad.video_ad` write path cannot silently return.
+
+### Added
+- **`create_demand_gen_video_ad`** — supported programmatic video path using `DemandGenVideoResponsiveAd`, existing YouTube video IDs, square logos, text assets and an atomic multi-resource mutation. Created PAUSED.
+
+### Changed
+- Version bumped to 0.12.1 and docs now distinguish legacy VIDEO reporting from Demand Gen video creation.
+
+## 0.12.0 — 2026-08-18
+
+### Fixed
+- Google Ads API v25 compatibility and hardening across campaigns, ads, assets, PMax, bidding, targeting, audiences, conversions, recommendations, atomic writes, SSRF protections and audit/retry behavior. See `docs/RELEASE_0.12.0.md` for the full release notes.
+
 ## 0.11.0 — 2026-08-13
 
 ### Added

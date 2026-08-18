@@ -12,7 +12,7 @@ Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation &
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Google Ads API v25](https://img.shields.io/badge/Google%20Ads%20API-v25-4285F4.svg)](https://developers.google.com/google-ads/api)
 [![CI](https://github.com/akelaonline/MCP-Google-Ads/actions/workflows/tests.yml/badge.svg)](https://github.com/akelaonline/MCP-Google-Ads/actions/workflows/tests.yml)
-[![Version](https://img.shields.io/badge/version-0.12.0-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.12.1-informational.svg)](CHANGELOG.md)
 
 [Quick start](#quick-start) · [Capabilities](#capabilities) · [Safety](#safety-by-default) · [v0.12 hardening](#v012-compatibility--hardening) · [Documentation](#documentation)
 
@@ -25,6 +25,10 @@ Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation &
 Most Google Ads MCP servers stop at reporting and raw GAQL. This project is designed to **operate** accounts: inspect performance, create and edit campaigns, change budgets and bidding, manage keywords and negatives, work with assets and audiences, upload offline conversions, build Performance Max structures, run experiments, and apply or dismiss recommendations.
 
 Every normal write follows a **propose → preview → confirm → execute → audit** flow. The default configuration does not silently change live spend.
+
+## v0.12.1 video hotfix
+
+Google Ads API v25 exposes legacy `VIDEO` campaigns for fetching/reporting only. `create_video_ad` is retained as a compatibility endpoint but now returns `status=unsupported` and performs **no mutation**. Use `create_demand_gen_video_ad` for supported programmatic video creation. The Demand Gen video flow creates YouTube video assets, logo assets and the PAUSED `DemandGenVideoResponsiveAd` atomically.
 
 ## v0.12 compatibility & hardening
 
@@ -61,7 +65,7 @@ Key changes:
 | **Budgets** | Create and update daily/shared budgets |
 | **Bidding** | Manual CPC, Maximize Clicks, Maximize Conversions, Maximize Conversion Value, Target CPA/ROAS, Target Impression Share, portfolio strategies |
 | **Ad groups** | Campaign-aware creation, status changes, CPC updates |
-| **Ads** | Responsive Search, Responsive Display, Video and Demand Gen creatives; RSA edits; legacy Call Ad compatibility via RSA + Call Asset |
+| **Ads** | Responsive Search, Responsive Display, Demand Gen image/video creatives; RSA edits; legacy Call Ad compatibility via RSA + Call Asset; legacy VIDEO writes blocked safely |
 | **Assets** | Sitelinks, calls, images, promotions, callouts, structured snippets, Business Message / WhatsApp; attach/detach |
 | **Keywords** | Add, bid updates, match-type recreation, pause/enable/remove, campaign/ad-group negatives, bulk operations |
 | **Keyword research** | Keyword ideas and historical metrics through Keyword Planner |
