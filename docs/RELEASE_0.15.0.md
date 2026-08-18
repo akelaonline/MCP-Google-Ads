@@ -69,3 +69,5 @@ v0.15.0 continues to target Google Ads API v25 through the tested Google Ads Pyt
 v0.15.0 is additive. Existing v0.14 tool signatures and production-policy environment variables are unchanged.
 
 See `docs/BATCH_SMART_BIDDING.md` for operational examples and cautions.
+
+The release-candidate tree is finalized before the last Python 3.11/3.12/3.13 CI matrix and will not receive code changes after that validation.
