@@ -57,7 +57,7 @@ def _status(raw, value: Any, enum_name: str):
 
 def _build_batch_mutate(raw, customer_id: str, spec: dict[str, Any]):
     if not isinstance(spec, dict):
-        raise ValueError("Each batch operation must be an object/dict.")
+        raise TypeError("Each batch operation must be an object/dict.")
     kind = str(spec.get("kind", "")).strip().lower()
     if kind not in _SUPPORTED_KINDS:
         raise ValueError(
@@ -230,7 +230,6 @@ def register(mcp, ctx: AppContext) -> None:
             raise ValueError("Batch manifest is too large; split it into smaller jobs.")
 
         customer = ctx.client.assert_customer_allowed(customer_id)
-        # Build before SafetyLayer so malformed specs fail before any pending action exists.
         mutate_operations = [
             _build_batch_mutate(ctx.client.raw, customer, spec) for spec in operations
         ]
@@ -239,7 +238,8 @@ def register(mcp, ctx: AppContext) -> None:
         def execute():
             service = ctx.client.service("BatchJobService")
             create_operation = ctx.client.raw.get_type("BatchJobOperation")
-            create_operation.create = ctx.client.raw.get_type("BatchJob")
+            batch_job = ctx.client.raw.get_type("BatchJob")
+            ctx.client.raw.copy_from(create_operation.create, batch_job)
             try:
                 created = service.mutate_batch_job(
                     customer_id=customer,
