@@ -19,7 +19,7 @@ def test_search_campaign_auto_uses_search_standard():
     calls = []
 
     def fake_mutate(service_name, customer_id, operations, **kwargs):
-        operation = list(operations)[0]
+        operation = next(iter(operations))
         calls.append((service_name, operation.create.type_))
         return FakeMutateResult("customers/123/adGroups/1")
 
@@ -33,14 +33,14 @@ def test_search_campaign_auto_uses_search_standard():
 
     assert result["status"] == "executed"
     assert calls[0][0] == "AdGroupService"
-    assert calls[0][1].name == "SEARCH_STANDARD"
+    assert calls[0][1] == ctx.client.raw.enums.AdGroupTypeEnum.SEARCH_STANDARD.value
 
 
 def test_demand_gen_auto_leaves_type_unset():
     captured = []
 
     def fake_mutate(service_name, customer_id, operations, **kwargs):
-        operation = list(operations)[0]
+        operation = next(iter(operations))
         captured.append(operation)
         return FakeMutateResult("customers/123/adGroups/2")
 
@@ -88,7 +88,7 @@ def test_explicit_video_type_skips_campaign_lookup():
     calls = []
 
     def fake_mutate(service_name, customer_id, operations, **kwargs):
-        operation = list(operations)[0]
+        operation = next(iter(operations))
         calls.append(operation.create.type_)
         return FakeMutateResult("customers/123/adGroups/3")
 
@@ -105,4 +105,4 @@ def test_explicit_video_type_skips_campaign_lookup():
     )
 
     assert result["status"] == "executed"
-    assert calls[0].name == "VIDEO_RESPONSIVE"
+    assert calls[0] == ctx.client.raw.enums.AdGroupTypeEnum.VIDEO_RESPONSIVE.value
