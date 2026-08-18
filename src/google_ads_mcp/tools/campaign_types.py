@@ -66,7 +66,7 @@ def register(mcp, ctx: AppContext) -> None:
         if target_roas is not None:
             campaign.target_roas.target_roas = target_roas
         else:
-            campaign.manual_cpc.SetInParent()
+            client.copy_from(campaign.manual_cpc, client.get_type("ManualCpc"))
 
         description = (
             f"Create Standard Shopping campaign '{name}' (Merchant Center "
