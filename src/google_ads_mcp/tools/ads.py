@@ -1,10 +1,15 @@
-"""Ad creative tools — Responsive Search Ads plus status management."""
+"""Ad creative tools compatible with Google Ads API v25."""
 
 from __future__ import annotations
 
 from google.protobuf import field_mask_pb2
 
+from ..campaign_compat import (
+    DEFAULT_EU_POLITICAL_ADVERTISING,
+    apply_required_campaign_fields,
+)
 from ..context import AppContext
+from ..net import fetch_public_https_image
 
 
 def register(mcp, ctx: AppContext) -> None:
@@ -18,22 +23,8 @@ def register(mcp, ctx: AppContext) -> None:
         path1: str | None = None,
         path2: str | None = None,
     ) -> dict:
-        """Propose creating a Responsive Search Ad.
-
-        Args:
-            headlines: 3-15 strings, each <=30 characters.
-            descriptions: 2-4 strings, each <=90 characters.
-            final_urls: Landing page URL(s).
-            path1 / path2: Optional display-URL path segments (<=15 chars each).
-        """
-        if not (3 <= len(headlines) <= 15):
-            raise ValueError("Provide between 3 and 15 headlines.")
-        if not (2 <= len(descriptions) <= 4):
-            raise ValueError("Provide between 2 and 4 descriptions.")
-        if any(len(h) > 30 for h in headlines):
-            raise ValueError("Each headline must be 30 characters or fewer.")
-        if any(len(d) > 90 for d in descriptions):
-            raise ValueError("Each description must be 90 characters or fewer.")
+        """Propose creating a Responsive Search Ad. Created PAUSED."""
+        _validate_rsa(headlines, descriptions, final_urls, path1, path2)
 
         client = ctx.client.raw
         operation = client.get_type("AdGroupAdOperation")
@@ -42,25 +33,20 @@ def register(mcp, ctx: AppContext) -> None:
             customer_id.replace("-", ""), ad_group_id
         )
         ad_group_ad.status = client.enums.AdGroupAdStatusEnum.PAUSED
-
-        rsa = ad_group_ad.ad.responsive_search_ad
-        for text in headlines:
-            asset = client.get_type("AdTextAsset")
-            asset.text = text
-            rsa.headlines.append(asset)
-        for text in descriptions:
-            asset = client.get_type("AdTextAsset")
-            asset.text = text
-            rsa.descriptions.append(asset)
-        if path1:
-            rsa.path1 = path1
-        if path2:
-            rsa.path2 = path2
-        ad_group_ad.ad.final_urls.extend(final_urls)
+        _populate_rsa(
+            client,
+            ad_group_ad.ad,
+            headlines=headlines,
+            descriptions=descriptions,
+            final_urls=final_urls,
+            path1=path1,
+            path2=path2,
+        )
 
         description = (
             f"Create Responsive Search Ad in ad group {ad_group_id} "
-            f"({len(headlines)} headlines, {len(descriptions)} descriptions), created PAUSED"
+            f"({len(headlines)} headlines, {len(descriptions)} descriptions), "
+            "created PAUSED"
         )
 
         def execute():
@@ -75,6 +61,8 @@ def register(mcp, ctx: AppContext) -> None:
                 "headlines": headlines,
                 "descriptions": descriptions,
                 "final_urls": final_urls,
+                "path1": path1,
+                "path2": path2,
             },
             execute=execute,
         )
@@ -90,19 +78,15 @@ def register(mcp, ctx: AppContext) -> None:
         final_urls: list[str],
         marketing_image_urls: list[str] | None = None,
         logo_image_urls: list[str] | None = None,
+        square_marketing_image_urls: list[str] | None = None,
     ) -> dict:
-        """Propose creating a Responsive Display Ad. Created PAUSED.
+        """Propose creating a Responsive Display Ad atomically. Created PAUSED.
 
-        Args:
-            headlines: 1-5 strings, each <=30 characters.
-            long_headline: 1 string, <=90 characters.
-            descriptions: 1-5 strings, each <=90 characters.
-            marketing_image_urls / logo_image_urls: Optional public HTTPS URLs;
-                each is downloaded and uploaded as an image asset at confirm
-                time. Google requires at least one marketing image in
-                practice — omitting both leaves the ad relying on
-                automatically generated images where policy allows, which is
-                not guaranteed to pass review.
+        API v25 requires at least one landscape marketing image and one square
+        marketing image. Images are fetched before confirmation is sent to
+        Google; the Asset resources and ad itself are then created in one
+        atomic GoogleAdsService.Mutate request, so failed ad creation cannot
+        leave orphan image assets behind.
         """
         if not (1 <= len(headlines) <= 5):
             raise ValueError("Provide between 1 and 5 headlines.")
@@ -114,61 +98,79 @@ def register(mcp, ctx: AppContext) -> None:
             raise ValueError("Provide between 1 and 5 descriptions.")
         if any(len(d) > 90 for d in descriptions):
             raise ValueError("Each description must be 90 characters or fewer.")
+        if not business_name or len(business_name) > 25:
+            raise ValueError("business_name is required and must be 25 characters or fewer.")
+        if not final_urls:
+            raise ValueError("Provide at least one final URL.")
+        if not marketing_image_urls:
+            raise ValueError(
+                "API v25 Responsive Display Ads require at least one landscape "
+                "marketing_image_urls entry."
+            )
+        if not square_marketing_image_urls:
+            raise ValueError(
+                "API v25 Responsive Display Ads require at least one "
+                "square_marketing_image_urls entry."
+            )
 
         client = ctx.client.raw
-
+        customer_id_clean = customer_id.replace("-", "")
+        ad_group_resource_name = client.get_service("AdGroupService").ad_group_path(
+            customer_id_clean, ad_group_id
+        )
         description_text = (
             f"Create Responsive Display Ad in ad group {ad_group_id} "
-            f"({len(headlines)} headlines, {len(marketing_image_urls or [])} marketing "
-            f"images), created PAUSED"
+            f"({len(headlines)} headlines, {len(marketing_image_urls)} landscape, "
+            f"{len(square_marketing_image_urls)} square images), created PAUSED"
         )
 
         def execute():
-            import urllib.request
+            operations = []
+            next_temp_id = -1
 
-            def _upload_images(urls, field):
-                resource_names = []
-                for url in urls or []:
-                    with urllib.request.urlopen(url, timeout=30) as response:
-                        image_bytes = response.read()
-                    op = client.get_type("AssetOperation")
-                    op.create.image_asset.data = image_bytes
-                    result = ctx.client.mutate("AssetService", customer_id, [op])
-                    resource_names.append(result.results[0].resource_name)
-                return resource_names
-
-            marketing_images = _upload_images(marketing_image_urls, "marketing")
-            logo_images = _upload_images(logo_image_urls, "logo")
-
-            operation = client.get_type("AdGroupAdOperation")
-            ad_group_ad = operation.create
-            ad_group_ad.ad_group = client.get_service("AdGroupService").ad_group_path(
-                customer_id.replace("-", ""), ad_group_id
+            landscape_refs, landscape_ops, next_temp_id = _build_image_asset_operations(
+                client,
+                customer_id_clean,
+                marketing_image_urls,
+                next_temp_id,
             )
-            ad_group_ad.status = client.enums.AdGroupAdStatusEnum.PAUSED
+            operations.extend(landscape_ops)
+            square_refs, square_ops, next_temp_id = _build_image_asset_operations(
+                client,
+                customer_id_clean,
+                square_marketing_image_urls,
+                next_temp_id,
+            )
+            operations.extend(square_ops)
+            logo_refs, logo_ops, next_temp_id = _build_image_asset_operations(
+                client,
+                customer_id_clean,
+                logo_image_urls or [],
+                next_temp_id,
+            )
+            operations.extend(logo_ops)
 
+            ad_operation = client.get_type("AdGroupAdOperation")
+            ad_group_ad = ad_operation.create
+            ad_group_ad.ad_group = ad_group_resource_name
+            ad_group_ad.status = client.enums.AdGroupAdStatusEnum.PAUSED
             rda = ad_group_ad.ad.responsive_display_ad
             for text in headlines:
-                asset = client.get_type("AdTextAsset")
-                asset.text = text
-                rda.headlines.append(asset)
+                rda.headlines.append(_text_asset(client, text))
             rda.long_headline.text = long_headline
             for text in descriptions:
-                asset = client.get_type("AdTextAsset")
-                asset.text = text
-                rda.descriptions.append(asset)
+                rda.descriptions.append(_text_asset(client, text))
             rda.business_name = business_name
-            for resource_name in marketing_images:
-                asset = client.get_type("AdImageAsset")
-                asset.asset = resource_name
-                rda.marketing_images.append(asset)
-            for resource_name in logo_images:
-                asset = client.get_type("AdImageAsset")
-                asset.asset = resource_name
-                rda.logo_images.append(asset)
+            for resource_name in landscape_refs:
+                rda.marketing_images.append(_image_ref(client, resource_name))
+            for resource_name in square_refs:
+                rda.square_marketing_images.append(_image_ref(client, resource_name))
+            for resource_name in logo_refs:
+                rda.logo_images.append(_image_ref(client, resource_name))
             ad_group_ad.ad.final_urls.extend(final_urls)
+            operations.append(_wrap_mutate(client, "ad_group_ad_operation", ad_operation))
 
-            return ctx.client.mutate("AdGroupAdService", customer_id, [operation])
+            return ctx.client.mutate_atomic(customer_id, operations)
 
         return ctx.safety.propose(
             tool_name="create_responsive_display_ad",
@@ -182,6 +184,7 @@ def register(mcp, ctx: AppContext) -> None:
                 "business_name": business_name,
                 "final_urls": final_urls,
                 "marketing_image_urls": marketing_image_urls,
+                "square_marketing_image_urls": square_marketing_image_urls,
                 "logo_image_urls": logo_image_urls,
             },
             execute=execute,
@@ -198,23 +201,13 @@ def register(mcp, ctx: AppContext) -> None:
         description2: str | None = None,
         companion_banner_asset_resource_name: str | None = None,
     ) -> dict:
-        """Propose creating an in-stream YouTube video ad. Created PAUSED.
-
-        Requires the video to already be uploaded and public/unlisted on
-        YouTube — this tool does not upload video files, only references an
-        existing video by ID.
-
-        Args:
-            youtube_video_id: The 11-character ID from the YouTube URL
-                (e.g. "dQw4w9WgXcQ" from youtube.com/watch?v=dQw4w9WgXcQ).
-            headline: <=15 characters (YouTube's in-stream CTA headline limit).
-            companion_banner_asset_resource_name: Optional pre-uploaded image
-                asset resource name for the companion banner.
-        """
-        if len(headline) > 15:
-            raise ValueError(
-                "headline must be 15 characters or fewer (YouTube CTA limit)."
-            )
+        """Propose creating an in-stream YouTube video ad. Created PAUSED."""
+        if len(youtube_video_id) != 11:
+            raise ValueError("youtube_video_id must be the 11-character YouTube video ID.")
+        if not headline or len(headline) > 15:
+            raise ValueError("headline must be 1-15 characters.")
+        if not final_urls:
+            raise ValueError("Provide at least one final URL.")
 
         client = ctx.client.raw
         operation = client.get_type("AdGroupAdOperation")
@@ -226,10 +219,8 @@ def register(mcp, ctx: AppContext) -> None:
 
         video_ad = ad_group_ad.ad.video_ad
         video_ad.video.video_id = youtube_video_id
-        in_stream = video_ad.in_stream
-        in_stream.action_button_label = headline
-        if final_urls:
-            in_stream.action_headline = headline
+        video_ad.in_stream.action_button_label = headline
+        video_ad.in_stream.action_headline = description1 or headline
         if companion_banner_asset_resource_name:
             video_ad.companion_banner.asset = companion_banner_asset_resource_name
         ad_group_ad.ad.final_urls.extend(final_urls)
@@ -253,6 +244,7 @@ def register(mcp, ctx: AppContext) -> None:
                 "final_urls": final_urls,
                 "description1": description1,
                 "description2": description2,
+                "companion_banner_asset_resource_name": companion_banner_asset_resource_name,
             },
             execute=execute,
         )
@@ -268,22 +260,7 @@ def register(mcp, ctx: AppContext) -> None:
         path1: str | None = None,
         path2: str | None = None,
     ) -> dict:
-        """Propose replacing the headlines/descriptions/final_urls of an
-        EXISTING Responsive Search Ad, in place — no need to remove and
-        recreate the ad (which loses its accumulated Ad Strength history
-        and serving data).
-
-        Only the fields you pass are changed; omit a field to leave it as-is.
-        Note this REPLACES the full headlines/descriptions list, it does not
-        append to it — pass the complete new list for whichever field you're
-        changing.
-
-        Args:
-            headlines: If provided, 3-15 strings, each <=30 characters.
-            descriptions: If provided, 2-4 strings, each <=90 characters.
-            final_urls: If provided, replaces the landing page URL(s).
-            path1 / path2: Optional display-URL path segments (<=15 chars each).
-        """
+        """Propose editing an existing RSA through AdService (API v25 path)."""
         if headlines is not None:
             if not (3 <= len(headlines) <= 15):
                 raise ValueError("Provide between 3 and 15 headlines.")
@@ -294,67 +271,62 @@ def register(mcp, ctx: AppContext) -> None:
                 raise ValueError("Provide between 2 and 4 descriptions.")
             if any(len(d) > 90 for d in descriptions):
                 raise ValueError("Each description must be 90 characters or fewer.")
+        if final_urls is not None and not final_urls:
+            raise ValueError("final_urls cannot be an empty list when supplied.")
         if path1 is not None and len(path1) > 15:
             raise ValueError("path1 must be 15 characters or fewer.")
         if path2 is not None and len(path2) > 15:
             raise ValueError("path2 must be 15 characters or fewer.")
         if not any(
-            v is not None
-            for v in (headlines, descriptions, final_urls, path1, path2)
+            value is not None
+            for value in (headlines, descriptions, final_urls, path1, path2)
         ):
             raise ValueError(
-                "Provide at least one of headlines, descriptions, final_urls, "
-                "path1, path2 to update."
+                "Provide at least one of headlines, descriptions, final_urls, path1, path2."
             )
 
         client = ctx.client.raw
-        operation = client.get_type("AdGroupAdOperation")
-        resource_name = client.get_service("AdGroupAdService").ad_group_ad_path(
-            customer_id.replace("-", ""), ad_group_id, ad_id
+        operation = client.get_type("AdOperation")
+        operation.update.resource_name = client.get_service("AdService").ad_path(
+            customer_id.replace("-", ""), ad_id
         )
-        operation.update.resource_name = resource_name
-
         update_paths: list[str] = []
-        rsa = operation.update.ad.responsive_search_ad
+        rsa = operation.update.responsive_search_ad
+
         if headlines is not None:
             for text in headlines:
-                asset = client.get_type("AdTextAsset")
-                asset.text = text
-                rsa.headlines.append(asset)
-            update_paths.append("ad.responsive_search_ad.headlines")
+                rsa.headlines.append(_text_asset(client, text))
+            update_paths.append("responsive_search_ad.headlines")
         if descriptions is not None:
             for text in descriptions:
-                asset = client.get_type("AdTextAsset")
-                asset.text = text
-                rsa.descriptions.append(asset)
-            update_paths.append("ad.responsive_search_ad.descriptions")
+                rsa.descriptions.append(_text_asset(client, text))
+            update_paths.append("responsive_search_ad.descriptions")
         if path1 is not None:
             rsa.path1 = path1
-            update_paths.append("ad.responsive_search_ad.path1")
+            update_paths.append("responsive_search_ad.path1")
         if path2 is not None:
             rsa.path2 = path2
-            update_paths.append("ad.responsive_search_ad.path2")
+            update_paths.append("responsive_search_ad.path2")
         if final_urls is not None:
-            operation.update.ad.final_urls.extend(final_urls)
-            update_paths.append("ad.final_urls")
+            operation.update.final_urls.extend(final_urls)
+            update_paths.append("final_urls")
 
         operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=update_paths))
-
         changed = ", ".join(
             name
-            for name, val in [
+            for name, value in (
                 ("headlines", headlines),
                 ("descriptions", descriptions),
                 ("final_urls", final_urls),
                 ("path1", path1),
                 ("path2", path2),
-            ]
-            if val is not None
+            )
+            if value is not None
         )
         description = f"Update RSA {ad_id} (ad group {ad_group_id}): {changed}"
 
         def execute():
-            return ctx.client.mutate("AdGroupAdService", customer_id, [operation])
+            return ctx.client.mutate("AdService", customer_id, [operation])
 
         return ctx.safety.propose(
             tool_name="update_responsive_search_ad",
@@ -374,13 +346,11 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def get_ad_strength(
-        customer_id: str, ad_group_id: str | None = None, campaign_id: str | None = None
+        customer_id: str,
+        ad_group_id: str | None = None,
+        campaign_id: str | None = None,
     ) -> dict:
-        """List Responsive Search Ads with their Ad Strength rating
-        (PENDING, NO_ADS, POOR, AVERAGE, GOOD, EXCELLENT) plus any policy
-        summary — the fastest way to find ads that need better headline/
-        description variety without opening the UI.
-        """
+        """List Responsive Search Ads with Ad Strength and policy status."""
         where_parts = ["ad_group_ad.ad.type = RESPONSIVE_SEARCH_AD"]
         if ad_group_id:
             where_parts.append(f"ad_group.id = {int(ad_group_id)}")
@@ -410,61 +380,85 @@ def register(mcp, ctx: AppContext) -> None:
         final_urls: list[str] | None = None,
         call_tracking_enabled: bool = True,
     ) -> dict:
-        """Propose creating a Call Ad — an ad type with no link at all, just
-        a phone number and a "Call" button, shown only on devices that can
-        place calls. High-intent format for services/B2B where a phone
-        conversation is the actual conversion (medical, legal, trades,
-        anything where the lead prefers to talk before committing). Created
-        PAUSED.
+        """Create the supported v25 replacement for a removed Call Ad.
 
-        Args:
-            country_code: 2-letter ISO code for the phone number, e.g. "AR".
-            headlines: 2-15 strings, each <=30 characters.
-            descriptions: 2-4 strings, each <=90 characters.
-            call_tracking_enabled: If True (default), Google provides a
-                forwarding number so call metrics attribute back to this ad.
+        Google removed CallAd. This compatibility tool now creates a PAUSED
+        Responsive Search Ad plus a Call Asset linked to the same ad group in
+        one atomic mutation. Existing callers can keep the old tool name.
         """
-        if not (2 <= len(headlines) <= 15):
-            raise ValueError("Provide between 2 and 15 headlines.")
-        if any(len(h) > 30 for h in headlines):
-            raise ValueError("Each headline must be 30 characters or fewer.")
-        if not (2 <= len(descriptions) <= 4):
-            raise ValueError("Provide between 2 and 4 descriptions.")
-        if any(len(d) > 90 for d in descriptions):
-            raise ValueError("Each description must be 90 characters or fewer.")
+        if final_urls is None:
+            raise ValueError(
+                "Call Ads were removed. Their v25 replacement is RSA + Call Asset, "
+                "which requires at least one final URL."
+            )
+        _validate_rsa(headlines, descriptions, final_urls, None, None)
+        if len(country_code) != 2:
+            raise ValueError("country_code must be a two-letter country code.")
+        if not phone_number.strip():
+            raise ValueError("phone_number is required.")
 
         client = ctx.client.raw
-        operation = client.get_type("AdGroupAdOperation")
-        ad_group_ad = operation.create
-        ad_group_ad.ad_group = client.get_service("AdGroupService").ad_group_path(
-            customer_id.replace("-", ""), ad_group_id
+        customer_id_clean = customer_id.replace("-", "")
+        ad_group_resource_name = client.get_service("AdGroupService").ad_group_path(
+            customer_id_clean, ad_group_id
         )
+        temp_asset_name = client.get_service("AssetService").asset_path(
+            customer_id_clean, -1
+        )
+
+        asset_operation = client.get_type("AssetOperation")
+        call_asset = asset_operation.create
+        call_asset.resource_name = temp_asset_name
+        call_asset.call_asset.country_code = country_code.upper()
+        call_asset.call_asset.phone_number = phone_number
+        reporting_state = (
+            "USE_ACCOUNT_LEVEL_CALL_CONVERSION_ACTION"
+            if call_tracking_enabled
+            else "DISABLED"
+        )
+        call_asset.call_asset.call_conversion_reporting_state = (
+            client.enums.CallConversionReportingStateEnum[reporting_state].value
+        )
+
+        ad_operation = client.get_type("AdGroupAdOperation")
+        ad_group_ad = ad_operation.create
+        ad_group_ad.ad_group = ad_group_resource_name
         ad_group_ad.status = client.enums.AdGroupAdStatusEnum.PAUSED
+        _populate_rsa(
+            client,
+            ad_group_ad.ad,
+            headlines=headlines,
+            descriptions=descriptions,
+            final_urls=final_urls,
+            path1=None,
+            path2=None,
+        )
 
-        call_ad = ad_group_ad.ad.call_ad
-        call_ad.country_code = country_code
-        call_ad.phone_number = phone_number
-        call_ad.business_name = business_name
-        for text in headlines:
-            call_ad.headlines.append(_call_ad_text_asset(client, text))
-        for text in descriptions:
-            call_ad.descriptions.append(_call_ad_text_asset(client, text))
-        if final_urls:
-            call_ad.final_urls.extend(final_urls)
-        call_ad.call_tracking_enabled = call_tracking_enabled
+        link_operation = client.get_type("AdGroupAssetOperation")
+        link = link_operation.create
+        link.ad_group = ad_group_resource_name
+        link.asset = temp_asset_name
+        link.field_type = client.enums.AssetFieldTypeEnum.CALL.value
 
+        operations = [
+            _wrap_mutate(client, "asset_operation", asset_operation),
+            _wrap_mutate(client, "ad_group_ad_operation", ad_operation),
+            _wrap_mutate(client, "ad_group_asset_operation", link_operation),
+        ]
         description = (
-            f"Create Call Ad in ad group {ad_group_id} ({phone_number}), created PAUSED"
+            f"Replace legacy Call Ad with PAUSED RSA + Call Asset in ad group "
+            f"{ad_group_id} ({phone_number}); atomic v25 mutation"
         )
 
         def execute():
-            return ctx.client.mutate("AdGroupAdService", customer_id, [operation])
+            return ctx.client.mutate_atomic(customer_id, operations)
 
         return ctx.safety.propose(
             tool_name="create_call_ad",
             customer_id=customer_id,
             description=description,
             payload={
+                "compatibility_mode": "RSA_PLUS_CALL_ASSET",
                 "ad_group_id": ad_group_id,
                 "country_code": country_code,
                 "phone_number": phone_number,
@@ -483,19 +477,9 @@ def register(mcp, ctx: AppContext) -> None:
         name: str,
         campaign_budget_resource_name: str,
         target_cpa: float | None = None,
+        contains_eu_political_advertising: str = DEFAULT_EU_POLITICAL_ADVERTISING,
     ) -> dict:
-        """Propose creating a Demand Gen campaign shell (formerly Discovery
-        Ads) — runs on Discover feed, Gmail, and YouTube in-feed/Shorts.
-        Distinct from Performance Max: Demand Gen is creative-led (you pick
-        the images/video) rather than fully automated across all inventory,
-        so it's a good fit when brand control over the visual matters more
-        than Google's full automation. Created PAUSED — add an ad group
-        and a Demand Gen ad afterward.
-
-        Args:
-            target_cpa: Optional Target CPA. If omitted, uses Maximize
-                Conversions with no target.
-        """
+        """Propose creating a Demand Gen campaign shell. Created PAUSED."""
         client = ctx.client.raw
         operation = client.get_type("CampaignOperation")
         campaign = operation.create
@@ -505,7 +489,11 @@ def register(mcp, ctx: AppContext) -> None:
             client.enums.AdvertisingChannelTypeEnum.DEMAND_GEN
         )
         campaign.status = client.enums.CampaignStatusEnum.PAUSED
-
+        apply_required_campaign_fields(
+            client,
+            campaign,
+            contains_eu_political_advertising=contains_eu_political_advertising,
+        )
         if target_cpa is not None:
             from ..client import micros
 
@@ -515,7 +503,7 @@ def register(mcp, ctx: AppContext) -> None:
 
         description = (
             f"Create Demand Gen campaign '{name}', created PAUSED "
-            f"(add an ad group + Demand Gen ad before enabling)"
+            "(add an ad group + Demand Gen ad before enabling)"
         )
 
         def execute():
@@ -525,7 +513,11 @@ def register(mcp, ctx: AppContext) -> None:
             tool_name="create_demand_gen_campaign",
             customer_id=customer_id,
             description=description,
-            payload={"name": name, "target_cpa": target_cpa},
+            payload={
+                "name": name,
+                "target_cpa": target_cpa,
+                "contains_eu_political_advertising": contains_eu_political_advertising,
+            },
             execute=execute,
         )
 
@@ -541,79 +533,74 @@ def register(mcp, ctx: AppContext) -> None:
         logo_image_urls: list[str] | None = None,
         call_to_action_text: str | None = None,
     ) -> dict:
-        """Propose creating a Demand Gen multi-asset ad — the standard ad
-        type for a Demand Gen campaign, single image/carousel-eligible
-        creative shown across Discover/Gmail/YouTube. Created PAUSED.
-
-        Args:
-            headlines: 1-5 strings, each <=40 characters.
-            descriptions: 1-5 strings, each <=90 characters.
-            marketing_image_urls: Public HTTPS URLs; downloaded and uploaded
-                at confirm time. At least one recommended — Demand Gen relies
-                entirely on supplied creative (no automated image generation).
-            call_to_action_text: e.g. "LEARN_MORE", "SHOP_NOW", "SIGN_UP" —
-                pass the enum name as a string.
-        """
+        """Propose creating a Demand Gen multi-asset ad atomically."""
         if not (1 <= len(headlines) <= 5):
             raise ValueError("Provide between 1 and 5 headlines.")
-        if any(len(h) > 40 for h in headlines):
-            raise ValueError("Each headline must be 40 characters or fewer.")
+        if any(len(h) > 30 for h in headlines):
+            raise ValueError("Each Demand Gen headline must be 30 characters or fewer.")
         if not (1 <= len(descriptions) <= 5):
             raise ValueError("Provide between 1 and 5 descriptions.")
         if any(len(d) > 90 for d in descriptions):
             raise ValueError("Each description must be 90 characters or fewer.")
+        if not business_name or len(business_name) > 25:
+            raise ValueError("business_name is required and must be 25 characters or fewer.")
+        if not final_urls:
+            raise ValueError("Provide at least one final URL.")
+        if not marketing_image_urls:
+            raise ValueError(
+                "Provide at least one marketing image for this Demand Gen multi-asset ad."
+            )
+        if not logo_image_urls:
+            raise ValueError("Demand Gen multi-asset ads require at least one logo image.")
 
         client = ctx.client.raw
-
+        customer_id_clean = customer_id.replace("-", "")
+        ad_group_resource_name = client.get_service("AdGroupService").ad_group_path(
+            customer_id_clean, ad_group_id
+        )
         description_text = (
             f"Create Demand Gen ad in ad group {ad_group_id} "
-            f"({len(headlines)} headlines, {len(marketing_image_urls or [])} images), "
-            f"created PAUSED"
+            f"({len(headlines)} headlines, {len(marketing_image_urls)} images), "
+            "created PAUSED"
         )
 
         def execute():
-            import urllib.request
-
-            def _upload_images(urls):
-                resource_names = []
-                for url in urls or []:
-                    with urllib.request.urlopen(url, timeout=30) as response:
-                        image_bytes = response.read()
-                    op = client.get_type("AssetOperation")
-                    op.create.image_asset.data = image_bytes
-                    result = ctx.client.mutate("AssetService", customer_id, [op])
-                    resource_names.append(result.results[0].resource_name)
-                return resource_names
-
-            marketing_images = _upload_images(marketing_image_urls)
-            logo_images = _upload_images(logo_image_urls)
-
-            operation = client.get_type("AdGroupAdOperation")
-            ad_group_ad = operation.create
-            ad_group_ad.ad_group = client.get_service("AdGroupService").ad_group_path(
-                customer_id.replace("-", ""), ad_group_id
+            operations = []
+            next_temp_id = -1
+            marketing_refs, image_ops, next_temp_id = _build_image_asset_operations(
+                client,
+                customer_id_clean,
+                marketing_image_urls,
+                next_temp_id,
             )
-            ad_group_ad.status = client.enums.AdGroupAdStatusEnum.PAUSED
+            operations.extend(image_ops)
+            logo_refs, logo_ops, next_temp_id = _build_image_asset_operations(
+                client,
+                customer_id_clean,
+                logo_image_urls,
+                next_temp_id,
+            )
+            operations.extend(logo_ops)
 
+            ad_operation = client.get_type("AdGroupAdOperation")
+            ad_group_ad = ad_operation.create
+            ad_group_ad.ad_group = ad_group_resource_name
+            ad_group_ad.status = client.enums.AdGroupAdStatusEnum.PAUSED
             dg_ad = ad_group_ad.ad.demand_gen_multi_asset_ad
             for text in headlines:
-                dg_ad.headlines.append(_call_ad_text_asset(client, text))
+                dg_ad.headlines.append(_text_asset(client, text))
             for text in descriptions:
-                dg_ad.descriptions.append(_call_ad_text_asset(client, text))
+                dg_ad.descriptions.append(_text_asset(client, text))
             dg_ad.business_name = business_name
-            for resource_name in marketing_images:
-                asset = client.get_type("AdImageAsset")
-                asset.asset = resource_name
-                dg_ad.marketing_images.append(asset)
-            for resource_name in logo_images:
-                asset = client.get_type("AdImageAsset")
-                asset.asset = resource_name
-                dg_ad.logo_images.append(asset)
+            for resource_name in marketing_refs:
+                dg_ad.marketing_images.append(_image_ref(client, resource_name))
+            for resource_name in logo_refs:
+                dg_ad.logo_images.append(_image_ref(client, resource_name))
             if call_to_action_text:
                 dg_ad.call_to_action_text = call_to_action_text
             ad_group_ad.ad.final_urls.extend(final_urls)
-
-            return ctx.client.mutate("AdGroupAdService", customer_id, [operation])
+            operations.append(_wrap_mutate(client, "ad_group_ad_operation", ad_operation))
+            return ctx.client.mutate_atomic(customer_id, operations)
 
         return ctx.safety.propose(
             tool_name="create_demand_gen_ad",
@@ -634,22 +621,21 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def update_ad_status(
-        customer_id: str, ad_group_id: str, ad_id: str, status: str
+        customer_id: str,
+        ad_group_id: str,
+        ad_id: str,
+        status: str,
     ) -> dict:
-        """Propose pausing, enabling, or removing an ad.
-
-        Args:
-            status: ENABLED, PAUSED, or REMOVED.
-        """
+        """Propose pausing, enabling, or removing an ad."""
+        if status not in {"ENABLED", "PAUSED", "REMOVED"}:
+            raise ValueError("status must be ENABLED, PAUSED, or REMOVED.")
         client = ctx.client.raw
         operation = client.get_type("AdGroupAdOperation")
-        resource_name = client.get_service("AdGroupAdService").ad_group_ad_path(
-            customer_id.replace("-", ""), ad_group_id, ad_id
-        )
-        operation.update.resource_name = resource_name
+        operation.update.resource_name = client.get_service(
+            "AdGroupAdService"
+        ).ad_group_ad_path(customer_id.replace("-", ""), ad_group_id, ad_id)
         operation.update.status = client.enums.AdGroupAdStatusEnum[status].value
         operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["status"]))
-
         description = f"Set ad {ad_id} (ad group {ad_group_id}) status -> {status}"
 
         def execute():
@@ -671,7 +657,6 @@ def register(mcp, ctx: AppContext) -> None:
         operation.remove = client.get_service("AdGroupAdService").ad_group_ad_path(
             customer_id.replace("-", ""), ad_group_id, ad_id
         )
-
         description = f"REMOVE ad {ad_id} from ad group {ad_group_id} (irreversible)"
 
         def execute():
@@ -686,7 +671,86 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
 
-def _call_ad_text_asset(client, text: str):
+def _validate_rsa(
+    headlines: list[str],
+    descriptions: list[str],
+    final_urls: list[str],
+    path1: str | None,
+    path2: str | None,
+) -> None:
+    if not (3 <= len(headlines) <= 15):
+        raise ValueError("Provide between 3 and 15 headlines.")
+    if any(len(h) > 30 for h in headlines):
+        raise ValueError("Each headline must be 30 characters or fewer.")
+    if not (2 <= len(descriptions) <= 4):
+        raise ValueError("Provide between 2 and 4 descriptions.")
+    if any(len(d) > 90 for d in descriptions):
+        raise ValueError("Each description must be 90 characters or fewer.")
+    if not final_urls:
+        raise ValueError("Provide at least one final URL.")
+    if path1 is not None and len(path1) > 15:
+        raise ValueError("path1 must be 15 characters or fewer.")
+    if path2 is not None and len(path2) > 15:
+        raise ValueError("path2 must be 15 characters or fewer.")
+
+
+def _populate_rsa(
+    client,
+    ad,
+    *,
+    headlines: list[str],
+    descriptions: list[str],
+    final_urls: list[str],
+    path1: str | None,
+    path2: str | None,
+) -> None:
+    rsa = ad.responsive_search_ad
+    for text in headlines:
+        rsa.headlines.append(_text_asset(client, text))
+    for text in descriptions:
+        rsa.descriptions.append(_text_asset(client, text))
+    if path1:
+        rsa.path1 = path1
+    if path2:
+        rsa.path2 = path2
+    ad.final_urls.extend(final_urls)
+
+
+def _text_asset(client, text: str):
     asset = client.get_type("AdTextAsset")
     asset.text = text
     return asset
+
+
+def _image_ref(client, resource_name: str):
+    asset = client.get_type("AdImageAsset")
+    asset.asset = resource_name
+    return asset
+
+
+def _wrap_mutate(client, field_name: str, operation):
+    mutate_operation = client.get_type("MutateOperation")
+    client.copy_from(getattr(mutate_operation, field_name), operation)
+    return mutate_operation
+
+
+def _build_image_asset_operations(
+    client,
+    customer_id_clean: str,
+    urls: list[str],
+    next_temp_id: int,
+):
+    resource_names: list[str] = []
+    mutate_operations = []
+    for url in urls:
+        image_bytes = fetch_public_https_image(url)
+        resource_name = client.get_service("AssetService").asset_path(
+            customer_id_clean, next_temp_id
+        )
+        next_temp_id -= 1
+        operation = client.get_type("AssetOperation")
+        operation.create.resource_name = resource_name
+        operation.create.image_asset.data = image_bytes
+        mutate_operations.append(_wrap_mutate(client, "asset_operation", operation))
+        resource_names.append(resource_name)
+    return resource_names, mutate_operations, next_temp_id
