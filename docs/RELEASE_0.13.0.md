@@ -52,6 +52,8 @@ GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
 
 If hierarchy queries are required, include the relevant MCC customer ID in the allowlist too.
 
+For existing installations, the allowlist can be rolled out incrementally: deploy v0.13.0 first with the current account scope, verify the intended customer IDs, then enable strict allowlist mode per client instance. Do not copy a single customer's allowlist blindly across shared deployments.
+
 ## Validation
 
 The release includes dedicated production-policy tests for customer-ID normalization, allowlist filtering, strict-mode startup, pre-execution cross-account blocking, risk classification, high-risk confirmation behavior and independent spend opt-in. The standard CI matrix validates Python 3.11, 3.12 and 3.13 with dependency checks, MCP smoke registration, Ruff and the complete pytest suite.
