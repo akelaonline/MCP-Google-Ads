@@ -1,75 +1,307 @@
-# Usage examples
+# Examples — v0.12
 
-## Conversational flows
+These examples show the intended conversation flow. Write calls are proposals by default; confirm them explicitly before live execution.
 
-**Keyword research before building a campaign:**
-> "Find keyword ideas around 'google ads automation' for the US, Spanish language, and show me search volume plus CPC ranges."
-> — Claude calls `generate_keyword_ideas` with `keywords=["google ads automation"]`, `language="es"`, `geo_target_ids=["2840"]`.
->
-> "Now check historical metrics for: automatizacion google ads, automatizar campañas google ads."
-> — Claude calls `get_keyword_historical_metrics` with the shortlisted keywords.
+## 1. Search terms → negative keywords
 
-**Apply a Google Ads recommendation safely:**
-> "List active recommendations for customer 123-456-7890."
-> — Claude calls `get_recommendations`.
->
-> "Apply the sitelink asset recommendation customers/123/recommendations/456."
-> — Claude calls `apply_recommendation`, shows the preview, waits for "confirm", then calls `confirm_pending_action`.
+```text
+User:
+Pull the search terms for customer 123-456-7890 for the last 7 days.
+Show terms with meaningful spend and zero conversions, then propose sensible
+campaign negatives. Do not change the account yet.
 
-**Weekly cleanup:**
-> "Pull the search terms report for the last 7 days on customer 123-456-7890, and show me anything with cost over $20 and zero conversions."
-> "Add the worst 5 as negative keywords on that campaign."
-> — Claude calls `get_search_terms_report`, then `add_negative_keywords`, returns a preview, you say "confirm", Claude calls `confirm_pending_action`.
+AI:
+-> get_search_terms_report(...)
+-> add_negative_keywords(...)
+<- pending_confirmation + pending_action_id
 
-**Budget response to a good week:**
-> "Campaign 111222333 has ROAS over 5 the last 7 days — bump its budget 20%."
-> — Claude calls `get_campaign_performance`, computes the new amount, calls `update_campaign_budget`, shows you the before/after, waits for confirmation.
+User:
+Confirm that action.
 
-**New campaign from scratch:**
-> "Create a $30/day Search campaign called 'Q3 Promo' with Maximize Conversions bidding, paused for now — I'll review before enabling."
-> — Claude calls `create_campaign_budget` → `create_campaign` (both proposed, both need confirmation, or confirm both at once).
-
-**Offline conversion sync (WhatsApp/CRM close):**
-> "This lead closed for $450, gclid was `Cj0KCQjw...`, closed today at 3pm Buenos Aires time, upload it against the 'Lead - WhatsApp' conversion action."
-> — Claude calls `list_conversion_actions` to find the ID, then `upload_offline_conversion`.
-
-## Useful raw GAQL queries
-
-**Campaigns with no impressions in 30 days (dead weight):**
-```sql
-SELECT campaign.id, campaign.name, campaign.status
-FROM campaign
-WHERE campaign.status = 'ENABLED'
-  AND metrics.impressions = 0
-  AND segments.date DURING LAST_30_DAYS
+AI:
+-> confirm_pending_action(action_id)
+<- executed + audit record
 ```
 
-**Keywords with quality score below 5:**
-```sql
-SELECT
-    campaign.name, ad_group.name,
-    ad_group_criterion.keyword.text,
-    ad_group_criterion.quality_info.quality_score
-FROM keyword_view
-WHERE ad_group_criterion.quality_info.quality_score <= 5
-  AND ad_group_criterion.status = 'ENABLED'
+## 2. Create a Search campaign safely
+
+```text
+User:
+Create a $50/day Search campaign called "Brand AR" with Maximize Conversions.
+It is not EU political advertising. Leave it paused.
+
+AI:
+-> create_campaign_budget(... daily_amount=50)
+<- pending action
+
+User:
+Confirm.
+
+AI:
+-> confirm_pending_action(...)
+<- campaign budget resource name
+
+AI:
+-> create_campaign(
+     name="Brand AR",
+     campaign_budget_resource_name="customers/.../campaignBudgets/...",
+     channel_type="SEARCH",
+     bidding_strategy="MAXIMIZE_CONVERSIONS",
+     contains_eu_political_advertising="DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING"
+   )
+<- pending action
 ```
 
-**Device performance split:**
-```sql
-SELECT
-    segments.device,
-    metrics.clicks, metrics.cost_micros, metrics.conversions
+New campaigns are created PAUSED by the MCP.
+
+## 3. Current Call Ad replacement
+
+Google removed the old Call Ad resource. Keep the same high-intent behavior with an RSA plus a Call Asset:
+
+```text
+User:
+Create a phone-focused Search ad in ad group 222 using +54 11 1234 5678.
+Use these headlines/descriptions and https://example.com as final URL.
+
+AI:
+-> create_call_ad(...)
+<- proposes one atomic RSA + Call Asset + AdGroupAsset change
+```
+
+The public tool name is retained for compatibility, but it does not send a removed `CallAd` protobuf.
+
+## 4. WhatsApp Business Message asset
+
+```text
+User:
+Add a WhatsApp message asset to campaign 333 for Argentina, phone 1112345678.
+Starter message: "Hola, quiero información".
+
+AI:
+-> create_message_asset(
+     campaign_id="333",
+     country_code="AR",
+     phone_number="1112345678",
+     business_name="Example",
+     message_text="Hola, quiero información",
+     call_to_action_text="Contactanos"
+   )
+<- proposes Business Message / WhatsApp + CampaignAsset atomically
+```
+
+`create_message_asset` is a compatibility name for the current Business Message resource.
+
+## 5. Complete Performance Max asset group
+
+```text
+User:
+Create a PMax campaign and a complete asset group for this landing page.
+Use these 3 headlines, long headline, 2 descriptions, business name,
+1 landscape image, 1 square image and 1 logo. Leave everything paused.
+
+AI:
+-> create_performance_max_campaign(...)
+<- pending
+
+User:
+Confirm.
+
+AI:
+-> confirm_pending_action(...)
+
+AI:
+-> create_asset_group(
+     campaign_id="...",
+     name="Core",
+     final_urls=["https://example.com"],
+     headlines=[...],
+     long_headline="...",
+     descriptions=[...],
+     business_name="Example",
+     marketing_image_urls=["https://cdn.example.com/landscape.jpg"],
+     square_marketing_image_urls=["https://cdn.example.com/square.jpg"],
+     logo_image_urls=["https://cdn.example.com/logo.jpg"]
+   )
+<- one atomic Asset + AssetGroup + AssetGroupAsset proposal
+```
+
+The image URLs must be public HTTPS and pass the MCP's SSRF/content/size checks.
+
+## 6. Offline conversion upload
+
+First create the correct immutable conversion-action type:
+
+```text
+User:
+Create an offline Qualified Lead conversion action called "CRM Qualified Lead".
+
+AI:
+-> create_conversion_action(
+     name="CRM Qualified Lead",
+     category="QUALIFIED_LEAD",
+     conversion_action_type="UPLOAD_CLICKS"
+   )
+```
+
+Later:
+
+```text
+User:
+Upload this GCLID conversion against action 777, value USD 500,
+conversion time 2026-08-18 12:00:00-03:00.
+
+AI:
+-> upload_offline_conversion(...)
+```
+
+Before proposing the upload, v0.12 verifies that action 777 exists, is ENABLED and has type `UPLOAD_CLICKS`.
+
+## 7. Enhanced offline conversion
+
+```text
+User:
+Same conversion, with email Jane.Doe+Lead@gmail.com and phone +54 9 11 1234-5678.
+
+AI:
+-> upload_enhanced_conversion(...)
+```
+
+Email/phone normalization and SHA-256 happen locally; raw PII is not placed in the audit payload.
+
+## 8. Website remarketing
+
+```text
+User:
+Create a 30-day all-pages remarketing audience for example.com.
+
+AI:
+-> create_remarketing_list(
+     name="All visitors 30d",
+     membership_days=30,
+     url_contains="example.com"
+   )
+```
+
+An empty rule is not used. v0.12 creates a real `url__ CONTAINS example.com` rule.
+
+## 9. Replace campaign language targeting
+
+```text
+User:
+Make campaign 444 target only English and Spanish.
+
+AI:
+-> set_language_targeting(
+     campaign_id="444",
+     language_codes=["1000", "1003"]
+   )
+```
+
+The setter removes existing language criteria and creates exactly the supplied set in one mutation.
+
+## 10. Device modifier
+
+```text
+User:
+Exclude tablets from campaign 444.
+
+AI:
+-> set_device_bid_modifier(
+     campaign_id="444",
+     device="TABLET",
+     bid_modifier=0
+   )
+```
+
+If the device criterion already exists, it is updated; otherwise it is created.
+
+## 11. Google recommendations
+
+```text
+User:
+Show active recommendations only.
+
+AI:
+-> get_recommendations(customer_id="...")
+```
+
+To apply one:
+
+```text
+AI:
+-> apply_recommendation(resource_name="customers/.../recommendations/...")
+<- pending_confirmation
+```
+
+To dismiss one:
+
+```text
+AI:
+-> dismiss_recommendation(resource_name="customers/.../recommendations/...")
+<- pending_confirmation
+```
+
+## 12. Experiment workflow
+
+```text
+User:
+Set up a 50/50 Search experiment from campaign 555 called "tCPA test".
+
+AI:
+-> create_experiment(
+     base_campaign_id="555",
+     name="tCPA test",
+     traffic_split_percent=50
+   )
+```
+
+After creation:
+
+```text
+AI:
+-> list_experiments(...)
+```
+
+Use the treatment arm's `in_design_campaigns` result to identify the system-created draft and modify it before scheduling/running the test.
+
+## 13. Raw GAQL fallback
+
+Prefer specialized reporting tools where possible. For custom analysis:
+
+```text
+User:
+Run this GAQL against customer 123-456-7890:
+
+SELECT campaign.id, campaign.name, metrics.cost_micros
 FROM campaign
 WHERE segments.date DURING LAST_30_DAYS
+ORDER BY metrics.cost_micros DESC
 ```
 
-**Budget-limited campaigns (Google flags these directly):**
-```sql
-SELECT campaign.name, campaign_budget.amount_micros
-FROM campaign
-WHERE campaign.status = 'ENABLED'
-  AND campaign_budget.recommended_budget_amount_micros IS NOT NULL
+```text
+AI:
+-> run_gaql_query(...)
 ```
 
-For the full field/resource reference, ask Claude to call `run_gaql_query` with `SELECT` on any resource — errors from the API come back with the exact valid field names when you get one wrong.
+## 14. Retry a failed confirmation
+
+```text
+AI:
+-> confirm_pending_action("abc123")
+<- transient Google/network error
+```
+
+v0.12 keeps the action pending. After fixing the underlying problem:
+
+```text
+AI:
+-> confirm_pending_action("abc123")
+<- success
+```
+
+Both attempts are recorded under the same action ID:
+
+```text
+AI:
+-> get_audit_action("abc123")
+```
