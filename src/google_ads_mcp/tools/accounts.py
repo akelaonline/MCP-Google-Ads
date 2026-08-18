@@ -12,7 +12,9 @@ def register(mcp, ctx: AppContext) -> None:
         service = ctx.client.service("CustomerService")
         response = service.list_accessible_customers()
         ids = [rn.split("/")[-1] for rn in response.resource_names]
-        ids = ctx.client.filter_allowed_customer_ids(ids)
+        filter_ids = getattr(ctx.client, "filter_allowed_customer_ids", None)
+        if filter_ids is not None:
+            ids = filter_ids(ids)
         return {"customer_ids": ids, "count": len(ids)}
 
     @mcp.tool()
