@@ -71,6 +71,25 @@ class AdGroupCriterionStatusEnum(enum.Enum):
     REMOVED = 4
 
 
+class AdGroupStatusEnum(enum.Enum):
+    UNSPECIFIED = 0
+    ENABLED = 2
+    PAUSED = 3
+    REMOVED = 4
+
+
+class AdGroupTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    SEARCH_STANDARD = 2
+    DISPLAY_STANDARD = 3
+    SHOPPING_PRODUCT_ADS = 4
+    VIDEO_BUMPER = 8
+    VIDEO_TRUE_VIEW_IN_STREAM = 9
+    VIDEO_TRUE_VIEW_IN_DISPLAY = 10
+    VIDEO_NON_SKIPPABLE_IN_STREAM = 11
+    VIDEO_RESPONSIVE = 16
+
+
 class AdGroupAdStatusEnum(enum.Enum):
     UNSPECIFIED = 0
     ENABLED = 2
@@ -251,6 +270,8 @@ class FakeEnums:
     AssetFieldTypeEnum = AssetFieldTypeEnum
     ConversionActionStatusEnum = ConversionActionStatusEnum
     AdGroupCriterionStatusEnum = AdGroupCriterionStatusEnum
+    AdGroupStatusEnum = AdGroupStatusEnum
+    AdGroupTypeEnum = AdGroupTypeEnum
     AdGroupAdStatusEnum = AdGroupAdStatusEnum
     CampaignStatusEnum = CampaignStatusEnum
     AssetGroupStatusEnum = AssetGroupStatusEnum
@@ -357,8 +378,12 @@ class FakeRawClient:
         return None
 
 
-def build_ctx(mutate_side_effect, extra_services: dict | None = None):
-    """Build a test context whose normal and atomic mutates are observable."""
+def build_ctx(
+    mutate_side_effect,
+    extra_services: dict | None = None,
+    search_side_effect=None,
+):
+    """Build a test context whose normal/atomic mutates are observable."""
     raw = FakeRawClient(extra_services=extra_services)
 
     def mutate_atomic(customer_id, operations, **kwargs):
@@ -369,10 +394,16 @@ def build_ctx(mutate_side_effect, extra_services: dict | None = None):
             **kwargs,
         )
 
+    def fake_search(customer_id, query):
+        if search_side_effect is not None:
+            return search_side_effect(customer_id, query)
+        return [{"campaign": {"advertising_channel_type": "SEARCH"}}]
+
     fake_client = SimpleNamespace(
         raw=raw,
         mutate=mutate_side_effect,
         mutate_atomic=mutate_atomic,
+        search=fake_search,
     )
     safety = SafetyLayer(auto_approve=True, ttl_minutes=30, audit_log=FakeAuditLog())
     return AppContext(
