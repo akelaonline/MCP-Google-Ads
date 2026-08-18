@@ -1,143 +1,227 @@
-# FAQ — Integrating Claude with Google Ads
+# FAQ — Google Ads MCP v0.12
 
-40 questions a marketer, developer, or agency owner would actually ask before and while using this server. Organized by stage: getting credentials, day-to-day use, safety, troubleshooting, and advanced setups.
+## What does this MCP do?
 
----
+It gives an MCP client structured read/write access to Google Ads: reporting, campaigns, budgets, bidding, ad groups, ads, assets, keywords, audiences, targeting, conversions, Performance Max, experiments, recommendations and MCC workflows.
 
-## Getting credentials
+## Is it reporting-only?
 
-**1. What do I actually need before I can start?**
-Four things: a Google Cloud project, an OAuth 2.0 client (Desktop app type), a Google Ads Developer Token, and a refresh token. All four map directly to the four variables in `.env`. See [`SETUP.md`](SETUP.md) for the click-by-click version.
+No. Read tools return account data; write tools propose real Google Ads mutations through a confirmation layer.
 
-**2. Where do I get the Developer Token?**
-Google Ads → Tools & Settings (wrench icon) → Setup → **API Center** → "Apply for token". You'll get **Test access** immediately (works only against test accounts, no real spend). For real accounts you need **Standard access**, which you apply for from the same screen — Google typically reviews it in 1-3 business days.
+## Which Google Ads API version does v0.12 target?
 
-**3. What do I write in the "describe your use case" box when applying for Standard access?**
-Be literal and specific: "Internal tool for managing our own and client Google Ads accounts through an AI assistant (Claude) — campaign/budget/keyword management and reporting." Google is checking you're not building spam/abuse tooling, not judging the idea.
+Google Ads API **v25**. The project explicitly requests `v25` and pins the Python client to the tested 31.x line instead of silently following a future default API version.
 
-**4. What's the difference between Test access and Standard access?**
-Test access can only read/write **test accounts** (accounts explicitly marked as test in Google Ads) — zero real spend risk, but also zero real data. Standard access unlocks production accounts with real budgets. Build and test everything on Test access first.
+## Why did v0.12 need a compatibility pass?
 
-**5. Where do I create the OAuth Client ID?**
-[Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials → Create Credentials → OAuth client ID → **Desktop app** type. This gives you `GOOGLE_ADS_CLIENT_ID` and `GOOGLE_ADS_CLIENT_SECRET`.
+Google Ads removes and replaces resources/fields regularly. Earlier versions contained several shapes that permissive unit-test fakes could accept even though the current generated Google client would reject them. v0.12 adds real generated-protobuf contract tests to prevent that class of regression.
 
-**6. Do I need to publish the OAuth consent screen?**
-No. "Testing" mode is enough as long as you add your own Google account as a test user on that screen. Publishing is only needed if unrelated third parties will authorize through it.
+## Does a write change the account immediately?
 
-**7. How do I get the refresh token?**
-Run `python -m google_ads_mcp.auth --generate-refresh-token` after setting `GOOGLE_ADS_CLIENT_ID`/`GOOGLE_ADS_CLIENT_SECRET`. It opens a browser OAuth flow and prints the refresh token to paste into `.env` as `GOOGLE_ADS_REFRESH_TOKEN`.
+Not by default. With:
 
-**8. Does the refresh token expire?**
-Not on a fixed schedule — it stays valid until you revoke it, the OAuth client is deleted, or Google flags unusual activity. If it stops working, just regenerate it with the same command.
+```dotenv
+GOOGLE_ADS_MCP_AUTO_APPROVE=false
+```
 
-**9. What is `GOOGLE_ADS_LOGIN_CUSTOMER_ID` and do I need it?**
-Only if you access accounts through an MCC (manager) account. Set it to the **manager's** customer ID (digits only). If you're authenticating directly against a single non-MCC account, leave it blank.
+a write returns `pending_confirmation`. Execute it with `confirm_pending_action(action_id)`.
 
-**10. I manage accounts for multiple clients under one MCC — does this handle that?**
-Yes. Authenticate once against the MCC with `GOOGLE_ADS_LOGIN_CUSTOMER_ID` set, then pass each client's `customer_id` per tool call. Use `get_account_hierarchy(login_customer_id)` to list every client account under the MCC.
+## What happens if confirmation fails?
 
----
+The action remains pending and can be retried with the same ID. Failed and successful attempts are recorded under that stable action ID.
 
-## What Claude can actually do
+## Can I enable automatic writes?
 
-**11. Can Claude create a campaign from scratch?**
-Yes — `create_campaign_budget` then `create_campaign`, specifying channel type (Search, Display, Shopping, Video, Performance Max) and bidding strategy. New campaigns are always created **PAUSED** so you review before anything goes live.
+Yes:
 
-**12. Can it pause/enable campaigns, ad groups, or ads?**
-Yes, at all three levels: `update_campaign_status`, `update_ad_group_status`, `update_ad_status`.
+```dotenv
+GOOGLE_ADS_MCP_AUTO_APPROVE=true
+```
 
-**13. Can it change budgets?**
-Yes — `create_campaign_budget` for a new one, `update_campaign_budget` to change an existing one's daily amount.
+Use it only in a controlled environment. For accounts with real spend, the safer default is explicit confirmation.
 
-**14. Can it switch bidding strategies?**
-Yes: Manual CPC, Maximize Conversions (with optional target CPA cap), Target CPA, and Target ROAS.
+## Where is the audit log?
 
-**15. Can it write ad copy and publish it?**
-It can create Responsive Search Ads (`create_responsive_search_ad`) with your headlines/descriptions/URLs — Claude can draft the copy in the same conversation. The ad is created PAUSED, so you approve before it serves.
+By default:
 
-**16. Can it manage keywords?**
-Yes — add keywords with match type and bid, pause/enable/remove them, and add negative keywords at either campaign or ad-group level.
+```text
+~/.google_ads_mcp/audit.db
+```
 
-**17. Can it pull reports?**
-Yes, both pre-built (`get_campaign_performance`, `get_keyword_performance`, `get_search_terms_report`, `get_ad_performance`, `get_ad_group_performance`) and fully custom via `run_gaql_query` for anything the pre-built tools don't cover.
+Use `get_recent_audit_log()` for recent attempts and `get_audit_action(action_id)` for all attempts associated with one proposal.
 
-**18. Can it upload offline conversions?**
-Yes — `upload_offline_conversion` takes a gclid, the conversion action, a value, and a timestamp. This is the tool for a "lead closes three days later via WhatsApp/CRM" workflow: you feed the sale back to Google Ads so Smart Bidding learns from real outcomes.
+## Does it support MCC accounts?
 
-**19. Can it manage audiences?**
-It can list existing user lists and attach one to an ad group with an optional bid modifier. It does not currently build new Customer Match lists from scratch.
+Yes. Set `GOOGLE_ADS_LOGIN_CUSTOMER_ID` when the authenticated identity operates client accounts through an MCC. The MCP can list hierarchies, create client accounts and accept manager links where your Google Ads permissions allow it.
 
-**20. Can it see what changed in the account recently, even changes I made manually?**
-Yes — `get_change_history` reads Google's native `change_event` resource, up to 30 days back, including who made the change and from where.
+## Can it create Call Ads?
 
-**21. Does it support Performance Max?**
-`create_campaign` accepts `channel_type=PERFORMANCE_MAX`, but full PMax asset-group management (images, videos, listing groups) isn't built yet — that's the next roadmap item. Track it in `CHANGELOG.md`.
+Google removed the old Call Ad resource. The compatibility tool `create_call_ad` now creates the supported replacement: a **Responsive Search Ad + Call Asset + ad-group asset link**, atomically.
 
-**22. Can Claude analyze performance and suggest what to change, not just execute?**
-Yes — that's most of what you'll actually use day to day. Ask it to pull a report, reason about it, and propose specific changes; it'll only touch the account once you say go.
+Because the replacement is an RSA, a final URL is required.
 
-**23. Can it manage Display or Video campaigns, not just Search?**
-Campaign creation supports any `advertising_channel_type` the API accepts. Ad-creative tools currently focus on Responsive Search Ads; Display/Video ad-creative tools aren't built yet.
+## Can it create WhatsApp/message assets?
 
-**24. Can it A/B test ad copy?**
-Not as a dedicated "experiment" object yet (Google Ads Drafts & Experiments API isn't wired up). You can approximate it by creating multiple RSAs in the same ad group and comparing performance manually.
+The old Message Asset shape is not used. `create_message_asset` is retained as a compatibility name and now creates a current **Business Message Asset with WhatsApp provider**.
 
----
+## Can it create Local Campaigns?
 
-## Safety and control
+Not through the obsolete Local Campaign API shape. v0.12 intentionally refuses that mutation and directs the workflow to Performance Max plus the relevant location/business assets.
 
-**25. Will Claude ever spend my money without asking?**
-Not by default. Every write tool proposes a change and returns a `pending_action_id` — nothing executes until you (or Claude, on your instruction) calls `confirm_pending_action`. See [`SAFETY.md`](SAFETY.md).
+## Can it create Smart Shopping campaigns?
 
-**26. What if I want it to act fully autonomously, no confirmations?**
-Set `GOOGLE_ADS_MCP_AUTO_APPROVE=true` in `.env`. Every action still gets logged to the audit trail, but nothing waits for confirmation. Only do this for a narrowly scoped, well-tested automation — not for open-ended conversational use on an account with real spend.
+No new legacy Smart Shopping campaigns are created. Use Performance Max. Standard Shopping remains supported.
 
-**27. Is there a record of what Claude actually changed?**
-Yes — every executed mutation is written to a local SQLite file (`audit.db`) with the full payload, result, and timestamp. Query it directly or ask Claude: `get_recent_audit_log()`.
+## Does it manage Merchant Center products or feeds?
 
-**28. What happens if I propose a change and then forget about it?**
-It expires after `GOOGLE_ADS_MCP_PENDING_TTL_MINUTES` (30 minutes by default) so a stale proposal can't be confirmed hours later against a since-changed account.
+No. Merchant Center feed/product administration is a separate API/product. Shopping and retail PMax workflows expect the necessary Merchant Center linkage/catalog to exist.
 
-**29. Can I undo something Claude changed?**
-Not automatically — this server doesn't implement rollback. The audit log tells you exactly what changed and to what value, so you can manually reverse it (e.g. `update_campaign_budget` back to the old amount).
+## Can it create Performance Max campaigns?
 
-**30. Can Claude delete a campaign permanently?**
-Yes, `remove_campaign` exists and works, but it's irreversible in Google Ads (removed campaigns can't be un-removed). Prefer `update_campaign_status(..., 'PAUSED')` unless you specifically need it gone.
+Yes. v0.12 uses current PMax bidding shapes and can build a complete non-retail AssetGroup with its required text/image/brand assets in one atomic mutation.
 
----
+## Why does `create_asset_group` require images now?
 
-## Troubleshooting
+Because current non-retail PMax AssetGroup creation must satisfy required asset structure. Creating a text-only shell first and hoping to attach mandatory assets later is not a reliable v25 workflow.
 
-**31. I get `PERMISSION_DENIED` or a developer-token error.**
-Your token is likely still on Test access — apply for Standard, or point the tool at a test account in the meantime.
+## Why are PMax campaign brand guidelines disabled in this flow?
 
-**32. I get `USER_PERMISSION_DENIED` on a specific customer_id.**
-The OAuth account behind your refresh token doesn't have access to that account, or you need `GOOGLE_ADS_LOGIN_CUSTOMER_ID` set to the parent MCC.
+The current MCP workflow keeps business name and logo assets inside the AssetGroup. Disabling campaign-level brand guidelines makes that structure explicit and consistent.
 
-**33. I get `AUTHENTICATION_ERROR`.**
-The refresh token expired or was revoked (e.g. you changed your Google account password, or revoked app access). Regenerate it with the auth helper.
+## Can it edit an existing RSA?
 
-**34. A write tool returned a preview but nothing happened in Google Ads — is it broken?**
-No, that's the intended behavior. Check `list_pending_actions()` and call `confirm_pending_action(action_id)`.
+Yes. v0.12 edits the underlying Ad with `AdService` / `AdOperation`, which is the current API path for RSA creative fields.
 
-**35. GAQL query errors with "unknown field."**
-Field names are resource-specific and case-sensitive (e.g. `campaign.id`, not `campaign_id`). The error message from the API includes the exact valid field names for that resource — read it, it's usually a typo or wrong resource.
+## Can it change keyword match type?
 
-**36. Reports come back empty even though the account has activity.**
-Check the `date_range` — `LAST_7_DAYS` excludes today by Google's convention. Also confirm you're querying the right `customer_id` (easy to mix up client vs. manager account).
+Yes, but Google treats match type as immutable on an existing criterion. The MCP fetches the existing keyword, creates the replacement with the new match type and removes the old criterion atomically.
 
----
+## Can it add negative keywords in bulk?
 
-## Advanced / architecture
+Yes. Bulk writes default to all-or-nothing behavior instead of accepting silent partial success.
 
-**37. Does this run locally or in the cloud?**
-Both. Default is `stdio` transport for Claude Desktop/Code running locally. For shared/remote use, run `python -m google_ads_mcp.server --transport http --port 8080` and deploy it (Cloud Run, a VPS, etc.) — see the deployment notes in the official Google server's README for the general pattern; this repo uses the same FastMCP HTTP transport.
+## Why does website remarketing require `url_contains`?
 
-**38. Can I restrict which tools are exposed (e.g. read-only for some users)?**
-Not via config toggle yet (the official `googleads/google-ads-mcp` server has a `tools_config.yaml` for that — worth porting here, see `CONTRIBUTING.md` if you want to take it on). For now, the safety layer's confirmation requirement is the main control point.
+An empty flexible-rule audience is not a safe “all visitors” wildcard. v0.12 creates a real website rule such as:
 
-**39. Is this affiliated with Google?**
-No — it's an independent, unofficial project built on Google's official `google-ads` Python client library. It follows the same API terms as any other client of the Google Ads API.
+```text
+url__ CONTAINS example.com
+```
 
-**40. Why build this instead of using an existing Google Ads MCP server?**
-Most existing servers on GitHub are read-only (reporting/GAQL only). This one was built specifically for active account management — creating and modifying campaigns, budgets, bidding, ads, and keywords — with a safety model appropriate for accounts with real client spend, which the read-only servers don't need and the few write-capable ones on GitHub generally don't have.
+Use the site's hostname for a typical all-pages audience.
+
+## Does it install the remarketing tag?
+
+No. The Google Ads tag must already be installed and firing.
+
+## Does Customer Match send raw email/phone values to the audit log?
+
+No. Identifiers are normalized and SHA-256 hashed locally before Google upload, and the safety/audit payload contains counts rather than raw PII.
+
+## Which conversion action should I create for GCLID offline uploads?
+
+Use:
+
+```text
+conversion_action_type="UPLOAD_CLICKS"
+```
+
+v0.12 verifies the target action type and enabled state before an offline click upload is proposed.
+
+## What happened to `include_in_conversions_metric`?
+
+Google's resource field is immutable. The public compatibility argument remains, but v0.12 maps primary/secondary behavior to the mutable `primary_for_goal` field.
+
+## Does enhanced conversion hashing normalize Gmail addresses?
+
+Yes. v0.12 normalizes Gmail/Googlemail local parts before hashing and normalizes phone numbers to E.164.
+
+## Can it target locations by name?
+
+Yes. Text names are resolved live through Google's GeoTarget suggestion service rather than a stale hard-coded location map. Ambiguous names fail safely and ask for a numeric criterion ID.
+
+## Does `set_language_targeting` really replace languages?
+
+Yes in v0.12. Existing language criteria are removed and the supplied set is created together instead of accumulating duplicates.
+
+## Does `set_device_bid_modifier` create duplicate criteria?
+
+It first looks for the existing device criterion and updates it when present; otherwise it creates it.
+
+## What device modifier values are allowed?
+
+`0` is used to opt out of the device. Otherwise v0.12 validates the supported `0.1–10.0` range.
+
+## Can it create Demand Gen campaigns?
+
+Yes. The campaign creator uses the current campaign structure. `create_ad_group(..., ad_group_type="AUTO")` detects Demand Gen and leaves the ad-group type unset as required.
+
+## Can it create Video ad groups automatically?
+
+Video can have multiple valid ad-group types. `AUTO` therefore refuses to guess and requires an explicit current `AdGroupType` enum for ambiguous channels.
+
+## Can it run experiments?
+
+Yes. The MCP can set up a system-managed experiment, create control/treatment arms, list the treatment's `in_design_campaigns`, promote, and end experiments.
+
+## Can it apply Google Ads recommendations?
+
+Yes, through the safety layer. Recommendation listing uses the current `dismissed` field; apply/dismiss use current v25 operation types.
+
+## Does it support raw GAQL?
+
+Yes via `run_gaql_query`. Prefer specialized report tools when they already cover the request because they provide a more predictable contract for an agent.
+
+## Is HTTP transport safe to expose publicly?
+
+No. The raw MCP HTTP server does not bundle a remote authentication provider. v0.12 therefore blocks HTTP startup by default.
+
+For local clients use `stdio`.
+
+If you deliberately put it behind your own authenticated and network-restricted reverse proxy, explicit opt-in is required:
+
+```dotenv
+GOOGLE_ADS_MCP_TRANSPORT=http
+GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true
+```
+
+That flag does not add authentication itself.
+
+## Why are image URLs restricted?
+
+They are model/user-controlled network inputs. v0.12 only fetches public HTTPS images and rejects private/loopback/link-local destinations, unsafe redirects, unsupported MIME types and oversized responses to reduce SSRF risk.
+
+## Why does CI use real protobuf contract tests?
+
+A generic fake that creates arbitrary nested attributes can accidentally make removed fields look valid. Contract tests instantiate Google's real generated v25 types, so an old field/enum/service path fails in CI immediately.
+
+## Which Python versions are supported?
+
+Python 3.11+; CI covers 3.11, 3.12 and 3.13.
+
+## How do I generate a refresh token?
+
+Install the optional auth dependency and run:
+
+```bash
+pip install -e ".[auth]"
+python -m google_ads_mcp.auth --generate-refresh-token
+```
+
+## Why does the MCP work in my shell but fail inside Claude Desktop?
+
+Usually the MCP host is launching a different Python. Configure the MCP with the **absolute path to the virtualenv Python**, not a bare `python` command.
+
+## What should I test first after setup?
+
+Start read-only:
+
+```text
+List my accessible Google Ads customer IDs.
+```
+
+Then pull a report. Only after those work should you propose a harmless write against a test account or a paused resource.
+
+## Is every Google advertising product covered?
+
+No. The project targets Google Ads API account operations. Merchant Center feed administration, Business Profile linking and other adjacent products remain separate boundaries.
