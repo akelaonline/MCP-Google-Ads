@@ -40,6 +40,7 @@ _SENSITIVE_TOOLS = {
     "create_customer_client",
     "invite_account_user",
     "update_user_access_role",
+    "submit_batch_job",
 }
 
 _DESTRUCTIVE_TOOLS = {
@@ -62,6 +63,8 @@ _SPEND_TOOLS = {
     "promote_experiment",
     "set_device_bid_modifier",
     "add_ad_schedule",
+    "create_seasonality_adjustment",
+    "create_data_exclusion",
 }
 
 _SPEND_PAYLOAD_KEYS = {
