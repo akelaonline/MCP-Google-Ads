@@ -1,5 +1,4 @@
-"""Account discovery & hierarchy tools (read-only), plus MCC<->client
-account linking (write)."""
+"""Account discovery & hierarchy tools, plus MCC/client account linking."""
 
 from __future__ import annotations
 
@@ -9,19 +8,16 @@ from ..context import AppContext
 def register(mcp, ctx: AppContext) -> None:
     @mcp.tool()
     def list_accessible_customers() -> dict:
-        """List every Google Ads customer ID the authenticated credentials can access."""
+        """List Google Ads customer IDs visible within this deployment's scope."""
         service = ctx.client.service("CustomerService")
         response = service.list_accessible_customers()
         ids = [rn.split("/")[-1] for rn in response.resource_names]
+        ids = ctx.client.filter_allowed_customer_ids(ids)
         return {"customer_ids": ids, "count": len(ids)}
 
     @mcp.tool()
     def get_account_hierarchy(login_customer_id: str) -> dict:
-        """Return the full manager/client account tree under a given MCC customer ID.
-
-        Args:
-            login_customer_id: The manager (MCC) account ID, digits only or with dashes.
-        """
+        """Return the manager/client account tree under an allowed MCC."""
         query = """
             SELECT
                 customer_client.id,
@@ -84,18 +80,7 @@ def register(mcp, ctx: AppContext) -> None:
         currency_code: str = "USD",
         time_zone: str = "America/Argentina/Buenos_Aires",
     ) -> dict:
-        """Propose creating a brand-new client account under a manager (MCC)
-        account — e.g. onboarding a new agency client without leaving the
-        MCP. The new account is automatically linked under login_customer_id.
-
-        Args:
-            login_customer_id: The MCC (manager) account ID this new client
-                account will be created under.
-            currency_code: ISO currency, e.g. "USD", "ARS". Immutable after
-                creation — double-check before confirming.
-            time_zone: IANA time zone, e.g. "America/Argentina/Buenos_Aires".
-                Also immutable after creation.
-        """
+        """Propose creating a new client account under a manager account."""
         client = ctx.client.raw
         customer_client = client.get_type("Customer")
         customer_client.descriptive_name = descriptive_name
@@ -130,11 +115,7 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def list_manager_links(customer_id: str) -> dict:
-        """List the manager (MCC) links for a client account — which MCCs
-        have access, and the link status (ACTIVE, PENDING, REFUSED, etc).
-        Use this to find a pending invitation's resource_name before
-        accepting it, or to audit who has manager access to an account.
-        """
+        """List manager (MCC) links for an allowed client account."""
         query = """
             SELECT
                 customer_manager_link.manager_customer,
@@ -147,15 +128,7 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def accept_manager_link(customer_id: str, manager_link_resource_name: str) -> dict:
-        """Propose accepting a pending manager (MCC) link invitation on a
-        client account — the second half of onboarding a client whose
-        account already exists and who sent an MCC access invitation
-        (rather than one created fresh with create_customer_client).
-
-        Args:
-            manager_link_resource_name: From list_manager_links, a link with
-                status PENDING.
-        """
+        """Propose accepting a pending manager link invitation."""
         client = ctx.client.raw
         operation = client.get_type("CustomerManagerLinkOperation")
         operation.update.resource_name = manager_link_resource_name
