@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from ..context import AppContext
@@ -14,8 +14,8 @@ _SUPPORTED_DEVICES = {"DESKTOP", "MOBILE", "TABLET"}
 def _parse_interval(start_date_time: str, end_date_time: str) -> tuple[str, str]:
     fmt = "%Y-%m-%d %H:%M:%S"
     try:
-        start = datetime.strptime(start_date_time, fmt)
-        end = datetime.strptime(end_date_time, fmt)
+        start = datetime.strptime(start_date_time, fmt).replace(tzinfo=timezone.utc)
+        end = datetime.strptime(end_date_time, fmt).replace(tzinfo=timezone.utc)
     except ValueError as ex:
         raise ValueError(
             "start_date_time and end_date_time must use yyyy-MM-dd HH:mm:ss."
@@ -67,9 +67,7 @@ def _scope_fields(
                 "campaign_ids must contain between 1 and 2000 numeric campaign IDs."
             )
         for campaign_id in ids:
-            target.campaigns.append(
-                f"customers/{customer_id}/campaigns/{campaign_id}"
-            )
+            target.campaigns.append(f"customers/{customer_id}/campaigns/{campaign_id}")
         scope_summary = {"campaign_ids": ids}
 
     normalized_devices = [str(value).strip().upper() for value in (devices or [])]
