@@ -1,6 +1,6 @@
-# Tool reference — v0.12 / Google Ads API v25
+# Tool reference — v0.14 / Google Ads API v25
 
-All normal write tools go through the shared safety layer.
+All normal write tools go through the shared safety layer. v0.14 agency-management additions are also indexed in [`AGENCY_TOOLS.md`](AGENCY_TOOLS.md).
 
 Default write response:
 
@@ -14,7 +14,7 @@ Default write response:
 
 Call `confirm_pending_action(action_id)` to execute or `cancel_pending_action(action_id)` to discard.
 
-`GOOGLE_ADS_MCP_AUTO_APPROVE=true` is an explicit opt-in that executes writes immediately.
+`GOOGLE_ADS_MCP_AUTO_APPROVE=true` auto-executes standard-risk writes in the production context; spend, destructive, and sensitive actions remain separately gated. See `docs/SAFETY.md`.
 
 ## Accounts & MCC
 

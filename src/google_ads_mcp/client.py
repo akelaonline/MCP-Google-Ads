@@ -126,9 +126,19 @@ class GoogleAdsClientWrapper:
                 f"_IRREGULAR_MUTATE_METHODS in client.py."
             )
 
+        if operations_field == "operation":
+            if len(operation_list) != 1:
+                raise GoogleAdsMcpError(
+                    f"{service_name}.{method_name} accepts exactly one operation; "
+                    f"received {len(operation_list)}."
+                )
+            operation_value: Any = operation_list[0]
+        else:
+            operation_value = operation_list
+
         kwargs: dict[str, Any] = {
             "customer_id": customer_id,
-            operations_field: operation_list,
+            operations_field: operation_value,
         }
         try:
             accepted_params = set(inspect.signature(method).parameters)
@@ -178,6 +188,9 @@ _IRREGULAR_MUTATE_METHODS: dict[str, str] = {
     "AssetGroupCriterionService": "mutate_asset_group_criteria",
     "CampaignCriterionService": "mutate_campaign_criteria",
     "CustomerNegativeCriterionService": "mutate_customer_negative_criteria",
+    "SharedCriterionService": "mutate_shared_criteria",
+    "CustomerUserAccessInvitationService": "mutate_customer_user_access_invitation",
+    "CustomerUserAccessService": "mutate_customer_user_access",
 }
 
 
