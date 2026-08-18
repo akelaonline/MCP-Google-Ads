@@ -40,6 +40,14 @@ def test_no_direct_urllib_fetches_from_tool_modules():
     )
 
 
+def test_no_global_urlopen_monkeypatch():
+    hits = _hits(SRC, "urllib.request.urlopen =")
+    assert not hits, (
+        "Do not globally monkeypatch urllib.request.urlopen; keep SSRF protection "
+        "scoped to explicit remote-asset fetches:\n" + "\n".join(hits)
+    )
+
+
 def test_no_mutation_of_immutable_include_in_conversions_metric():
     hits = _hits(TOOLS, ".include_in_conversions_metric =")
     assert not hits, (
@@ -50,7 +58,18 @@ def test_no_mutation_of_immutable_include_in_conversions_metric():
 
 def test_no_silent_partial_failure_true_in_normal_mutate_tools():
     hits = _hits(TOOLS, "partial_failure=True")
-    assert not hits, (
+    unexpected = [
+        hit
+        for hit in hits
+        if "enable_partial_failure=True" not in hit
+        and not hit.startswith("tools/conversions.py:")
+    ]
+    assert not unexpected, (
         "Normal mutate helpers must not silently accept partial failure without parsing it:\n"
-        + "\n".join(hits)
+        + "\n".join(unexpected)
     )
+
+    conversions_source = (TOOLS / "conversions.py").read_text(encoding="utf-8")
+    assert "partial_failure=True" in conversions_source
+    assert "partial_failure_error" in conversions_source
+    assert "GoogleAdsMcpError" in conversions_source
