@@ -11,6 +11,8 @@ from ..campaign_compat import (
 from ..context import AppContext
 from ..net import fetch_public_https_image
 
+_IMAGE_MAX_BYTES = 5_120_000
+
 
 def register(mcp, ctx: AppContext) -> None:
     @mcp.tool()
@@ -80,14 +82,7 @@ def register(mcp, ctx: AppContext) -> None:
         logo_image_urls: list[str] | None = None,
         square_marketing_image_urls: list[str] | None = None,
     ) -> dict:
-        """Propose creating a Responsive Display Ad atomically. Created PAUSED.
-
-        API v25 requires at least one landscape marketing image and one square
-        marketing image. Images are fetched before confirmation is sent to
-        Google; the Asset resources and ad itself are then created in one
-        atomic GoogleAdsService.Mutate request, so failed ad creation cannot
-        leave orphan image assets behind.
-        """
+        """Propose creating a Responsive Display Ad atomically. Created PAUSED."""
         if not (1 <= len(headlines) <= 5):
             raise ValueError("Provide between 1 and 5 headlines.")
         if any(len(h) > 30 for h in headlines):
@@ -129,24 +124,15 @@ def register(mcp, ctx: AppContext) -> None:
             next_temp_id = -1
 
             landscape_refs, landscape_ops, next_temp_id = _build_image_asset_operations(
-                client,
-                customer_id_clean,
-                marketing_image_urls,
-                next_temp_id,
+                client, customer_id_clean, marketing_image_urls, next_temp_id
             )
             operations.extend(landscape_ops)
             square_refs, square_ops, next_temp_id = _build_image_asset_operations(
-                client,
-                customer_id_clean,
-                square_marketing_image_urls,
-                next_temp_id,
+                client, customer_id_clean, square_marketing_image_urls, next_temp_id
             )
             operations.extend(square_ops)
             logo_refs, logo_ops, next_temp_id = _build_image_asset_operations(
-                client,
-                customer_id_clean,
-                logo_image_urls or [],
-                next_temp_id,
+                client, customer_id_clean, logo_image_urls or [], next_temp_id
             )
             operations.extend(logo_ops)
 
@@ -169,7 +155,6 @@ def register(mcp, ctx: AppContext) -> None:
                 rda.logo_images.append(_image_ref(client, resource_name))
             ad_group_ad.ad.final_urls.extend(final_urls)
             operations.append(_wrap_mutate(client, "ad_group_ad_operation", ad_operation))
-
             return ctx.client.mutate_atomic(customer_id, operations)
 
         return ctx.safety.propose(
@@ -216,7 +201,6 @@ def register(mcp, ctx: AppContext) -> None:
             customer_id.replace("-", ""), ad_group_id
         )
         ad_group_ad.status = client.enums.AdGroupAdStatusEnum.PAUSED
-
         video_ad = ad_group_ad.ad.video_ad
         video_ad.video.video_id = youtube_video_id
         video_ad.in_stream.action_button_label = headline
@@ -292,7 +276,6 @@ def register(mcp, ctx: AppContext) -> None:
         )
         update_paths: list[str] = []
         rsa = operation.update.responsive_search_ad
-
         if headlines is not None:
             for text in headlines:
                 rsa.headlines.append(_text_asset(client, text))
@@ -310,8 +293,8 @@ def register(mcp, ctx: AppContext) -> None:
         if final_urls is not None:
             operation.update.final_urls.extend(final_urls)
             update_paths.append("final_urls")
-
         operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=update_paths))
+
         changed = ", ".join(
             name
             for name, value in (
@@ -380,12 +363,7 @@ def register(mcp, ctx: AppContext) -> None:
         final_urls: list[str] | None = None,
         call_tracking_enabled: bool = True,
     ) -> dict:
-        """Create the supported v25 replacement for a removed Call Ad.
-
-        Google removed CallAd. This compatibility tool now creates a PAUSED
-        Responsive Search Ad plus a Call Asset linked to the same ad group in
-        one atomic mutation. Existing callers can keep the old tool name.
-        """
+        """Create the supported v25 replacement for a removed Call Ad."""
         if final_urls is None:
             raise ValueError(
                 "Call Ads were removed. Their v25 replacement is RSA + Call Asset, "
@@ -405,7 +383,6 @@ def register(mcp, ctx: AppContext) -> None:
         temp_asset_name = client.get_service("AssetService").asset_path(
             customer_id_clean, -1
         )
-
         asset_operation = client.get_type("AssetOperation")
         call_asset = asset_operation.create
         call_asset.resource_name = temp_asset_name
@@ -439,7 +416,6 @@ def register(mcp, ctx: AppContext) -> None:
         link.ad_group = ad_group_resource_name
         link.asset = temp_asset_name
         link.field_type = client.enums.AssetFieldTypeEnum.CALL.value
-
         operations = [
             _wrap_mutate(client, "asset_operation", asset_operation),
             _wrap_mutate(client, "ad_group_ad_operation", ad_operation),
@@ -480,6 +456,8 @@ def register(mcp, ctx: AppContext) -> None:
         contains_eu_political_advertising: str = DEFAULT_EU_POLITICAL_ADVERTISING,
     ) -> dict:
         """Propose creating a Demand Gen campaign shell. Created PAUSED."""
+        if target_cpa is not None and target_cpa <= 0:
+            raise ValueError("target_cpa must be greater than 0.")
         client = ctx.client.raw
         operation = client.get_type("CampaignOperation")
         campaign = operation.create
@@ -499,7 +477,10 @@ def register(mcp, ctx: AppContext) -> None:
 
             campaign.target_cpa.target_cpa_micros = micros(target_cpa)
         else:
-            campaign.maximize_conversions.SetInParent()
+            client.copy_from(
+                campaign.maximize_conversions,
+                client.get_type("MaximizeConversions"),
+            )
 
         description = (
             f"Create Demand Gen campaign '{name}', created PAUSED "
@@ -568,17 +549,11 @@ def register(mcp, ctx: AppContext) -> None:
             operations = []
             next_temp_id = -1
             marketing_refs, image_ops, next_temp_id = _build_image_asset_operations(
-                client,
-                customer_id_clean,
-                marketing_image_urls,
-                next_temp_id,
+                client, customer_id_clean, marketing_image_urls, next_temp_id
             )
             operations.extend(image_ops)
             logo_refs, logo_ops, next_temp_id = _build_image_asset_operations(
-                client,
-                customer_id_clean,
-                logo_image_urls,
-                next_temp_id,
+                client, customer_id_clean, logo_image_urls, next_temp_id
             )
             operations.extend(logo_ops)
 
@@ -743,14 +718,16 @@ def _build_image_asset_operations(
     resource_names: list[str] = []
     mutate_operations = []
     for url in urls:
-        image_bytes = fetch_public_https_image(url)
+        image_bytes = fetch_public_https_image(url, max_bytes=_IMAGE_MAX_BYTES)
         resource_name = client.get_service("AssetService").asset_path(
             customer_id_clean, next_temp_id
         )
         next_temp_id -= 1
         operation = client.get_type("AssetOperation")
         operation.create.resource_name = resource_name
+        operation.create.type_ = client.enums.AssetTypeEnum.IMAGE.value
         operation.create.image_asset.data = image_bytes
+        operation.create.image_asset.file_size = len(image_bytes)
         mutate_operations.append(_wrap_mutate(client, "asset_operation", operation))
         resource_names.append(resource_name)
     return resource_names, mutate_operations, next_temp_id
