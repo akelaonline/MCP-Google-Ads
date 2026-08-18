@@ -55,7 +55,7 @@ def test_smart_shopping_is_rejected_in_favor_of_pmax():
     ctx = build_ctx(lambda *a, **k: None)
     tool_fns = register_module(tools.campaign_types, ctx)
 
-    with pytest.raises(ValueError, match="Performance Max"):
+    with pytest.raises(ValueError, match="create_performance_max_campaign"):
         tool_fns["create_shopping_campaign"](
             customer_id="123",
             name="Legacy Smart Shopping",
@@ -75,7 +75,7 @@ def test_legacy_local_campaign_never_mutates():
     ctx = build_ctx(fake_mutate)
     tool_fns = register_module(tools.campaign_types, ctx)
 
-    with pytest.raises(GoogleAdsMcpError, match="Performance Max"):
+    with pytest.raises(GoogleAdsMcpError, match="create_performance_max_campaign"):
         tool_fns["create_local_campaign"](
             customer_id="123",
             name="Local Test",
