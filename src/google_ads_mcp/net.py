@@ -24,6 +24,37 @@ _ALLOWED_CONTENT_TYPES = {
 }
 
 
+def install_safe_urlopen() -> None:
+    """Replace urllib.request.urlopen with a public-HTTPS-only wrapper.
+
+    Existing tool modules use urllib directly. Installing this once during
+    server startup protects all of those call sites, including redirects,
+    without relying on every future tool to remember the SSRF checks.
+    """
+    if urllib.request.urlopen is not safe_public_urlopen:
+        urllib.request.urlopen = safe_public_urlopen
+
+
+def safe_public_urlopen(
+    url,
+    data=None,
+    timeout=socket._GLOBAL_DEFAULT_TIMEOUT,
+    *args,
+    **kwargs,
+):
+    """urllib-compatible opener that blocks non-public/non-HTTPS destinations."""
+    if isinstance(url, urllib.request.Request):
+        request = url
+        target = request.full_url
+    else:
+        target = str(url)
+        request = urllib.request.Request(target, data=data)
+
+    _validate_public_https_url(target)
+    opener = urllib.request.build_opener(_SafeRedirectHandler())
+    return opener.open(request, timeout=timeout)
+
+
 def fetch_public_https_image(
     url: str,
     *,
@@ -31,17 +62,13 @@ def fetch_public_https_image(
     max_bytes: int = _DEFAULT_MAX_IMAGE_BYTES,
 ) -> bytes:
     """Fetch an image from a public HTTPS URL with SSRF and size protections."""
-    _validate_public_https_url(url)
-
-    opener = urllib.request.build_opener(_SafeRedirectHandler())
     request = urllib.request.Request(
         url,
         headers={"User-Agent": "google-ads-mcp/0.12"},
         method="GET",
     )
-
     try:
-        with opener.open(request, timeout=timeout) as response:
+        with safe_public_urlopen(request, timeout=timeout) as response:
             final_url = response.geturl()
             _validate_public_https_url(final_url)
 
@@ -86,28 +113,36 @@ def _validate_public_https_url(url: str) -> None:
     try:
         parsed = urllib.parse.urlsplit(url)
     except ValueError as ex:
-        raise GoogleAdsMcpError(f"Invalid image URL: {ex}") from ex
+        raise GoogleAdsMcpError(f"Invalid remote asset URL: {ex}") from ex
 
     if parsed.scheme.lower() != "https":
-        raise GoogleAdsMcpError("Image URLs must use HTTPS.")
+        raise GoogleAdsMcpError("Remote asset URLs must use HTTPS.")
     if not parsed.hostname:
-        raise GoogleAdsMcpError("Image URL must include a hostname.")
+        raise GoogleAdsMcpError("Remote asset URL must include a hostname.")
     if parsed.username or parsed.password:
-        raise GoogleAdsMcpError("Image URLs with embedded credentials are not allowed.")
-    if parsed.port not in (None, 443):
-        raise GoogleAdsMcpError("Image URLs may only use the standard HTTPS port 443.")
+        raise GoogleAdsMcpError(
+            "Remote asset URLs with embedded credentials are not allowed."
+        )
+    try:
+        port = parsed.port
+    except ValueError as ex:
+        raise GoogleAdsMcpError(f"Invalid URL port: {ex}") from ex
+    if port not in (None, 443):
+        raise GoogleAdsMcpError(
+            "Remote asset URLs may only use the standard HTTPS port 443."
+        )
 
     host = parsed.hostname.rstrip(".").lower()
     if host in {"localhost", "localhost.localdomain"} or host.endswith(".localhost"):
-        raise GoogleAdsMcpError("Localhost image URLs are not allowed.")
+        raise GoogleAdsMcpError("Localhost remote asset URLs are not allowed.")
 
     try:
         addresses = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
     except socket.gaierror as ex:
-        raise GoogleAdsMcpError(f"Could not resolve image hostname '{host}'.") from ex
+        raise GoogleAdsMcpError(f"Could not resolve remote hostname '{host}'.") from ex
 
     if not addresses:
-        raise GoogleAdsMcpError(f"Could not resolve image hostname '{host}'.")
+        raise GoogleAdsMcpError(f"Could not resolve remote hostname '{host}'.")
 
     for entry in addresses:
         ip_text = entry[4][0]
@@ -117,5 +152,6 @@ def _validate_public_https_url(url: str) -> None:
             raise GoogleAdsMcpError(f"Invalid resolved IP address '{ip_text}'.") from ex
         if not ip.is_global:
             raise GoogleAdsMcpError(
-                f"Image hostname '{host}' resolves to a non-public address; request blocked."
+                f"Remote hostname '{host}' resolves to a non-public address; "
+                "request blocked."
             )
