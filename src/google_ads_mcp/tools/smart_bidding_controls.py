@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from ..context import AppContext
@@ -14,8 +14,8 @@ _SUPPORTED_DEVICES = {"DESKTOP", "MOBILE", "TABLET"}
 def _parse_interval(start_date_time: str, end_date_time: str) -> tuple[str, str]:
     fmt = "%Y-%m-%d %H:%M:%S"
     try:
-        start = datetime.strptime(start_date_time, fmt).replace(tzinfo=timezone.utc)
-        end = datetime.strptime(end_date_time, fmt).replace(tzinfo=timezone.utc)
+        start = datetime.strptime(start_date_time, fmt).replace(tzinfo=UTC)
+        end = datetime.strptime(end_date_time, fmt).replace(tzinfo=UTC)
     except ValueError as ex:
         raise ValueError(
             "start_date_time and end_date_time must use yyyy-MM-dd HH:mm:ss."
