@@ -94,21 +94,17 @@ class SafetyLayer:
             )
 
         action.attempts += 1
-        try:
-            result = self._run(
-                action.action_id,
-                action.tool_name,
-                action.customer_id,
-                action.description,
-                action.payload,
-                action.execute,
-            )
-        except Exception:
-            # Keep the action pending so transient Google/network failures can be
-            # retried with the same audit/action id instead of silently losing it.
-            raise
-        else:
-            self._pending.pop(action_id, None)
+        # Pop only after a successful execution. If _run raises, the pending
+        # action stays available for retry under the same action/audit id.
+        result = self._run(
+            action.action_id,
+            action.tool_name,
+            action.customer_id,
+            action.description,
+            action.payload,
+            action.execute,
+        )
+        self._pending.pop(action_id, None)
 
         return {
             "status": "executed",
@@ -216,17 +212,16 @@ def _safe_result(result: Any) -> Any:
                 field_name = (
                     response_pb.WhichOneof("response") if response_pb is not None else None
                 )
-                if not field_name:
+                if not field_name and response_pb is not None:
                     # Proto schemas have used both "response" and "operation" as
                     # oneof names across generated surfaces; probe defensively.
-                    if response_pb is not None:
-                        for oneof_name in ("operation", "result"):
-                            try:
-                                field_name = response_pb.WhichOneof(oneof_name)
-                            except ValueError:
-                                continue
-                            if field_name:
-                                break
+                    for oneof_name in ("operation", "result"):
+                        try:
+                            field_name = response_pb.WhichOneof(oneof_name)
+                        except ValueError:
+                            continue
+                        if field_name:
+                            break
                 if not field_name:
                     operation_results.append({"type": "unknown"})
                     continue
