@@ -1,6 +1,6 @@
 # Setup
 
-This guide configures Google Ads MCP v0.12 for Google Ads API v25.
+This guide configures Google Ads MCP for Google Ads API v25, including the v0.13 production isolation policy.
 
 ## Requirements
 
@@ -30,13 +30,9 @@ Verify the package before configuring an MCP host:
 .venv/bin/python -c "import google_ads_mcp; print('OK', google_ads_mcp.__version__, google_ads_mcp.__file__)"
 ```
 
-Expected version for this release: `0.12.0`.
-
 ## 2. Google Ads Developer Token
 
-Obtain the Developer Token from the Google Ads API Center in your manager account.
-
-Add it to `.env`:
+Obtain the Developer Token from the Google Ads API Center in your manager account and add it to `.env`:
 
 ```dotenv
 GOOGLE_ADS_DEVELOPER_TOKEN=...
@@ -91,19 +87,46 @@ GOOGLE_ADS_LOGIN_CUSTOMER_ID=1234567890
 
 Digits or the usual dashed display form are accepted; the MCP normalizes customer IDs before API calls.
 
-## 6. Safety defaults
+## 6. Production customer isolation
+
+A Google Ads OAuth identity or MCC can often see many accounts. For a deployment dedicated to one customer, explicitly scope the MCP:
+
+```dotenv
+GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS=123-456-7890
+GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true
+```
+
+For a controlled deployment that intentionally serves several customers:
+
+```dotenv
+GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS=123-456-7890,987-654-3210
+GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true
+```
+
+When an allowlist is configured, reads and writes outside it are blocked centrally and `list_accessible_customers()` is filtered. Strict mode refuses startup when the list is empty.
+
+If you need `get_account_hierarchy()` against an MCC, include the MCC customer ID in the allowlist as well, because the hierarchy query is scoped to that manager customer.
+
+Leaving both settings unset preserves the historical “all accounts reachable by these credentials” behavior. That is convenient for development but is not the recommended isolation model for customer-specific production instances.
+
+## 7. Write safety defaults
 
 Recommended production configuration:
 
 ```dotenv
 GOOGLE_ADS_MCP_AUTO_APPROVE=false
+GOOGLE_ADS_MCP_AUTO_APPROVE_SPEND=false
+GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
+GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
 GOOGLE_ADS_MCP_PENDING_TTL_MINUTES=30
 GOOGLE_ADS_MCP_AUDIT_DB=
 GOOGLE_ADS_MCP_TRANSPORT=stdio
 GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=false
 ```
 
-With auto-approve disabled, write tools only create pending actions. The account is modified after `confirm_pending_action(action_id)`.
+With global auto-approve disabled, write tools create pending actions and the account changes only after `confirm_pending_action(action_id)`.
+
+When global auto-approve is deliberately enabled, only `standard` risk writes execute automatically by default. Spend-changing, destructive, and sensitive/account-access operations each require their own explicit opt-in. This prevents one generic automation flag from authorizing every category of live-account change.
 
 The default audit database is:
 
@@ -111,7 +134,7 @@ The default audit database is:
 ~/.google_ads_mcp/audit.db
 ```
 
-## 7. Claude Desktop / Claude Code
+## 8. Claude Desktop / Claude Code
 
 Use the virtualenv Python by **absolute path**. Do not rely on a bare `python` command because desktop MCP hosts may use a different `PATH`.
 
@@ -167,7 +190,7 @@ GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true
 
 ## Google Ads API version
 
-v0.12 pins the Python dependency to the tested 31.x client line and explicitly requests API `v25`.
+The project pins the Python dependency to the tested 31.x client line and explicitly requests API `v25`.
 
 This is intentional. Floating silently to the library's future default API version can break fields and enums without a code change.
 
@@ -207,27 +230,27 @@ GOOGLE_ADS_REFRESH_TOKEN=
 
 For MCC access, also verify `GOOGLE_ADS_LOGIN_CUSTOMER_ID`.
 
-### `CUSTOMER_NOT_ENABLED`, permission or manager errors
+### Customer blocked by allowlist
 
-Use `list_accessible_customers()` and `get_account_hierarchy()` to verify the account is reachable with the current identity and manager context.
+If a request returns `outside GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS`, verify that the intended customer ID is included in the deployment's `.env`. Do not widen the list simply to make an unexpected ID work; first confirm which client/account the MCP instance is supposed to control.
 
-### A write returns `pending_confirmation`
+### Startup says the customer allowlist is required but empty
 
-That is the default safety behavior, not an error. Inspect the description and call:
+You enabled strict isolation:
 
-```text
-confirm_pending_action(action_id)
+```dotenv
+GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true
 ```
 
-or cancel it with:
+Add the intended customer IDs to `GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS` or turn strict mode off only if the deployment is intentionally allowed to reach every account available to the credentials.
 
-```text
-cancel_pending_action(action_id)
-```
+### A write returns `pending_confirmation` while AUTO_APPROVE is true
+
+Check `risk_level`. In v0.13, spend, destructive, and sensitive actions remain confirmation-gated unless their corresponding high-risk auto-approve flag is explicitly enabled. This is expected production behavior.
 
 ### Confirmation fails transiently
 
-v0.12 keeps a failed confirmation pending. Fix the underlying problem and retry the **same action ID**. The audit log records each attempt under that ID.
+A failed confirmation stays pending. Fix the underlying problem and retry the **same action ID**. The audit log records each attempt under that ID.
 
 ### Remote image URL rejected
 
