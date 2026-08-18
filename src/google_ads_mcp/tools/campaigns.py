@@ -77,7 +77,10 @@ def register(mcp, ctx: AppContext) -> None:
         if bidding_strategy == "MANUAL_CPC":
             campaign.manual_cpc.enhanced_cpc_enabled = True
         elif bidding_strategy == "MAXIMIZE_CONVERSIONS":
-            campaign.maximize_conversions.SetInParent()
+            client.copy_from(
+                campaign.maximize_conversions,
+                client.get_type("MaximizeConversions"),
+            )
         elif bidding_strategy == "TARGET_CPA":
             if target_cpa is None:
                 raise ValueError(
