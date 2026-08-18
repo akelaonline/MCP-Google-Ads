@@ -1,7 +1,8 @@
 """Thin wrapper around google.ads.googleads.client.GoogleAdsClient.
 
-Centralizes client construction, GAQL search, and mutate execution so every
-tool module shares the same API version and error handling.
+Centralizes client construction, GAQL search, compatibility normalization,
+and mutate execution so every tool module shares the same API version and
+error handling.
 """
 
 from __future__ import annotations
@@ -78,6 +79,11 @@ class GoogleAdsClientWrapper:
 
         service = self.service(service_name)
         customer_id = normalize_customer_id(customer_id)
+        operation_list = list(operations)
+        if service_name == "CampaignService":
+            for operation in operation_list:
+                _normalize_campaign_create(self.raw, operation)
+
         method_name = _mutate_method_name(service_name)
         method = getattr(service, method_name, None)
         if method is None:
@@ -89,7 +95,7 @@ class GoogleAdsClientWrapper:
 
         kwargs: dict[str, Any] = {
             "customer_id": customer_id,
-            operations_field: list(operations),
+            operations_field: operation_list,
         }
         try:
             accepted_params = set(inspect.signature(method).parameters)
@@ -113,20 +119,20 @@ class GoogleAdsClientWrapper:
         *,
         validate_only: bool = False,
     ):
-        """Execute cross-resource operations atomically via GoogleAdsService.Mutate.
-
-        This is the correct path for workflows that create one resource and link
-        it to another in the same logical action. ``partial_failure`` is always
-        false so either the whole transaction succeeds or none of it does.
-        """
+        """Execute cross-resource operations atomically via GoogleAdsService.Mutate."""
         from google.ads.googleads.errors import GoogleAdsException
 
         service = self.service("GoogleAdsService")
         customer_id = normalize_customer_id(customer_id)
+        operation_list = list(mutate_operations)
+        for operation in operation_list:
+            campaign_operation = getattr(operation, "campaign_operation", None)
+            if campaign_operation is not None:
+                _normalize_campaign_create(self.raw, campaign_operation)
         try:
             return service.mutate(
                 customer_id=customer_id,
-                mutate_operations=list(mutate_operations),
+                mutate_operations=operation_list,
                 partial_failure=False,
                 validate_only=validate_only,
             )
@@ -151,6 +157,42 @@ def _mutate_method_name(service_name: str) -> str:
     base = service_name.removesuffix("Service")
     snake = re.sub(r"(?<!^)(?=[A-Z])", "_", base).lower()
     return f"mutate_{snake}s"
+
+
+def _normalize_campaign_create(client, operation) -> None:
+    """Apply v25-required fields and repair legacy PMax bidding shapes."""
+    pb = getattr(operation, "_pb", None)
+    if pb is None or pb.WhichOneof("operation") != "create":
+        return
+
+    campaign = operation.create
+    campaign_pb = getattr(campaign, "_pb", None)
+
+    # API v21+ requires an explicit EU political advertising declaration for
+    # campaign creation. Only fill it if the caller did not already provide one.
+    political_value = getattr(campaign, "contains_eu_political_advertising", 0)
+    if not political_value:
+        campaign.contains_eu_political_advertising = (
+            client.enums.EuPoliticalAdvertisingStatusEnum.DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING
+        )
+
+    if (
+        campaign.advertising_channel_type
+        != client.enums.AdvertisingChannelTypeEnum.PERFORMANCE_MAX
+    ):
+        return
+
+    # PMax supports Maximize Conversions (+ optional target CPA) or Maximize
+    # Conversion Value (+ optional target ROAS). Older code in this repository
+    # used standalone TargetCpa/TargetRoas, which current PMax creation rejects.
+    if campaign_pb is not None and campaign_pb.HasField("target_cpa"):
+        target_cpa_micros = campaign.target_cpa.target_cpa_micros
+        campaign_pb.ClearField("target_cpa")
+        campaign.maximize_conversions.target_cpa_micros = target_cpa_micros
+    elif campaign_pb is not None and campaign_pb.HasField("target_roas"):
+        target_roas = campaign.target_roas.target_roas
+        campaign_pb.ClearField("target_roas")
+        campaign.maximize_conversion_value.target_roas = target_roas
 
 
 def _row_to_dict(row) -> dict[str, Any]:
