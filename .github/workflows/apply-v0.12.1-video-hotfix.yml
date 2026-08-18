@@ -47,3 +47,5 @@ jobs:
           git add -A
           git commit -m 'fix: block legacy video writes and add Demand Gen video'
           git push origin HEAD:agent/v0.12.1-video-hotfix
+
+# One-shot production validation. This workflow deletes itself from the final tree.
