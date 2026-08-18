@@ -243,7 +243,7 @@ def _validate_status_batch(updates: list[dict], status: str, *required_keys: str
         raise ValueError("status must be ENABLED, PAUSED, or REMOVED.")
     for index, item in enumerate(updates):
         if not isinstance(item, dict):
-            raise ValueError(f"updates[{index}] must be an object.")
+            raise TypeError(f"updates[{index}] must be an object.")
         for key in required_keys:
             if not str(item.get(key, "")).strip():
                 raise ValueError(f"updates[{index}] is missing non-empty {key!r}.")
@@ -251,7 +251,7 @@ def _validate_status_batch(updates: list[dict], status: str, *required_keys: str
 
 def _validate_negative(keyword: dict) -> tuple[str, str]:
     if not isinstance(keyword, dict):
-        raise ValueError("Each negative keyword must be an object.")
+        raise TypeError("Each negative keyword must be an object.")
     text = str(keyword.get("text", "")).strip()
     if not text:
         raise ValueError("Negative keyword text must not be empty.")
