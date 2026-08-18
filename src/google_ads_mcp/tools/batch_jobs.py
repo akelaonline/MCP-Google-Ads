@@ -180,7 +180,7 @@ def register(mcp, ctx: AppContext) -> None:
         where = ""
         if status_filter:
             status = status_filter.strip().upper()
-            allowed = {"PENDING", "RUNNING", "DONE", "CANCELED"}
+            allowed = {"PENDING", "RUNNING", "DONE"}
             if status not in allowed:
                 raise ValueError(f"status_filter must be one of {sorted(allowed)}.")
             where = f"WHERE batch_job.status = '{status}'"
