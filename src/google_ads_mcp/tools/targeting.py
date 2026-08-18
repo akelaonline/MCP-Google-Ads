@@ -1,33 +1,10 @@
-"""Geo-targeting, language targeting, ad scheduling, and bid modifiers
-(device / location / ad schedule).
-
-Every campaign created by this MCP (create_campaign, create_performance_max_campaign)
-starts with NO location or language targeting configured — Google Ads
-defaults a brand-new campaign to "All countries and territories" if you
-never set anything, which is almost never what an agency actually wants.
-This module is what closes that gap.
-"""
+"""Geo, language, schedule, device, and placement targeting tools."""
 
 from __future__ import annotations
 
-from ..context import AppContext
+from google.protobuf import field_mask_pb2
 
-# A small, commonly-used set of Google Ads geo target constant IDs so callers
-# don't have to look them up via the separate GeoTargetConstantService for
-# the obvious cases. Not exhaustive — for anything else, pass the numeric
-# criterion ID directly (found via Google's geotargets CSV or GAQL on
-# geo_target_constant).
-COMMON_GEO_TARGET_IDS: dict[str, int] = {
-    "argentina": 2032,
-    "buenos aires": 20101,  # CABA (Ciudad Autónoma de Buenos Aires)
-    "cordoba": 20102,
-    "uruguay": 2858,
-    "chile": 2152,
-    "mexico": 2484,
-    "spain": 2724,
-    "united states": 2840,
-    "brazil": 2076,
-}
+from ..context import AppContext
 
 
 def register(mcp, ctx: AppContext) -> None:
@@ -37,40 +14,47 @@ def register(mcp, ctx: AppContext) -> None:
         campaign_id: str,
         locations: list[str],
         negative: bool = False,
+        country_code: str | None = None,
+        locale: str = "en",
     ) -> dict:
         """Propose adding location targeting to a campaign.
 
-        Args:
-            locations: Each entry is either a key from COMMON_GEO_TARGET_IDS
-                (e.g. "argentina", "buenos aires") or a numeric geo target
-                constant ID as a string (e.g. "1000073" for a specific city —
-                look these up via GAQL on geo_target_constant if not in the
-                common list).
-            negative: If True, these locations are EXCLUDED instead of targeted.
+        Numeric entries are treated as GeoTargetConstant criterion IDs. Text
+        names are resolved live with ``SuggestGeoTargetConstants`` instead of
+        relying on stale hard-coded IDs. If a name is ambiguous, pass a numeric
+        criterion ID (or narrow it with ``country_code``).
         """
+        if not locations:
+            raise ValueError("Provide at least one location.")
+        if country_code is not None and len(country_code) != 2:
+            raise ValueError("country_code must be a two-letter country code.")
+
         client = ctx.client.raw
         customer_id_clean = customer_id.replace("-", "")
         campaign_resource_name = client.get_service("CampaignService").campaign_path(
             customer_id_clean, campaign_id
         )
-        geo_service = client.get_service("GeoTargetConstantService")
+        resolved = _resolve_location_resource_names(
+            client,
+            locations,
+            country_code=country_code,
+            locale=locale,
+        )
 
         operations = []
-        resolved = []
-        for loc in locations:
-            geo_id = COMMON_GEO_TARGET_IDS.get(loc.lower(), loc)
-            resolved.append(str(geo_id))
+        for original, resource_name in resolved:
             operation = client.get_type("CampaignCriterionOperation")
             criterion = operation.create
             criterion.campaign = campaign_resource_name
             criterion.negative = negative
-            criterion.location.geo_target_constant = (
-                geo_service.geo_target_constant_path(str(geo_id))
-            )
+            criterion.location.geo_target_constant = resource_name
             operations.append(operation)
 
         verb = "Exclude" if negative else "Target"
-        description = f"{verb} location(s) {resolved} on campaign {campaign_id}"
+        description = (
+            f"{verb} location(s) {[resource for _, resource in resolved]} "
+            f"on campaign {campaign_id}"
+        )
 
         def execute():
             return ctx.client.mutate(
@@ -84,7 +68,13 @@ def register(mcp, ctx: AppContext) -> None:
             payload={
                 "campaign_id": campaign_id,
                 "locations": locations,
+                "resolved": [
+                    {"input": original, "resource_name": resource}
+                    for original, resource in resolved
+                ],
                 "negative": negative,
+                "country_code": country_code,
+                "locale": locale,
             },
             execute=execute,
         )
@@ -93,32 +83,49 @@ def register(mcp, ctx: AppContext) -> None:
     def set_language_targeting(
         customer_id: str, campaign_id: str, language_codes: list[str]
     ) -> dict:
-        """Propose setting language targeting on a campaign.
+        """Replace all language criteria on a campaign atomically."""
+        if not language_codes:
+            raise ValueError("Provide at least one language constant ID.")
+        normalized_codes = list(dict.fromkeys(str(code).strip() for code in language_codes))
+        if any(not code.isdigit() for code in normalized_codes):
+            raise ValueError("language_codes must contain numeric language constant IDs.")
 
-        Args:
-            language_codes: Google Ads language constant criterion IDs as
-                strings for the common ones: "1003" Spanish, "1000" English,
-                "1014" Portuguese. Full list via GAQL on language_constant.
-        """
         client = ctx.client.raw
         customer_id_clean = customer_id.replace("-", "")
         campaign_resource_name = client.get_service("CampaignService").campaign_path(
             customer_id_clean, campaign_id
         )
-        language_service = client.get_service("LanguageConstantService")
+
+        existing_query = f"""
+            SELECT campaign_criterion.criterion_id,
+                   campaign_criterion.language.language_constant
+            FROM campaign_criterion
+            WHERE campaign.id = {int(campaign_id)}
+              AND campaign_criterion.type = LANGUAGE
+        """
+        existing = ctx.client.search(customer_id, existing_query)
 
         operations = []
-        for code in language_codes:
+        criterion_service = client.get_service("CampaignCriterionService")
+        for row in existing:
+            criterion_id = row.get("campaign_criterion", {}).get("criterion_id")
+            if criterion_id is None:
+                continue
             operation = client.get_type("CampaignCriterionOperation")
-            criterion = operation.create
-            criterion.campaign = campaign_resource_name
-            criterion.language.language_constant = (
-                language_service.language_constant_path(code)
+            operation.remove = criterion_service.campaign_criterion_path(
+                customer_id_clean, campaign_id, str(criterion_id)
             )
             operations.append(operation)
 
+        for code in normalized_codes:
+            operation = client.get_type("CampaignCriterionOperation")
+            criterion = operation.create
+            criterion.campaign = campaign_resource_name
+            criterion.language.language_constant = f"languageConstants/{code}"
+            operations.append(operation)
+
         description = (
-            f"Set language targeting {language_codes} on campaign {campaign_id}"
+            f"Replace campaign {campaign_id} language targeting with {normalized_codes}"
         )
 
         def execute():
@@ -130,7 +137,11 @@ def register(mcp, ctx: AppContext) -> None:
             tool_name="set_language_targeting",
             customer_id=customer_id,
             description=description,
-            payload={"campaign_id": campaign_id, "language_codes": language_codes},
+            payload={
+                "campaign_id": campaign_id,
+                "language_codes": normalized_codes,
+                "existing_language_count": len(existing),
+            },
             execute=execute,
         )
 
@@ -143,35 +154,34 @@ def register(mcp, ctx: AppContext) -> None:
         end_hour: int,
         bid_modifier: float | None = None,
     ) -> dict:
-        """Propose adding an ad schedule (dayparting) entry to a campaign.
-
-        Args:
-            day_of_week: MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY,
-                SATURDAY, or SUNDAY.
-            start_hour / end_hour: 0-24, e.g. 9 to 18 for "9am to 6pm".
-            bid_modifier: Optional, e.g. 1.2 for +20% bids in this window.
-        """
-        if not (0 <= start_hour <= 24) or not (0 <= end_hour <= 24):
-            raise ValueError("start_hour and end_hour must be between 0 and 24.")
+        """Propose adding an ad-schedule/daypart criterion."""
+        if not (0 <= start_hour <= 23):
+            raise ValueError("start_hour must be between 0 and 23.")
+        if not (1 <= end_hour <= 24):
+            raise ValueError("end_hour must be between 1 and 24.")
         if start_hour >= end_hour:
             raise ValueError("start_hour must be before end_hour.")
+        if bid_modifier is not None and not (0.1 <= bid_modifier <= 10.0):
+            raise ValueError("bid_modifier must be between 0.1 and 10.0.")
+        if day_of_week not in {
+            "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY",
+            "FRIDAY", "SATURDAY", "SUNDAY",
+        }:
+            raise ValueError("day_of_week must be a weekday enum name.")
 
         client = ctx.client.raw
-        customer_id_clean = customer_id.replace("-", "")
-        campaign_resource_name = client.get_service("CampaignService").campaign_path(
-            customer_id_clean, campaign_id
-        )
-
         operation = client.get_type("CampaignCriterionOperation")
         criterion = operation.create
-        criterion.campaign = campaign_resource_name
+        criterion.campaign = client.get_service("CampaignService").campaign_path(
+            customer_id.replace("-", ""), campaign_id
+        )
         criterion.ad_schedule.day_of_week = client.enums.DayOfWeekEnum[
             day_of_week
         ].value
         criterion.ad_schedule.start_hour = start_hour
-        criterion.ad_schedule.start_minute = client.enums.MinuteOfHourEnum.ZERO
+        criterion.ad_schedule.start_minute = client.enums.MinuteOfHourEnum.ZERO.value
         criterion.ad_schedule.end_hour = end_hour
-        criterion.ad_schedule.end_minute = client.enums.MinuteOfHourEnum.ZERO
+        criterion.ad_schedule.end_minute = client.enums.MinuteOfHourEnum.ZERO.value
         if bid_modifier is not None:
             criterion.bid_modifier = bid_modifier
 
@@ -204,26 +214,55 @@ def register(mcp, ctx: AppContext) -> None:
     def set_device_bid_modifier(
         customer_id: str, campaign_id: str, device: str, bid_modifier: float
     ) -> dict:
-        """Propose setting a bid modifier for a device type on a campaign.
+        """Set a campaign-level device bid modifier idempotently.
 
-        Args:
-            device: MOBILE, DESKTOP, or TABLET.
-            bid_modifier: e.g. 1.3 for +30%, 0.8 for -20%.
+        Existing device criteria are updated rather than recreated. Google
+        allows 0 to opt out of a device, otherwise the valid range is 0.1-10.
         """
+        if device not in {"MOBILE", "DESKTOP", "TABLET"}:
+            raise ValueError("device must be MOBILE, DESKTOP, or TABLET.")
+        if bid_modifier != 0 and not (0.1 <= bid_modifier <= 10.0):
+            raise ValueError("bid_modifier must be 0 or between 0.1 and 10.0.")
+
         client = ctx.client.raw
         customer_id_clean = customer_id.replace("-", "")
-        campaign_resource_name = client.get_service("CampaignService").campaign_path(
-            customer_id_clean, campaign_id
-        )
-
+        existing_query = f"""
+            SELECT campaign_criterion.criterion_id,
+                   campaign_criterion.device.type,
+                   campaign_criterion.bid_modifier
+            FROM campaign_criterion
+            WHERE campaign.id = {int(campaign_id)}
+              AND campaign_criterion.type = DEVICE
+              AND campaign_criterion.device.type = {device}
+            LIMIT 1
+        """
+        existing = ctx.client.search(customer_id, existing_query)
         operation = client.get_type("CampaignCriterionOperation")
-        criterion = operation.create
-        criterion.campaign = campaign_resource_name
-        criterion.device.type_ = client.enums.DeviceEnum[device].value
-        criterion.bid_modifier = bid_modifier
+
+        if existing:
+            criterion_id = existing[0]["campaign_criterion"]["criterion_id"]
+            criterion = operation.update
+            criterion.resource_name = client.get_service(
+                "CampaignCriterionService"
+            ).campaign_criterion_path(
+                customer_id_clean, campaign_id, str(criterion_id)
+            )
+            criterion.bid_modifier = bid_modifier
+            operation.update_mask.CopyFrom(
+                field_mask_pb2.FieldMask(paths=["bid_modifier"])
+            )
+            action = "Update"
+        else:
+            criterion = operation.create
+            criterion.campaign = client.get_service("CampaignService").campaign_path(
+                customer_id_clean, campaign_id
+            )
+            criterion.device.type_ = client.enums.DeviceEnum[device].value
+            criterion.bid_modifier = bid_modifier
+            action = "Create"
 
         description = (
-            f"Set {device} bid modifier x{bid_modifier} on campaign {campaign_id}"
+            f"{action} {device} bid modifier x{bid_modifier} on campaign {campaign_id}"
         )
 
         def execute():
@@ -239,6 +278,7 @@ def register(mcp, ctx: AppContext) -> None:
                 "campaign_id": campaign_id,
                 "device": device,
                 "bid_modifier": bid_modifier,
+                "updated_existing": bool(existing),
             },
             execute=execute,
         )
@@ -250,46 +290,39 @@ def register(mcp, ctx: AppContext) -> None:
         placement_url: str,
         placement_type: str = "WEBSITE",
     ) -> dict:
-        """Propose excluding a specific Display/YouTube placement (a site,
-        app, or YouTube channel) from a campaign — for when the search terms
-        or placement report shows a placement burning spend with no results
-        (e.g. a game app showing Display ads that get accidentally tapped).
-
-        Args:
-            placement_url: The placement identifier — a domain (e.g.
-                "example.com") for WEBSITE, a YouTube channel ID for
-                YOUTUBE_CHANNEL, or a mobile app ID for MOBILE_APPLICATION.
-            placement_type: WEBSITE, YOUTUBE_CHANNEL, YOUTUBE_VIDEO, or
-                MOBILE_APPLICATION.
-        """
-        client = ctx.client.raw
-        customer_id_clean = customer_id.replace("-", "")
-        campaign_resource_name = client.get_service("CampaignService").campaign_path(
-            customer_id_clean, campaign_id
-        )
-
-        operation = client.get_type("CampaignCriterionOperation")
-        criterion = operation.create
-        criterion.campaign = campaign_resource_name
-        criterion.negative = True
-
-        if placement_type == "WEBSITE":
-            criterion.placement.url = placement_url
-        elif placement_type == "YOUTUBE_CHANNEL":
-            criterion.youtube_channel.channel_id = placement_url
-        elif placement_type == "YOUTUBE_VIDEO":
-            criterion.youtube_video.video_id = placement_url
-        elif placement_type == "MOBILE_APPLICATION":
-            criterion.mobile_application.app_id = placement_url
-        else:
+        """Propose excluding a Display/YouTube/app placement from a campaign."""
+        if not placement_url.strip():
+            raise ValueError("placement_url must not be empty.")
+        valid_types = {
+            "WEBSITE", "YOUTUBE_CHANNEL", "YOUTUBE_VIDEO", "MOBILE_APPLICATION"
+        }
+        if placement_type not in valid_types:
             raise ValueError(
                 "placement_type must be WEBSITE, YOUTUBE_CHANNEL, YOUTUBE_VIDEO, "
                 "or MOBILE_APPLICATION."
             )
+        if placement_type == "YOUTUBE_VIDEO" and len(placement_url.strip()) != 11:
+            raise ValueError("YOUTUBE_VIDEO placement must be an 11-character video ID.")
+
+        client = ctx.client.raw
+        operation = client.get_type("CampaignCriterionOperation")
+        criterion = operation.create
+        criterion.campaign = client.get_service("CampaignService").campaign_path(
+            customer_id.replace("-", ""), campaign_id
+        )
+        criterion.negative = True
+        value = placement_url.strip()
+        if placement_type == "WEBSITE":
+            criterion.placement.url = value
+        elif placement_type == "YOUTUBE_CHANNEL":
+            criterion.youtube_channel.channel_id = value
+        elif placement_type == "YOUTUBE_VIDEO":
+            criterion.youtube_video.video_id = value
+        else:
+            criterion.mobile_application.app_id = value
 
         description = (
-            f"Exclude {placement_type} placement '{placement_url}' from campaign "
-            f"{campaign_id}"
+            f"Exclude {placement_type} placement '{value}' from campaign {campaign_id}"
         )
 
         def execute():
@@ -303,7 +336,7 @@ def register(mcp, ctx: AppContext) -> None:
             description=description,
             payload={
                 "campaign_id": campaign_id,
-                "placement_url": placement_url,
+                "placement_url": value,
                 "placement_type": placement_type,
             },
             execute=execute,
@@ -311,8 +344,7 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def list_campaign_criteria(customer_id: str, campaign_id: str) -> dict:
-        """List all targeting criteria on a campaign — locations, languages,
-        ad schedules, device modifiers, and negative keywords together."""
+        """List targeting criteria on a campaign."""
         query = f"""
             SELECT campaign_criterion.criterion_id, campaign_criterion.type,
                    campaign_criterion.negative, campaign_criterion.bid_modifier,
@@ -324,7 +356,73 @@ def register(mcp, ctx: AppContext) -> None:
                    campaign_criterion.ad_schedule.end_hour,
                    campaign_criterion.keyword.text
             FROM campaign_criterion
-            WHERE campaign.id = {campaign_id}
+            WHERE campaign.id = {int(campaign_id)}
         """
         rows = ctx.client.search(customer_id, query)
         return {"campaign_id": campaign_id, "criteria": rows, "count": len(rows)}
+
+
+def _resolve_location_resource_names(
+    client,
+    locations: list[str],
+    *,
+    country_code: str | None,
+    locale: str,
+) -> list[tuple[str, str]]:
+    numeric = []
+    names = []
+    for raw in locations:
+        value = str(raw).strip()
+        if not value:
+            raise ValueError("Location entries must not be empty.")
+        if value.isdigit():
+            numeric.append((value, f"geoTargetConstants/{value}"))
+        else:
+            names.append(value)
+
+    resolved: list[tuple[str, str]] = list(numeric)
+    if not names:
+        return resolved
+    if len(names) > 25:
+        raise ValueError("At most 25 location names may be resolved per call.")
+
+    request = client.get_type("SuggestGeoTargetConstantsRequest")
+    request.locale = locale
+    if country_code:
+        request.country_code = country_code.upper()
+    request.location_names.names.extend(names)
+    service = client.get_service("GeoTargetConstantService")
+    response = service.suggest_geo_target_constants(request=request)
+
+    suggestions_by_term: dict[str, list] = {}
+    for suggestion in response.geo_target_constant_suggestions:
+        suggestions_by_term.setdefault(suggestion.search_term.casefold(), []).append(
+            suggestion.geo_target_constant
+        )
+
+    for name in names:
+        candidates = [
+            candidate
+            for candidate in suggestions_by_term.get(name.casefold(), [])
+            if candidate.status.name == "ENABLED"
+        ]
+        exact = [candidate for candidate in candidates if candidate.name.casefold() == name.casefold()]
+        if exact:
+            candidates = exact
+        unique = {candidate.resource_name: candidate for candidate in candidates}
+        if not unique:
+            raise ValueError(
+                f"No enabled geo target found for {name!r}. Pass a numeric criterion ID."
+            )
+        if len(unique) > 1:
+            options = ", ".join(
+                f"{candidate.name} [{candidate.target_type}] {candidate.resource_name}"
+                for candidate in list(unique.values())[:8]
+            )
+            raise ValueError(
+                f"Location {name!r} is ambiguous: {options}. Pass the numeric criterion ID."
+            )
+        candidate = next(iter(unique.values()))
+        resolved.append((name, candidate.resource_name))
+
+    return resolved

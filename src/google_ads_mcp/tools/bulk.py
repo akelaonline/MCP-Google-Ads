@@ -1,17 +1,13 @@
-"""Bulk operations: batch several mutations of the same kind into a single
-Google Ads API call instead of one round-trip per item.
-
-`add_keywords` / `add_negative_keywords` (keywords.py) already batch when
-you pass a list — this module targets the gap that's left: bulk *status
-changes* (pause/enable/remove) across many existing keywords or ads at once,
-including across different ad groups in the same request.
-"""
+"""Bulk write operations with all-or-nothing mutation semantics."""
 
 from __future__ import annotations
 
 from google.protobuf import field_mask_pb2
 
 from ..context import AppContext
+
+_VALID_STATUSES = {"ENABLED", "PAUSED", "REMOVED"}
+_VALID_MATCH_TYPES = {"BROAD", "PHRASE", "EXACT"}
 
 
 def register(mcp, ctx: AppContext) -> None:
@@ -21,47 +17,44 @@ def register(mcp, ctx: AppContext) -> None:
         updates: list[dict],
         status: str,
     ) -> dict:
-        """Propose pausing, enabling, or removing many keywords in one call.
-
-        Args:
-            updates: list of {"ad_group_id": "...", "criterion_id": "..."}.
-                Can span multiple ad groups in the same campaign or account.
-            status: ENABLED, PAUSED, or REMOVED — applied to every keyword in
-                `updates`. To apply different statuses to different keywords,
-                call this tool once per status group.
-        """
-        if not updates:
-            raise ValueError("Provide at least one {ad_group_id, criterion_id} entry.")
-
+        """Pause, enable, or remove many keywords atomically."""
+        _validate_status_batch(updates, status, "ad_group_id", "criterion_id")
         client = ctx.client.raw
         customer_id_clean = customer_id.replace("-", "")
         criterion_service = client.get_service("AdGroupCriterionService")
-
         operations = []
         for item in updates:
-            operation = client.get_type("AdGroupCriterionOperation")
             resource_name = criterion_service.ad_group_criterion_path(
                 customer_id_clean, item["ad_group_id"], item["criterion_id"]
             )
-            operation.update.resource_name = resource_name
-            operation.update.status = client.enums.AdGroupCriterionStatusEnum[
-                status
-            ].value
-            operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["status"]))
+            operation = client.get_type("AdGroupCriterionOperation")
+            if status == "REMOVED":
+                operation.remove = resource_name
+            else:
+                operation.update.resource_name = resource_name
+                operation.update.status = client.enums.AdGroupCriterionStatusEnum[
+                    status
+                ].value
+                operation.update_mask.CopyFrom(
+                    field_mask_pb2.FieldMask(paths=["status"])
+                )
             operations.append(operation)
 
-        description = f"Set {len(operations)} keyword(s) status -> {status}"
+        description = f"Atomically set {len(operations)} keyword(s) status -> {status}"
 
         def execute():
             return ctx.client.mutate(
-                "AdGroupCriterionService", customer_id, operations, partial_failure=True
+                "AdGroupCriterionService",
+                customer_id,
+                operations,
+                partial_failure=False,
             )
 
         return ctx.safety.propose(
             tool_name="bulk_update_keyword_status",
             customer_id=customer_id,
             description=description,
-            payload={"updates": updates, "status": status},
+            payload={"updates": updates, "status": status, "atomic": True},
             execute=execute,
         )
 
@@ -71,15 +64,7 @@ def register(mcp, ctx: AppContext) -> None:
         campaign_negatives: dict[str, list[dict]] | None = None,
         ad_group_negatives: dict[str, list[dict]] | None = None,
     ) -> dict:
-        """Propose adding negative keywords across multiple campaigns and/or
-        ad groups in a single call — e.g. rolling the same "cursos gratuitos"
-        negative list out to every active campaign in one shot instead of
-        calling add_negative_keywords once per campaign.
-
-        Args:
-            campaign_negatives: {"<campaign_id>": [{"text": "...", "match_type": "PHRASE"}, ...]}
-            ad_group_negatives: {"<ad_group_id>": [{"text": "...", "match_type": "PHRASE"}, ...]}
-        """
+        """Add negatives across campaign/ad-group scopes in one atomic mutate."""
         campaign_negatives = campaign_negatives or {}
         ad_group_negatives = ad_group_negatives or {}
         if not campaign_negatives and not ad_group_negatives:
@@ -89,74 +74,58 @@ def register(mcp, ctx: AppContext) -> None:
 
         client = ctx.client.raw
         customer_id_clean = customer_id.replace("-", "")
+        mutate_operations = []
+        campaign_count = 0
+        ad_group_count = 0
 
-        campaign_ops = []
         for campaign_id, keywords in campaign_negatives.items():
             campaign_resource_name = client.get_service(
                 "CampaignService"
             ).campaign_path(customer_id_clean, campaign_id)
-            for kw in keywords:
+            for keyword in keywords:
+                text, match_type = _validate_negative(keyword)
                 operation = client.get_type("CampaignCriterionOperation")
                 criterion = operation.create
                 criterion.campaign = campaign_resource_name
                 criterion.negative = True
-                criterion.keyword.text = kw["text"]
+                criterion.keyword.text = text
                 criterion.keyword.match_type = client.enums.KeywordMatchTypeEnum[
-                    kw.get("match_type", "BROAD")
+                    match_type
                 ].value
-                campaign_ops.append(operation)
+                mutate_operations.append(
+                    _wrap_mutate(client, "campaign_criterion_operation", operation)
+                )
+                campaign_count += 1
 
-        ad_group_ops = []
         for ad_group_id, keywords in ad_group_negatives.items():
             ad_group_resource_name = client.get_service("AdGroupService").ad_group_path(
                 customer_id_clean, ad_group_id
             )
-            for kw in keywords:
+            for keyword in keywords:
+                text, match_type = _validate_negative(keyword)
                 operation = client.get_type("AdGroupCriterionOperation")
                 criterion = operation.create
                 criterion.ad_group = ad_group_resource_name
                 criterion.negative = True
-                criterion.keyword.text = kw["text"]
+                criterion.keyword.text = text
                 criterion.keyword.match_type = client.enums.KeywordMatchTypeEnum[
-                    kw.get("match_type", "BROAD")
+                    match_type
                 ].value
-                ad_group_ops.append(operation)
+                mutate_operations.append(
+                    _wrap_mutate(client, "ad_group_criterion_operation", operation)
+                )
+                ad_group_count += 1
 
-        total = len(campaign_ops) + len(ad_group_ops)
+        if not mutate_operations:
+            raise ValueError("The supplied negative keyword collections are empty.")
+
         description = (
-            f"Add {len(campaign_ops)} campaign-level and {len(ad_group_ops)} ad-group-level "
-            f"negative keyword(s) across {len(campaign_negatives)} campaign(s) and "
-            f"{len(ad_group_negatives)} ad group(s) ({total} total)"
+            f"Atomically add {campaign_count} campaign-level and {ad_group_count} "
+            "ad-group-level negative keyword(s)"
         )
 
         def execute():
-            results = {}
-            if campaign_ops:
-                results["campaign_criteria"] = ctx.client.mutate(
-                    "CampaignCriterionService",
-                    customer_id,
-                    campaign_ops,
-                    partial_failure=True,
-                )
-            if ad_group_ops:
-                results["ad_group_criteria"] = ctx.client.mutate(
-                    "AdGroupCriterionService",
-                    customer_id,
-                    ad_group_ops,
-                    partial_failure=True,
-                )
-            return {
-                "campaign_resource_names": [
-                    r.resource_name for r in results["campaign_criteria"].results
-                ]
-                if "campaign_criteria" in results
-                else [],
-                "ad_group_resource_names": [
-                    r.resource_name for r in results["ad_group_criteria"].results
-                ]
-                if "ad_group_criteria" in results
-                else [],
-            }
+            return ctx.client.mutate_atomic(customer_id, mutate_operations)
 
         return ctx.safety.propose(
             tool_name="bulk_add_negative_keywords_multi_scope",
@@ -165,95 +134,134 @@ def register(mcp, ctx: AppContext) -> None:
             payload={
                 "campaign_negatives": campaign_negatives,
                 "ad_group_negatives": ad_group_negatives,
+                "atomic": True,
             },
             execute=execute,
         )
 
     @mcp.tool()
     def bulk_update_ad_status(
-        customer_id: str, updates: list[dict], status: str
+        customer_id: str,
+        updates: list[dict],
+        status: str,
     ) -> dict:
-        """Propose pausing, enabling, or removing many ads in one call.
-
-        Args:
-            updates: list of {"ad_group_id": "...", "ad_id": "..."}.
-            status: ENABLED, PAUSED, or REMOVED.
-        """
-        if not updates:
-            raise ValueError("Provide at least one {ad_group_id, ad_id} entry.")
-
+        """Pause, enable, or remove many ads atomically."""
+        _validate_status_batch(updates, status, "ad_group_id", "ad_id")
         client = ctx.client.raw
         customer_id_clean = customer_id.replace("-", "")
         ad_service = client.get_service("AdGroupAdService")
-
         operations = []
         for item in updates:
-            operation = client.get_type("AdGroupAdOperation")
             resource_name = ad_service.ad_group_ad_path(
                 customer_id_clean, item["ad_group_id"], item["ad_id"]
             )
-            operation.update.resource_name = resource_name
-            operation.update.status = client.enums.AdGroupAdStatusEnum[status].value
-            operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["status"]))
+            operation = client.get_type("AdGroupAdOperation")
+            if status == "REMOVED":
+                operation.remove = resource_name
+            else:
+                operation.update.resource_name = resource_name
+                operation.update.status = client.enums.AdGroupAdStatusEnum[status].value
+                operation.update_mask.CopyFrom(
+                    field_mask_pb2.FieldMask(paths=["status"])
+                )
             operations.append(operation)
 
-        description = f"Set {len(operations)} ad(s) status -> {status}"
+        description = f"Atomically set {len(operations)} ad(s) status -> {status}"
 
         def execute():
             return ctx.client.mutate(
-                "AdGroupAdService", customer_id, operations, partial_failure=True
+                "AdGroupAdService",
+                customer_id,
+                operations,
+                partial_failure=False,
             )
 
         return ctx.safety.propose(
             tool_name="bulk_update_ad_status",
             customer_id=customer_id,
             description=description,
-            payload={"updates": updates, "status": status},
+            payload={"updates": updates, "status": status, "atomic": True},
             execute=execute,
         )
 
     @mcp.tool()
     def bulk_update_campaign_status(
-        customer_id: str, campaign_ids: list[str], status: str
+        customer_id: str,
+        campaign_ids: list[str],
+        status: str,
     ) -> dict:
-        """Propose pausing, enabling, or removing many campaigns in one call
-        — e.g. pausing every campaign at month-end budget exhaustion, or
-        enabling a batch of seasonal campaigns at once.
-
-        Args:
-            campaign_ids: List of campaign IDs.
-            status: ENABLED, PAUSED, or REMOVED — applied to every campaign
-                in the list.
-        """
+        """Pause, enable, or remove many campaigns atomically."""
         if not campaign_ids:
             raise ValueError("Provide at least one campaign_id.")
+        if status not in _VALID_STATUSES:
+            raise ValueError("status must be ENABLED, PAUSED, or REMOVED.")
+        if any(not str(campaign_id).strip() for campaign_id in campaign_ids):
+            raise ValueError("campaign_ids must not contain empty values.")
 
         client = ctx.client.raw
         customer_id_clean = customer_id.replace("-", "")
         campaign_service = client.get_service("CampaignService")
-
         operations = []
         for campaign_id in campaign_ids:
-            operation = client.get_type("CampaignOperation")
             resource_name = campaign_service.campaign_path(
-                customer_id_clean, campaign_id
+                customer_id_clean, str(campaign_id)
             )
-            operation.update.resource_name = resource_name
-            operation.update.status = client.enums.CampaignStatusEnum[status].value
-            operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["status"]))
+            operation = client.get_type("CampaignOperation")
+            if status == "REMOVED":
+                operation.remove = resource_name
+            else:
+                operation.update.resource_name = resource_name
+                operation.update.status = client.enums.CampaignStatusEnum[status].value
+                operation.update_mask.CopyFrom(
+                    field_mask_pb2.FieldMask(paths=["status"])
+                )
             operations.append(operation)
 
-        description = f"Set {len(operations)} campaign(s) status -> {status}"
+        description = f"Atomically set {len(operations)} campaign(s) status -> {status}"
 
         def execute():
             return ctx.client.mutate(
-                "CampaignService", customer_id, operations, partial_failure=True
+                "CampaignService",
+                customer_id,
+                operations,
+                partial_failure=False,
             )
 
         return ctx.safety.propose(
             tool_name="bulk_update_campaign_status",
             customer_id=customer_id,
             description=description,
-            payload={"campaign_ids": campaign_ids, "status": status},
+            payload={"campaign_ids": campaign_ids, "status": status, "atomic": True},
             execute=execute,
         )
+
+
+def _validate_status_batch(updates: list[dict], status: str, *required_keys: str) -> None:
+    if not updates:
+        raise ValueError("Provide at least one update entry.")
+    if status not in _VALID_STATUSES:
+        raise ValueError("status must be ENABLED, PAUSED, or REMOVED.")
+    for index, item in enumerate(updates):
+        if not isinstance(item, dict):
+            raise TypeError(f"updates[{index}] must be an object.")
+        for key in required_keys:
+            if not str(item.get(key, "")).strip():
+                raise ValueError(f"updates[{index}] is missing non-empty {key!r}.")
+
+
+def _validate_negative(keyword: dict) -> tuple[str, str]:
+    if not isinstance(keyword, dict):
+        raise TypeError("Each negative keyword must be an object.")
+    text = str(keyword.get("text", "")).strip()
+    if not text:
+        raise ValueError("Negative keyword text must not be empty.")
+    match_type = str(keyword.get("match_type", "BROAD")).upper()
+    if match_type not in _VALID_MATCH_TYPES:
+        raise ValueError("Negative keyword match_type must be BROAD, PHRASE, or EXACT.")
+    return text, match_type
+
+
+def _wrap_mutate(client, field_name: str, operation):
+    mutate_operation = client.get_type("MutateOperation")
+    client.copy_from(getattr(mutate_operation, field_name), operation)
+    return mutate_operation

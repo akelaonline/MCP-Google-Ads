@@ -4,31 +4,43 @@ from __future__ import annotations
 
 from google.protobuf import field_mask_pb2
 
+from ..campaign_compat import (
+    DEFAULT_EU_POLITICAL_ADVERTISING,
+    apply_campaign_dates,
+    apply_required_campaign_fields,
+)
 from ..context import AppContext
 
 
 def register(mcp, ctx: AppContext) -> None:
     @mcp.tool()
     def list_campaigns(customer_id: str, status_filter: str | None = None) -> dict:
-        """List campaigns in the account, optionally filtered by status
-        (ENABLED, PAUSED, REMOVED)."""
+        """List campaigns, optionally filtered by ENABLED/PAUSED/REMOVED."""
+        if status_filter and status_filter not in {"ENABLED", "PAUSED", "REMOVED"}:
+            raise ValueError("status_filter must be ENABLED, PAUSED, or REMOVED.")
         where = f"WHERE campaign.status = '{status_filter}'" if status_filter else ""
-        query = f"""
+        rows = ctx.client.search(
+            customer_id,
+            f"""
             SELECT campaign.id, campaign.name, campaign.status,
-                   campaign.advertising_channel_type, campaign.campaign_budget
+                   campaign.advertising_channel_type, campaign.campaign_budget,
+                   campaign.contains_eu_political_advertising
             FROM campaign
             {where}
             ORDER BY campaign.name
-        """
-        rows = ctx.client.search(customer_id, query)
+            """,
+        )
         campaigns = [
             {
-                "id": r["campaign"]["id"],
-                "name": r["campaign"]["name"],
-                "status": r["campaign"]["status"],
-                "channel_type": r["campaign"].get("advertising_channel_type"),
+                "id": row["campaign"]["id"],
+                "name": row["campaign"]["name"],
+                "status": row["campaign"]["status"],
+                "channel_type": row["campaign"].get("advertising_channel_type"),
+                "contains_eu_political_advertising": row["campaign"].get(
+                    "contains_eu_political_advertising"
+                ),
             }
-            for r in rows
+            for row in rows
         ]
         return {"campaigns": campaigns, "count": len(campaigns)}
 
@@ -43,16 +55,16 @@ def register(mcp, ctx: AppContext) -> None:
         target_roas: float | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
+        contains_eu_political_advertising: str = DEFAULT_EU_POLITICAL_ADVERTISING,
     ) -> dict:
-        """Propose creating a new campaign. Create a budget first with create_campaign_budget.
+        """Propose creating a new PAUSED campaign."""
+        if not name.strip():
+            raise ValueError("name must not be empty.")
+        if target_cpa is not None and target_cpa <= 0:
+            raise ValueError("target_cpa must be greater than 0.")
+        if target_roas is not None and target_roas <= 0:
+            raise ValueError("target_roas must be greater than 0.")
 
-        Args:
-            channel_type: SEARCH, DISPLAY, SHOPPING, VIDEO, PERFORMANCE_MAX, etc.
-            bidding_strategy: MANUAL_CPC, MAXIMIZE_CONVERSIONS, TARGET_CPA, TARGET_ROAS.
-            target_cpa: Required if bidding_strategy is TARGET_CPA (currency units).
-            target_roas: Required if bidding_strategy is TARGET_ROAS (e.g. 4.0 = 400%).
-            start_date / end_date: YYYY-MM-DD, optional.
-        """
         client = ctx.client.raw
         operation = client.get_type("CampaignOperation")
         campaign = operation.create
@@ -61,37 +73,37 @@ def register(mcp, ctx: AppContext) -> None:
         campaign.advertising_channel_type = client.enums.AdvertisingChannelTypeEnum[
             channel_type
         ].value
-        campaign.status = client.enums.CampaignStatusEnum.PAUSED  # always start paused
+        campaign.status = client.enums.CampaignStatusEnum.PAUSED.value
+        apply_required_campaign_fields(
+            client,
+            campaign,
+            contains_eu_political_advertising=contains_eu_political_advertising,
+        )
 
         if bidding_strategy == "MANUAL_CPC":
             campaign.manual_cpc.enhanced_cpc_enabled = True
         elif bidding_strategy == "MAXIMIZE_CONVERSIONS":
-            campaign.maximize_conversions.SetInParent()
+            client.copy_from(
+                campaign.maximize_conversions,
+                client.get_type("MaximizeConversions"),
+            )
         elif bidding_strategy == "TARGET_CPA":
             if target_cpa is None:
-                raise ValueError(
-                    "target_cpa is required when bidding_strategy=TARGET_CPA"
-                )
+                raise ValueError("target_cpa is required for TARGET_CPA.")
             from ..client import micros
 
             campaign.target_cpa.target_cpa_micros = micros(target_cpa)
         elif bidding_strategy == "TARGET_ROAS":
             if target_roas is None:
-                raise ValueError(
-                    "target_roas is required when bidding_strategy=TARGET_ROAS"
-                )
+                raise ValueError("target_roas is required for TARGET_ROAS.")
             campaign.target_roas.target_roas = target_roas
         else:
             raise ValueError(f"Unsupported bidding_strategy: {bidding_strategy}")
 
-        if start_date:
-            campaign.start_date = start_date.replace("-", "")
-        if end_date:
-            campaign.end_date = end_date.replace("-", "")
-
+        apply_campaign_dates(campaign, start_date=start_date, end_date=end_date)
         description = (
             f"Create {channel_type} campaign '{name}' "
-            f"(bidding: {bidding_strategy}), created PAUSED by default"
+            f"(bidding: {bidding_strategy}), created PAUSED"
         )
 
         def execute():
@@ -107,25 +119,29 @@ def register(mcp, ctx: AppContext) -> None:
                 "bidding_strategy": bidding_strategy,
                 "target_cpa": target_cpa,
                 "target_roas": target_roas,
+                "start_date": start_date,
+                "end_date": end_date,
+                "contains_eu_political_advertising": contains_eu_political_advertising,
             },
             execute=execute,
         )
 
     @mcp.tool()
     def update_campaign_status(customer_id: str, campaign_id: str, status: str) -> dict:
-        """Propose pausing, enabling, or removing a campaign.
-
-        Args:
-            status: ENABLED, PAUSED, or REMOVED.
-        """
+        """Pause, enable, or remove a campaign using the correct operation shape."""
+        if status not in {"ENABLED", "PAUSED", "REMOVED"}:
+            raise ValueError("status must be ENABLED, PAUSED, or REMOVED.")
         client = ctx.client.raw
         operation = client.get_type("CampaignOperation")
         resource_name = client.get_service("CampaignService").campaign_path(
             customer_id.replace("-", ""), campaign_id
         )
-        operation.update.resource_name = resource_name
-        operation.update.status = client.enums.CampaignStatusEnum[status].value
-        operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["status"]))
+        if status == "REMOVED":
+            operation.remove = resource_name
+        else:
+            operation.update.resource_name = resource_name
+            operation.update.status = client.enums.CampaignStatusEnum[status].value
+            operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["status"]))
 
         description = f"Set campaign {campaign_id} status -> {status}"
 
@@ -143,15 +159,15 @@ def register(mcp, ctx: AppContext) -> None:
     @mcp.tool()
     def update_campaign_name(customer_id: str, campaign_id: str, new_name: str) -> dict:
         """Propose renaming a campaign."""
+        if not new_name.strip():
+            raise ValueError("new_name must not be empty.")
         client = ctx.client.raw
         operation = client.get_type("CampaignOperation")
-        resource_name = client.get_service("CampaignService").campaign_path(
+        operation.update.resource_name = client.get_service("CampaignService").campaign_path(
             customer_id.replace("-", ""), campaign_id
         )
-        operation.update.resource_name = resource_name
         operation.update.name = new_name
         operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["name"]))
-
         description = f"Rename campaign {campaign_id} -> '{new_name}'"
 
         def execute():
@@ -167,15 +183,12 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def remove_campaign(customer_id: str, campaign_id: str) -> dict:
-        """Propose permanently removing a campaign. Prefer update_campaign_status(..., 'PAUSED')
-        unless you specifically need to delete it."""
+        """Propose permanently removing a campaign."""
         client = ctx.client.raw
         operation = client.get_type("CampaignOperation")
-        resource_name = client.get_service("CampaignService").campaign_path(
+        operation.remove = client.get_service("CampaignService").campaign_path(
             customer_id.replace("-", ""), campaign_id
         )
-        operation.remove = resource_name
-
         description = f"REMOVE campaign {campaign_id} (irreversible)"
 
         def execute():

@@ -1,218 +1,545 @@
-# Tool reference
+# Tool reference — v0.12 / Google Ads API v25
 
-All write tools (marked **[write]**) return either:
-- `{"status": "pending_confirmation", "pending_action_id": "...", ...}` — default behavior, or
-- `{"status": "executed", "auto_approved": true, "result": ...}` — only if `GOOGLE_ADS_MCP_AUTO_APPROVE=true`.
+All normal write tools go through the shared safety layer.
 
-Call `confirm_pending_action(action_id)` to execute a pending change, or `cancel_pending_action(action_id)` to discard it.
+Default write response:
 
-## Accounts
-| Tool | Description |
-|---|---|
-| `list_accessible_customers()` | All customer IDs reachable with the current credentials. |
-| `get_account_hierarchy(login_customer_id)` | Full MCC tree: managers + client accounts. |
-| `get_account_summary(customer_id)` | Name, currency, time zone, status. |
+```json
+{
+  "status": "pending_confirmation",
+  "pending_action_id": "...",
+  "description": "..."
+}
+```
 
-## Account onboarding **[write]**
-| Tool | Description |
-|---|---|
-| `create_customer_client(login_customer_id, descriptive_name, currency_code?, time_zone?)` | Create a new client account under an MCC, auto-linked. `currency_code`/`time_zone` are immutable after creation. |
-| `list_manager_links(customer_id)` | Read-only: which MCCs have access to a client account, and link status (ACTIVE/PENDING/REFUSED). |
-| `accept_manager_link(customer_id, manager_link_resource_name)` | Accept a pending MCC access invitation — the counterpart flow to `create_customer_client` for a client account that already existed and invited this MCC in. |
+Call `confirm_pending_action(action_id)` to execute or `cancel_pending_action(action_id)` to discard.
+
+`GOOGLE_ADS_MCP_AUTO_APPROVE=true` is an explicit opt-in that executes writes immediately.
+
+## Accounts & MCC
+
+### `list_accessible_customers()`
+Read-only. Lists customer IDs available to the authenticated identity.
+
+### `get_account_hierarchy(login_customer_id)`
+Read-only. Returns enabled manager/client accounts below an MCC.
+
+### `get_account_summary(customer_id)`
+Read-only. Basic customer name, currency, time zone, status, manager/test-account flags.
+
+### `create_customer_client(login_customer_id, descriptive_name, currency_code="USD", time_zone="America/Argentina/Buenos_Aires")` `[write]`
+Creates a new client account under an MCC. Currency and time zone are effectively account-creation decisions; verify before confirmation.
+
+### `list_manager_links(customer_id)`
+Read-only. Lists MCC links and their current state.
+
+### `accept_manager_link(customer_id, manager_link_resource_name)` `[write]`
+Accepts a pending manager link.
+
+---
 
 ## Reporting
-| Tool | Description |
-|---|---|
-| `run_gaql_query(customer_id, query)` | Any raw GAQL query. |
-| `get_campaign_performance(customer_id, date_range, campaign_id?)` | Cost, clicks, conversions per campaign. |
-| `get_ad_group_performance(customer_id, date_range, campaign_id?)` | Same, per ad group. |
-| `get_keyword_performance(customer_id, date_range, ad_group_id?)` | Includes quality score. |
-| `get_search_terms_report(customer_id, date_range, campaign_id?)` | Actual queries that triggered ads. |
-| `get_ad_performance(customer_id, date_range, ad_group_id?)` | Per-ad metrics. |
-| `get_change_history(customer_id, days)` | Native `change_event` log, up to 30 days. |
-| `get_geographic_performance(customer_id, date_range, campaign_id?)` | Performance by the user's actual location (not the targeted location) — spot spend leaking outside your intended area. |
-| `get_device_performance(customer_id, date_range, campaign_id?)` | Performance by MOBILE/DESKTOP/TABLET — the data behind a `set_device_bid_modifier` decision. |
-| `get_asset_performance(customer_id, date_range, campaign_id?)` | Which specific asset (sitelink/call/message/image/promotion/RSA piece) is pulling weight. |
-| `get_audience_performance(customer_id, date_range, campaign_id?)` | Which attached audience is actually converting vs. just attached for observation. |
-| `get_quality_score_report(customer_id, date_range?)` | Aggregate keyword performance by Quality Score bucket (1-10). |
-| `get_disapproved_ads(customer_id, campaign_id?)` | Ads that are disapproved, limited by policy, or under review, with the specific policy topic — the fast path to "why isn't this ad serving" without opening the UI. Especially relevant for regulated categories (health, medical devices, finance). |
-| `get_shopping_performance_report(customer_id, campaign_id?, date_range?)` | Per-product (SKU-level) performance via `shopping_performance_view` — see which products drive results vs. burn spend with none. |
-| `list_shopping_products(customer_id, campaign_id?)` | Distinct products currently eligible to serve in Shopping/PMax, read from the Google Ads side. Feed/catalog management stays in Merchant Center, not this MCP. |
 
-## Campaigns **[write]**
-| Tool | Description |
-|---|---|
-| `list_campaigns(customer_id, status_filter?)` | Read-only list. |
-| `create_campaign(customer_id, name, campaign_budget_resource_name, channel_type, bidding_strategy, target_cpa?, target_roas?, start_date?, end_date?)` | Always created PAUSED. |
-| `update_campaign_status(customer_id, campaign_id, status)` | ENABLED / PAUSED / REMOVED. |
-| `update_campaign_name(customer_id, campaign_id, new_name)` | Rename. |
-| `remove_campaign(customer_id, campaign_id)` | Irreversible — prefer PAUSED. |
+### `run_gaql_query(customer_id, query)`
+Read-only raw GAQL fallback for cases not covered by a specialized report tool.
 
-## Specialized campaign types **[write]**
-| Tool | Description |
-|---|---|
-| `create_shopping_campaign(customer_id, name, campaign_budget_resource_name, merchant_center_id, sales_country?, campaign_type?, target_roas?)` | Created PAUSED. **Requires a product feed already live in Google Merchant Center, linked to this account** — this tool creates the campaign shell only; feed/product management happens in Merchant Center, a separate API this MCP does not wrap. Will fail if `merchant_center_id` isn't already linked. |
-| `create_local_campaign(customer_id, name, campaign_budget_resource_name, business_name, headlines[], descriptions[], final_url, target_cpa?)` | Created PAUSED, with its core text asset attached. Requires a linked Google Business Profile for location targeting to resolve — set up separately in the Ads UI. |
+### `get_campaign_performance(customer_id, date_range, campaign_id=None)`
+Campaign cost/click/conversion metrics.
 
-## Targeting **[write]**
-| Tool | Description |
-|---|---|
-| `add_location_targeting(customer_id, campaign_id, locations[], negative?)` | `locations` accepts common names ("argentina", "buenos aires" — see `COMMON_GEO_TARGET_IDS`) or raw numeric geo target constant IDs. `negative=True` excludes instead of targets. |
-| `set_language_targeting(customer_id, campaign_id, language_codes[])` | Language constant criterion IDs, e.g. "1003" Spanish, "1000" English. |
-| `add_ad_schedule(customer_id, campaign_id, day_of_week, start_hour, end_hour, bid_modifier?)` | Dayparting. One call per day/window; call repeatedly to build a full schedule. |
-| `set_device_bid_modifier(customer_id, campaign_id, device, bid_modifier)` | `device`: MOBILE / DESKTOP / TABLET. |
-| `add_placement_exclusion(customer_id, campaign_id, placement_url, placement_type?)` | Exclude a specific Display/YouTube placement (website domain, YouTube channel/video, or mobile app) from a campaign — for when the placement report shows spend burning with no results. `placement_type`: WEBSITE / YOUTUBE_CHANNEL / YOUTUBE_VIDEO / MOBILE_APPLICATION. |
-| `list_campaign_criteria(customer_id, campaign_id)` | Read-only: every targeting criterion on a campaign (locations, languages, schedules, device modifiers, negatives) in one call. |
+### `get_ad_group_performance(customer_id, date_range, campaign_id=None)`
+Ad-group performance.
 
-## Budgets **[write]**
-| Tool | Description |
-|---|---|
-| `create_campaign_budget(customer_id, name, daily_amount, delivery_method?, shared?)` | Returns a resource name to pass into `create_campaign`. |
-| `update_campaign_budget(customer_id, budget_id, new_daily_amount)` | Change daily spend cap. |
+### `get_keyword_performance(customer_id, date_range, ad_group_id=None)`
+Keyword performance including quality-score fields when available.
 
-## Bidding **[write]**
-| Tool | Description |
-|---|---|
-| `set_manual_cpc(customer_id, campaign_id, enhanced_cpc?)` | |
-| `set_maximize_clicks(customer_id, campaign_id, target_cpc?)` | Modeled under `target_spend` in the API (no `maximize_clicks` field exists — legacy naming). |
-| `set_maximize_conversions(customer_id, campaign_id, target_cpa?)` | |
-| `set_maximize_conversion_value(customer_id, campaign_id, target_roas?)` | Optimizes total conversion VALUE, not count — prefer for e-commerce/Shopping where order size varies. |
-| `set_target_cpa(customer_id, campaign_id, target_cpa)` | |
-| `set_target_roas(customer_id, campaign_id, target_roas)` | e.g. `4.0` = 400%. |
-| `set_target_impression_share(customer_id, campaign_id, location, target_percent, max_cpc_bid_ceiling?)` | `location`: ANYWHERE_ON_PAGE / TOP_OF_PAGE / ABSOLUTE_TOP_OF_PAGE. For brand-defense/visibility campaigns rather than click/conversion optimization. |
-| `create_portfolio_bidding_strategy(customer_id, name, strategy_type, target_cpa?, target_roas?)` | Create a shared (portfolio) TARGET_CPA or TARGET_ROAS strategy multiple campaigns can attach to and learn from jointly. |
-| `attach_shared_bidding_strategy(customer_id, campaign_id, bidding_strategy_resource_name)` | Attach a campaign to a portfolio strategy, overriding its standalone bidding. |
-| `list_portfolio_bidding_strategies(customer_id)` | Read-only: portfolio strategies and how many campaigns are attached to each. |
+### `get_search_terms_report(customer_id, date_range, campaign_id=None)`
+Actual user queries that matched ads.
 
-## Ad groups **[write]**
-| Tool | Description |
-|---|---|
-| `create_ad_group(customer_id, campaign_id, name, cpc_bid?, status?)` | |
-| `update_ad_group_status(customer_id, ad_group_id, status)` | |
-| `update_ad_group_cpc_bid(customer_id, ad_group_id, new_cpc_bid)` | |
+### `get_ad_performance(customer_id, date_range, ad_group_id=None)`
+Per-ad delivery and conversion metrics.
 
-## Ads **[write]**
-| Tool | Description |
-|---|---|
-| `create_responsive_search_ad(customer_id, ad_group_id, headlines[], descriptions[], final_urls[], path1?, path2?)` | 3-15 headlines (≤30 chars), 2-4 descriptions (≤90 chars). Created PAUSED. |
-| `update_responsive_search_ad(customer_id, ad_group_id, ad_id, headlines?, descriptions?, final_urls?, path1?, path2?)` | Edit an EXISTING RSA in place — no need to remove and recreate it (which loses accumulated Ad Strength history/serving data). Only pass the fields you want changed; each provided field REPLACES the full list, it does not append. |
-| `create_responsive_display_ad(customer_id, ad_group_id, headlines[], long_headline, descriptions[], business_name, final_urls[], marketing_image_urls?, logo_image_urls?)` | 1-5 headlines (≤30 chars), 1 long headline (≤90 chars), 1-5 descriptions (≤90 chars). Downloads and uploads any image URLs given. Created PAUSED. |
-| `create_video_ad(customer_id, ad_group_id, youtube_video_id, headline, final_urls[], description1?, description2?, companion_banner_asset_resource_name?)` | In-stream YouTube ad, referencing an already-uploaded public/unlisted video by ID. `headline` ≤15 chars. Created PAUSED. |
-| `get_ad_strength(customer_id, ad_group_id?, campaign_id?)` | Read-only. Lists RSAs with their Ad Strength rating (PENDING/NO_ADS/POOR/AVERAGE/GOOD/EXCELLENT) and policy approval status — the fastest way to find ads that need better headline/description variety. |
-| `create_call_ad(customer_id, ad_group_id, country_code, phone_number, business_name, headlines[], descriptions[], final_urls?, call_tracking_enabled?)` | Phone-only ad, no landing page — just a "Call" button, shown only on call-capable devices. 2-15 headlines (≤30 chars), 2-4 descriptions (≤90 chars). Created PAUSED. |
-| `create_demand_gen_campaign(customer_id, name, campaign_budget_resource_name, target_cpa?)` | Demand Gen (formerly Discovery) campaign shell — runs on Discover feed, Gmail, and YouTube in-feed/Shorts. Creative-led, not fully automated like PMax. Created PAUSED. |
-| `create_demand_gen_ad(customer_id, ad_group_id, headlines[], descriptions[], business_name, final_urls[], marketing_image_urls?, logo_image_urls?, call_to_action_text?)` | Multi-asset ad for a Demand Gen campaign. 1-5 headlines (≤40 chars), 1-5 descriptions (≤90 chars). Downloads/uploads any image URLs given. Created PAUSED. |
-| `update_ad_status(customer_id, ad_group_id, ad_id, status)` | |
-| `remove_ad(customer_id, ad_group_id, ad_id)` | |
+### `get_change_history(customer_id, days=7)`
+Google Ads change-event history. Google limits the underlying resource to its supported recent window.
 
-## Keywords **[write]**
-| Tool | Description |
-|---|---|
-| `add_keywords(customer_id, ad_group_id, keywords[], cpc_bid?)` | `keywords`: `[{"text": "...", "match_type": "EXACT\|PHRASE\|BROAD"}]`. |
-| `update_keyword_status(customer_id, ad_group_id, criterion_id, status)` | |
-| `update_keyword_bid(customer_id, ad_group_id, criterion_id, cpc_bid)` | Change an existing keyword's max CPC in place. |
-| `update_keyword_match_type(customer_id, ad_group_id, criterion_id, match_type)` | Change match type (EXACT/PHRASE/BROAD). `match_type` is immutable on an existing criterion in the API, so this recreates the keyword with the new match type (preserving text and cpc_bid) and removes the old one as a single atomic batch — no gap where neither variant is active. |
-| `remove_keyword(customer_id, ad_group_id, criterion_id)` | |
-| `add_negative_keywords(customer_id, keywords[], campaign_id? \| ad_group_id?)` | Exactly one scope. |
+### `get_geographic_performance(customer_id, date_range, campaign_id=None)`
+Performance by actual user geography.
 
-## Keyword research
-| Tool | Description |
-|---|---|
-| `generate_keyword_ideas(customer_id, keywords?, page_url?, language?, geo_target_ids?, limit?, include_adult_keywords?)` | Call `KeywordPlanIdeaService.GenerateKeywordIdeas`. Returns search volume, competition, competition index, and low/high CPC bid ranges for each idea. Provide at least one of `keywords` or `page_url`. `language` defaults to `"en"`; geo target IDs like `["2840"]` (US) restrict the forecast. |
-| `get_keyword_historical_metrics(customer_id, keywords[], language?, geo_target_ids?)` | Look up historical metrics for a known keyword list without expanding into new suggestions. |
+### `get_device_performance(customer_id, date_range, campaign_id=None)`
+Performance by device.
 
-## Assets **[write]**
-| Tool | Description |
-|---|---|
-| `create_sitelink_asset(customer_id, campaign_id, link_text, final_url, description1?, description2?)` | Creates the asset and attaches it to the campaign in one call. `link_text` ≤25 chars, descriptions ≤35 chars each. |
-| `create_call_asset(customer_id, campaign_id, phone_number, country_code?)` | Click-to-call extension. `country_code` defaults to "AR". |
-| `create_message_asset(customer_id, campaign_id, phone_number, country_code, business_name, message_text, call_to_action_text?)` | Click-to-message (WhatsApp/SMS) extension — opens a chat directly from the ad. `message_text` ≤35 chars. |
-| `create_image_asset(customer_id, campaign_id, image_url, name)` | Downloads an image from a public HTTPS URL and uploads it as a campaign asset (image extension / PMax marketing image). Fetched at confirm time. |
-| `create_promotion_asset(customer_id, campaign_id, promotion_target, discount_percent? \| money_amount_off?, currency_code?, promotion_code?, final_url?)` | Promotion extension (e.g. "20% OFF"). Exactly one of `discount_percent` / `money_amount_off`. |
-| `create_callout_asset(customer_id, campaign_id, callout_texts[])` | One or more short trust-signal callouts (≤25 chars each, e.g. "Envío gratis"), attached in a single call. |
-| `create_structured_snippet_asset(customer_id, campaign_id, header, values[])` | A labeled list under a fixed Google header (e.g. "Service catalog"). 3-10 values, ≤25 chars each. |
-| `list_campaign_assets(customer_id, campaign_id)` | Read-only: every asset attached to a campaign, with status. |
-| `remove_campaign_asset(customer_id, campaign_id, asset_id, field_type)` | Detach an asset (SITELINK/CALL/MESSAGE/IMAGE/PROMOTION/CALLOUT/STRUCTURED_SNIPPET/etc.) from a campaign. |
+### `get_asset_performance(customer_id, date_range, campaign_id=None)`
+Asset-level performance where exposed by Google Ads.
 
-## Bulk operations **[write]**
-| Tool | Description |
-|---|---|
-| `bulk_update_keyword_status(customer_id, updates[], status)` | Pause/enable/remove many existing keywords — possibly across different ad groups — in a single API call. `updates`: `[{"ad_group_id", "criterion_id"}]`. |
-| `bulk_add_negative_keywords_multi_scope(customer_id, campaign_negatives?, ad_group_negatives?)` | Roll the same (or different) negative-keyword lists out across many campaigns/ad groups at once, e.g. one negative list applied to every active campaign in one shot. |
-| `bulk_update_ad_status(customer_id, updates[], status)` | Pause/enable/remove many ads in a single call. `updates`: `[{"ad_group_id", "ad_id"}]`. |
-| `bulk_update_campaign_status(customer_id, campaign_ids[], status)` | Pause/enable/remove many campaigns in a single call. |
+### `get_audience_performance(customer_id, date_range, campaign_id=None)`
+Audience criterion performance.
 
-## Audiences **[write]**
-| Tool | Description |
-|---|---|
-| `list_user_lists(customer_id)` | Read-only. |
-| `create_remarketing_list(customer_id, name, membership_days?, description?)` | Website-visitor list. Requires the account's Google Ads tag to already be installed and firing — does not backfill past traffic. |
-| `create_customer_match_list(customer_id, name, description?)` | Empty contact-based list container; follow with `upload_customer_match_members`. Subject to Google's Customer Match policy approval, checked at upload time. |
-| `upload_customer_match_members(customer_id, user_list_resource_name, emails?, phone_numbers?)` | Uploads contacts, hashed (SHA-256) locally before sending — raw PII is never transmitted by this tool. |
-| `attach_audience_to_ad_group(customer_id, ad_group_id, user_list_resource_name, bid_modifier?)` | |
-| `remove_audience_from_ad_group(customer_id, ad_group_id, criterion_id)` | Detach an audience from an ad group. |
-| `search_user_interests(customer_id, name_query)` | Read-only: look up Affinity/In-Market/Custom-Intent segment IDs by name (Google's predefined categories, distinct from your own lists). |
-| `add_in_market_or_affinity_audience(customer_id, ad_group_id, user_interest_id, bid_modifier?)` | Attach a predefined interest/purchase-intent segment (from `search_user_interests`) to an ad group. |
-| `add_topic_targeting(customer_id, ad_group_id, topic_id, negative?)` | Target or exclude a Display/YouTube topic on an ad group — e.g. brand-safety exclusions like "Sensitive Subjects". `topic_id` via GAQL on `topic_constant`. |
+### `get_quality_score_report(customer_id, date_range=None)`
+Quality Score distribution/performance.
 
-## Conversions **[write]**
-| Tool | Description |
-|---|---|
-| `list_conversion_actions(customer_id)` | Read-only. Includes `primary_for_goal` and `include_in_conversions_metric`. |
-| `upload_offline_conversion(customer_id, conversion_action_id, gclid, conversion_date_time, conversion_value, currency_code?)` | For CRM/WhatsApp-driven funnels where the sale closes after the click. |
-| `update_conversion_action_status(customer_id, conversion_action_id, status)` | ENABLED / REMOVED / HIDDEN. Prefer over deleting when you just want to stop counting a soft signal. |
-| `set_conversion_action_counting(customer_id, conversion_action_id, include_in_conversions_metric)` | Include/exclude an action from the primary Conversions column and automated bidding, without touching whether it still records data. Use this to stop Smart Bidding from optimizing toward a vanity metric (e.g. a quiz/page_view) while keeping the historical data. |
-| `create_conversion_action(customer_id, name, category, counting_type?, value?, currency_code?)` | Create a new WEBSITE conversion action (e.g. "WhatsApp Click", "Compra"). Created ENABLED and included in bidding by default. `category`: PURCHASE/LEAD/SIGNUP/PAGE_VIEW/DOWNLOAD/CONTACT/SUBMIT_LEAD_FORM/BOOK_APPOINTMENT/REQUEST_QUOTE/GET_DIRECTIONS/OUTBOUND_CLICK/PHONE_CALL_LEAD/OTHER. `counting_type`: ONE_PER_CLICK (leads) or MANY_PER_CLICK (repeat purchases). |
-| `upload_enhanced_conversion(customer_id, conversion_action_id, gclid, conversion_date_time, email?, phone_number?, conversion_value?, currency_code?)` | Like `upload_offline_conversion` but with Enhanced Conversions user identifiers (hashed email/phone), improving match rate as cookie/click-ID-only tracking gets less reliable. Hashes locally (SHA-256) — never send pre-hashed values. Requires at least one of `email` / `phone_number`. |
-| `create_conversion_value_rule(customer_id, action, action_value, geo_target_ids?, audience_condition?, device_type?)` | Adjust reported conversion value by geography/audience/device (`action`: MULTIPLY or SET) — so value-based bidding optimizes toward segments that actually matter, without touching the underlying conversion action. |
-| `list_conversion_value_rules(customer_id)` | Read-only. |
+### `get_disapproved_ads(customer_id, campaign_id=None)`
+Policy/disapproval state for ads.
 
-## Performance Max **[write]**
-| Tool | Description |
-|---|---|
-| `create_performance_max_campaign(customer_id, name, campaign_budget_resource_name, target_cpa?, target_roas?)` | Created PAUSED. At most one of `target_cpa` / `target_roas`; if neither, uses Maximize Conversions with no target. Needs at least one asset group before it can serve. |
-| `create_asset_group(customer_id, campaign_id, name, final_urls[], headlines[], long_headline, descriptions[], business_name)` | Text-only asset group (3-5 headlines ≤30 chars, 1 long headline ≤90 chars, 1-5 descriptions ≤90 chars). Created PAUSED. |
-| `update_asset_group_final_urls(customer_id, asset_group_id, final_urls[])` | Replace an existing asset group's landing page URL(s) — e.g. after a site migration. |
-| `add_asset_group_text_asset(customer_id, asset_group_id, text, field_type)` | Add a single HEADLINE / LONG_HEADLINE / DESCRIPTION / BUSINESS_NAME to an existing asset group. |
-| `add_asset_group_image_asset(customer_id, asset_group_id, image_url, field_type)` | Download an image from a public HTTPS URL and attach it to an asset group. `field_type`: MARKETING_IMAGE / SQUARE_MARKETING_IMAGE / PORTRAIT_MARKETING_IMAGE / LOGO / LANDSCAPE_LOGO. Closes the gap that used to require attaching PMax images via the UI. |
-| `add_asset_group_video_asset(customer_id, asset_group_id, youtube_video_id)` | Link an already-public/unlisted YouTube video into an asset group as a VIDEO asset. |
-| `remove_asset_group_asset(customer_id, asset_group_id, asset_id, field_type)` | Unlink a text/image/video asset from an asset group (does not delete the underlying Asset resource). |
-| `update_asset_group_status(customer_id, asset_group_id, status)` | Pause/enable a single asset group without touching the campaign or other asset groups. |
-| `add_asset_group_listing_filter(customer_id, asset_group_id, campaign_id, product_condition? \| product_brand? \| product_item_id? \| product_type_l1?)` | Scope which products from the linked Shopping feed an asset group can advertise — e.g. limit one asset group to a single brand or product line. Exactly one dimension per call; builds a root subdivision + one filtered unit under it. |
-| `list_asset_group_listing_filters(customer_id, asset_group_id?)` | Read-only: the listing group filter tree(s) for PMax asset groups. |
-| `add_asset_group_signal(customer_id, asset_group_id, signal_type, audience_resource_name?, search_theme_text?)` | Steer PMax's automated targeting with an AUDIENCE (user list / custom audience / affinity-in-market segment) or SEARCH_THEME (short intent phrase) signal. A hint, not a hard restriction — PMax can still serve beyond it. |
-| `list_asset_group_signals(customer_id, asset_group_id?)` | Read-only. |
-| `list_asset_groups(customer_id, campaign_id?)` | Read-only. |
+### `get_shopping_performance_report(customer_id, campaign_id=None, date_range=None)`
+Shopping performance view by product.
 
-## Experiments (A/B trials) **[write]**
-| Tool | Description |
-|---|---|
-| `create_experiment(customer_id, base_campaign_id, name, traffic_split_percent?, experiment_type?)` | Branch a trial arm off an existing campaign with a traffic split (default 50/50). Edit the trial arm afterward with the normal campaign/bidding/ads tools, targeting its own campaign_id. Created in SETUP status. |
-| `list_experiments(customer_id)` | Read-only: status and traffic split of each experiment. |
-| `promote_experiment(customer_id, experiment_resource_name)` | Apply the trial arm's changes to the base campaign permanently and end the experiment. **Irreversible.** |
-| `end_experiment(customer_id, experiment_resource_name)` | Discard the trial arm without promoting; base campaign is unaffected. |
+### `list_shopping_products(customer_id, campaign_id=None)`
+Read-only Google Ads-side product visibility. Merchant Center feed management is outside this MCP.
 
-## Recommendations **[write]**
-| Tool | Description |
-|---|---|
-| `get_recommendations(customer_id, type_filter?)` | List active Google Ads recommendations for the account. Optional `type_filter` e.g. `KEYWORD`, `SITELINK_ASSET`, `TARGET_ROAS_OPT_IN`. |
-| `apply_recommendation(customer_id, resource_name)` | Apply a recommendation by its `resource_name`. Proposed, must be confirmed. |
-| `dismiss_recommendation(customer_id, resource_name)` | Dismiss a recommendation by its `resource_name`. Proposed, must be confirmed. |
+---
 
-## Not supported — by design
-Google Ads' web-UI "Automated Rules" (e.g. "pause this keyword if CPA > X")
-have **no corresponding resource in the Google Ads API**. There is no
-`AutomatedRuleService`. Anything resembling scheduled/conditional automation
-has to be built as your own polling logic that calls the existing report +
-write tools here (e.g. a scheduled task that runs `get_keyword_performance`
-and calls `bulk_update_keyword_status` when a threshold is crossed) — this
-MCP intentionally does not pretend to wrap a native "rules" API that doesn't
-exist.
+## Campaigns
 
-## Safety
-| Tool | Description |
-|---|---|
-| `list_pending_actions()` | Everything awaiting confirmation right now. |
-| `confirm_pending_action(action_id)` | Execute it. |
-| `cancel_pending_action(action_id)` | Discard it. |
-| `get_recent_audit_log(limit?)` | Recently executed mutations (from `audit.db`). |
+### `list_campaigns(customer_id, status_filter=None)`
+Read-only campaign inventory.
+
+### `create_campaign(customer_id, name, campaign_budget_resource_name, channel_type="SEARCH", bidding_strategy="MAXIMIZE_CONVERSIONS", target_cpa=None, target_roas=None, start_date=None, end_date=None, contains_eu_political_advertising="DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING")` `[write]`
+Creates a **PAUSED** campaign.
+
+`start_date` / `end_date` are convenience inputs in `YYYY-MM-DD`; v0.12 maps them to API v25 date-time fields.
+
+New campaigns explicitly declare EU political-advertising status. Override the default if the campaign actually contains EU political advertising.
+
+Supported generic bidding modes in this creator:
+
+- `MANUAL_CPC`
+- `MAXIMIZE_CONVERSIONS`
+- `TARGET_CPA`
+- `TARGET_ROAS`
+
+Use specialized campaign creators when the channel requires additional structure.
+
+### `update_campaign_status(customer_id, campaign_id, status)` `[write]`
+`ENABLED`, `PAUSED`, or `REMOVED`.
+
+### `update_campaign_name(customer_id, campaign_id, new_name)` `[write]`
+Renames an existing campaign.
+
+### `remove_campaign(customer_id, campaign_id)` `[write]`
+Permanent removal path. Prefer pause when reversibility matters.
+
+---
+
+## Shopping & legacy campaign types
+
+### `create_shopping_campaign(customer_id, name, campaign_budget_resource_name, merchant_center_id, sales_country="AR", campaign_type="STANDARD_SHOPPING", target_roas=None, contains_eu_political_advertising=...)` `[write]`
+Creates a PAUSED **Standard Shopping** campaign. `sales_country` is retained as a compatibility argument and maps to the current feed-label path.
+
+Requires an already linked Merchant Center setup.
+
+`SMART_SHOPPING` is intentionally rejected. Use Performance Max.
+
+### `create_local_campaign(...)`
+Compatibility endpoint only. v0.12 intentionally refuses legacy Local Campaign creation and performs no mutation. Use Performance Max plus location/business assets.
+
+---
+
+## Budgets
+
+### `create_campaign_budget(customer_id, name, daily_amount, delivery_method="STANDARD", shared=False)` `[write]`
+Creates a budget. `daily_amount` must be positive. API v25 uses Standard delivery.
+
+### `update_campaign_budget(customer_id, budget_id, new_daily_amount)` `[write]`
+Changes daily budget amount; value must be positive.
+
+---
+
+## Bidding
+
+### `set_manual_cpc(customer_id, campaign_id, enhanced_cpc=True)` `[write]`
+Switches campaign bidding to Manual CPC.
+
+### `set_maximize_clicks(customer_id, campaign_id, target_cpc=None)` `[write]`
+Maximize Clicks, optionally with a CPC ceiling.
+
+### `set_maximize_conversions(customer_id, campaign_id, target_cpa=None)` `[write]`
+Maximize Conversions, optionally with target CPA.
+
+### `set_maximize_conversion_value(customer_id, campaign_id, target_roas=None)` `[write]`
+Maximize Conversion Value, optionally with target ROAS.
+
+### `set_target_cpa(customer_id, campaign_id, target_cpa)` `[write]`
+Standalone Target CPA.
+
+### `set_target_roas(customer_id, campaign_id, target_roas)` `[write]`
+Standalone Target ROAS.
+
+### `set_target_impression_share(customer_id, campaign_id, location, target_percent, max_cpc_bid_ceiling=None)` `[write]`
+Target Impression Share. `location` is a current `TargetImpressionShareLocation` enum name such as `TOP_OF_PAGE`.
+
+### `create_portfolio_bidding_strategy(customer_id, name, strategy_type, target_cpa=None, target_roas=None)` `[write]`
+Creates a shared `TARGET_CPA` or `TARGET_ROAS` bidding strategy.
+
+### `attach_shared_bidding_strategy(customer_id, campaign_id, bidding_strategy_resource_name)` `[write]`
+Attaches a campaign to a portfolio strategy.
+
+### `list_portfolio_bidding_strategies(customer_id)`
+Read-only portfolio strategy inventory.
+
+---
+
+## Ad groups
+
+### `create_ad_group(customer_id, campaign_id, name, cpc_bid=None, status="PAUSED", ad_group_type="AUTO")` `[write]`
+Campaign-aware creation.
+
+`AUTO` resolves the campaign channel:
+
+- Search → `SEARCH_STANDARD`
+- Display → `DISPLAY_STANDARD`
+- Standard Shopping → `SHOPPING_PRODUCT_ADS`
+- Demand Gen → leaves type unset, as required
+
+Ambiguous channels such as Video require an explicit current `AdGroupType` enum name.
+
+Demand Gen rejects ad-group CPC because bidding is campaign-level.
+
+### `update_ad_group_status(customer_id, ad_group_id, status)` `[write]`
+Pause/enable/remove.
+
+### `update_ad_group_cpc_bid(customer_id, ad_group_id, new_cpc_bid)` `[write]`
+Positive CPC only.
+
+---
+
+## Ads
+
+### `create_responsive_search_ad(customer_id, ad_group_id, headlines, descriptions, final_urls, path1=None, path2=None)` `[write]`
+Creates a PAUSED RSA.
+
+- headlines: 3–15, <=30 chars each
+- descriptions: 2–4, <=90 chars each
+- at least one final URL
+
+### `update_responsive_search_ad(customer_id, ad_group_id, ad_id, headlines=None, descriptions=None, final_urls=None, path1=None, path2=None)` `[write]`
+Edits the underlying Ad through API v25 `AdService` / `AdOperation`. Supplied repeated fields replace the full list for that field.
+
+### `get_ad_strength(customer_id, ad_group_id=None, campaign_id=None)`
+Read-only RSA Ad Strength/policy view.
+
+### `create_responsive_display_ad(customer_id, ad_group_id, headlines, long_headline, descriptions, business_name, final_urls, marketing_image_urls, logo_image_urls=None, square_marketing_image_urls=None)` `[write]`
+Creates image assets plus the PAUSED RDA atomically.
+
+v0.12 requires at least one landscape marketing image and one square marketing image for the current RDA contract.
+
+### `create_video_ad(customer_id, ad_group_id, youtube_video_id, headline, final_urls, description1=None, description2=None, companion_banner_asset_resource_name=None)` `[write]`
+Creates a PAUSED video ad referencing an existing YouTube video ID.
+
+### `create_call_ad(customer_id, ad_group_id, country_code, phone_number, business_name, headlines, descriptions, final_urls, call_tracking_enabled=True)` `[write]`
+**Compatibility tool.** Google removed legacy Call Ads. v0.12 creates a PAUSED RSA + Call Asset + ad-group asset link atomically.
+
+A final URL is therefore required.
+
+### `create_demand_gen_campaign(customer_id, name, campaign_budget_resource_name, target_cpa=None, contains_eu_political_advertising=...)` `[write]`
+Creates a PAUSED Demand Gen campaign shell.
+
+### `create_demand_gen_ad(customer_id, ad_group_id, headlines, descriptions, business_name, final_urls, marketing_image_urls, logo_image_urls, call_to_action_text=None)` `[write]`
+Creates image assets plus a PAUSED Demand Gen multi-asset ad atomically.
+
+### `update_ad_status(customer_id, ad_group_id, ad_id, status)` `[write]`
+Pause/enable/remove an ad.
+
+### `remove_ad(customer_id, ad_group_id, ad_id)` `[write]`
+Permanent removal.
+
+---
+
+## Keywords
+
+### `add_keywords(customer_id, ad_group_id, keywords, cpc_bid=None)` `[write]`
+`keywords` is a list of objects:
+
+```json
+[
+  {"text": "google ads automation", "match_type": "PHRASE"}
+]
+```
+
+Match types: `EXACT`, `PHRASE`, `BROAD`.
+
+### `update_keyword_status(customer_id, ad_group_id, criterion_id, status)` `[write]`
+`REMOVED` uses an actual remove operation.
+
+### `update_keyword_bid(customer_id, ad_group_id, criterion_id, cpc_bid)` `[write]`
+Positive CPC only.
+
+### `update_keyword_match_type(customer_id, ad_group_id, criterion_id, match_type)` `[write]`
+Keyword match type is immutable. The MCP fetches the current keyword and performs an atomic create-new + remove-old replacement.
+
+### `remove_keyword(customer_id, ad_group_id, criterion_id)` `[write]`
+Permanent removal.
+
+### `add_negative_keywords(customer_id, keywords, campaign_id=None, ad_group_id=None)` `[write]`
+Exactly one scope. Batch is all-or-nothing.
+
+---
+
+## Keyword Planner
+
+### `generate_keyword_ideas(customer_id, keywords=None, page_url=None, language="en", geo_target_ids=None, limit=100, include_adult_keywords=False)`
+Read-only Keyword Planner idea generation with historical metrics.
+
+Provide at least one seed: keyword list or page URL.
+
+### `get_keyword_historical_metrics(customer_id, keywords, language="en", geo_target_ids=None)`
+Read-only historical metrics for a known list.
+
+---
+
+## Campaign assets
+
+### `create_sitelink_asset(customer_id, campaign_id, link_text, final_url, description1=None, description2=None)` `[write]`
+Creates Asset + CampaignAsset atomically.
+
+### `create_call_asset(customer_id, campaign_id, phone_number, country_code="AR")` `[write]`
+Creates and attaches a call asset atomically.
+
+### `create_message_asset(customer_id, campaign_id, phone_number, country_code, business_name, message_text, call_to_action_text="Escribinos")` `[write]`
+**Compatibility name.** Creates the current Business Message Asset with WhatsApp provider and attaches it as `BUSINESS_MESSAGE` atomically.
+
+### `create_image_asset(customer_id, campaign_id, image_url, name)` `[write]`
+Downloads a public HTTPS image through the SSRF-safe fetcher, creates the asset and attaches it atomically.
+
+### `create_promotion_asset(customer_id, campaign_id, promotion_target, discount_percent=None, money_amount_off=None, currency_code="ARS", promotion_code=None, final_url=None)` `[write]`
+Exactly one discount type; creates and attaches atomically.
+
+### `create_callout_asset(customer_id, campaign_id, callout_texts)` `[write]`
+Creates multiple callouts and attaches them in one atomic operation set.
+
+### `create_structured_snippet_asset(customer_id, campaign_id, header, values)` `[write]`
+Creates and attaches a structured snippet atomically.
+
+### `list_campaign_assets(customer_id, campaign_id)`
+Read-only attached-asset inventory, including current Business Message fields.
+
+### `remove_campaign_asset(customer_id, campaign_id, asset_id, field_type)` `[write]`
+Detaches the asset from the campaign; does not necessarily delete the underlying Asset resource.
+
+---
+
+## Bulk operations
+
+Bulk status writes are all-or-nothing by default. They do not silently accept partial failures.
+
+### `bulk_update_keyword_status(customer_id, updates, status)` `[write]`
+Batch pause/enable/remove keywords.
+
+### `bulk_add_negative_keywords_multi_scope(customer_id, campaign_negatives=None, ad_group_negatives=None)` `[write]`
+One atomic multi-scope negative-keyword mutation.
+
+### `bulk_update_ad_status(customer_id, updates, status)` `[write]`
+Batch ad status/removal.
+
+### `bulk_update_campaign_status(customer_id, campaign_ids, status)` `[write]`
+Batch campaign status/removal.
+
+---
+
+## Audiences & remarketing
+
+### `list_user_lists(customer_id)`
+Read-only user-list inventory.
+
+### `create_remarketing_list(customer_id, name, membership_days=30, description=None, url_contains=None, prepopulate=True)` `[write]`
+Creates a real rule-based website audience.
+
+`url_contains` is required. For an all-pages audience, pass a hostname shared by all desired URLs, for example `example.com`.
+
+The account's Google Ads tag must already be installed and firing.
+
+### `create_customer_match_list(customer_id, name, description=None)` `[write]`
+Creates an empty Customer Match list container.
+
+### `upload_customer_match_members(customer_id, user_list_resource_name, emails=None, phone_numbers=None)` `[write]`
+Normalizes/hashes identifiers locally before upload. Raw PII is not included in the safety/audit payload.
+
+### `attach_audience_to_ad_group(customer_id, ad_group_id, user_list_resource_name, bid_modifier=None)` `[write]`
+Attaches a user list to an ad group.
+
+### `remove_audience_from_ad_group(customer_id, ad_group_id, criterion_id)` `[write]`
+Removes the ad-group audience criterion.
+
+### `search_user_interests(customer_id, name_query)`
+Read-only lookup of predefined affinity/in-market interest categories.
+
+### `add_in_market_or_affinity_audience(customer_id, ad_group_id, user_interest_id, bid_modifier=None)` `[write]`
+Adds a predefined interest criterion.
+
+### `add_topic_targeting(customer_id, ad_group_id, topic_id, negative=False)` `[write]`
+Targets or excludes a topic constant.
+
+---
+
+## Targeting
+
+### `add_location_targeting(customer_id, campaign_id, locations, negative=False, country_code=None, locale="en")` `[write]`
+Numeric inputs are treated as GeoTargetConstant criterion IDs. Text names are resolved live through Google's suggestion service. Ambiguous names fail safely and ask for a numeric criterion ID.
+
+### `set_language_targeting(customer_id, campaign_id, language_codes)` `[write]`
+True replacement semantics: existing language criteria are removed and the supplied language constants are created in one mutation.
+
+### `add_ad_schedule(customer_id, campaign_id, day_of_week, start_hour, end_hour, bid_modifier=None)` `[write]`
+One day/window per call. Bid modifier must be within current valid range.
+
+### `set_device_bid_modifier(customer_id, campaign_id, device, bid_modifier)` `[write]`
+Idempotent update-or-create. Devices: `MOBILE`, `DESKTOP`, `TABLET`.
+
+`0` opts out; otherwise supported range is `0.1–10.0`.
+
+### `add_placement_exclusion(customer_id, campaign_id, placement_url, placement_type="WEBSITE")` `[write]`
+Placement types: `WEBSITE`, `YOUTUBE_CHANNEL`, `YOUTUBE_VIDEO`, `MOBILE_APPLICATION`.
+
+### `list_campaign_criteria(customer_id, campaign_id)`
+Read-only campaign targeting/criterion inventory.
+
+---
+
+## Conversions
+
+### `list_conversion_actions(customer_id)`
+Read-only conversion actions including type and primary/secondary state.
+
+### `create_conversion_action(customer_id, name, category, counting_type="ONE_PER_CLICK", value=None, currency_code="USD", conversion_action_type="WEBPAGE")` `[write]`
+Creates an ENABLED conversion action.
+
+Use `conversion_action_type="UPLOAD_CLICKS"` when the action will receive GCLID/GBRAID/WBRAID offline click uploads. Conversion action type is immutable after creation.
+
+### `upload_offline_conversion(customer_id, conversion_action_id, gclid, conversion_date_time, conversion_value, currency_code="USD")` `[write]`
+Before proposal/execution the MCP verifies that the target conversion action is ENABLED and type `UPLOAD_CLICKS`.
+
+### `upload_enhanced_conversion(customer_id, conversion_action_id, gclid, conversion_date_time, email=None, phone_number=None, conversion_value=None, currency_code="USD")` `[write]`
+Offline click upload with locally normalized/hashed first-party identifiers.
+
+Emails are lowercased/trimmed; Gmail/Googlemail local parts are normalized before SHA-256. Phone numbers must normalize to E.164.
+
+### `update_conversion_action_status(customer_id, conversion_action_id, status)` `[write]`
+Writable current states: `ENABLED`, `HIDDEN`, `REMOVED`.
+
+### `set_conversion_action_counting(customer_id, conversion_action_id, include_in_conversions_metric)` `[write]`
+Compatibility argument retained from earlier releases. v0.12 maps it to the mutable `primary_for_goal` field because the old include-in-conversions resource field is immutable.
+
+### `create_conversion_value_rule(customer_id, action, action_value, geo_target_ids=None, audience_condition=None, device_type=None)` `[write]`
+Creates an ENABLED value rule. Actions: `ADD`, `MULTIPLY`, `SET`.
+
+At least one condition is required.
+
+### `list_conversion_value_rules(customer_id)`
+Read-only rule inventory.
+
+---
+
+## Performance Max
+
+### `create_performance_max_campaign(customer_id, name, campaign_budget_resource_name, target_cpa=None, target_roas=None, contains_eu_political_advertising=...)` `[write]`
+Creates a PAUSED PMax campaign.
+
+At most one target. v0.12 uses current Maximize Conversions / Maximize Conversion Value strategy shapes.
+
+This workflow creates PMax with brand guidelines disabled so business-name/logo assets live in the AssetGroup.
+
+### `create_asset_group(customer_id, campaign_id, name, final_urls, headlines, long_headline, descriptions, business_name, marketing_image_urls, square_marketing_image_urls, logo_image_urls)` `[write]`
+Creates a **complete non-retail AssetGroup and required assets atomically**.
+
+Current v0.12 minimums:
+
+- 3–15 headlines, <=30 chars;
+- one long headline, <=90 chars;
+- 2–5 descriptions, <=90 chars;
+- at least one description <=60 chars;
+- business name <=25 chars;
+- at least one landscape marketing image;
+- at least one square marketing image;
+- at least one square logo for this brand-guideline mode.
+
+### `update_asset_group_final_urls(customer_id, asset_group_id, final_urls)` `[write]`
+Replaces destination URLs.
+
+### `add_asset_group_text_asset(customer_id, asset_group_id, text, field_type)` `[write]`
+Creates + links a text asset atomically. Field types include `HEADLINE`, `LONG_HEADLINE`, `DESCRIPTION`, `BUSINESS_NAME`.
+
+### `add_asset_group_image_asset(customer_id, asset_group_id, image_url, field_type)` `[write]`
+Creates + links an image asset atomically using the safe image fetcher.
+
+### `add_asset_group_video_asset(customer_id, asset_group_id, youtube_video_id)` `[write]`
+Creates + links a YouTube video asset atomically.
+
+### `remove_asset_group_asset(customer_id, asset_group_id, asset_id, field_type)` `[write]`
+Unlinks an asset from an AssetGroup.
+
+### `update_asset_group_status(customer_id, asset_group_id, status)` `[write]`
+`ENABLED` or `PAUSED`.
+
+### `add_asset_group_listing_filter(customer_id, asset_group_id, campaign_id, product_condition=None, product_brand=None, product_item_id=None, product_type_l1=None)` `[write]`
+Retail PMax product scoping. Exactly one dimension per call. v0.12 builds a complete root + included unit + excluded “Other” partition atomically.
+
+### `list_asset_group_listing_filters(customer_id, asset_group_id=None)`
+Read-only listing filter tree.
+
+### `list_asset_groups(customer_id, campaign_id=None)`
+Read-only AssetGroup inventory.
+
+### `add_asset_group_signal(customer_id, asset_group_id, signal_type, audience_resource_name=None, search_theme_text=None)` `[write]`
+`signal_type`: `AUDIENCE` or `SEARCH_THEME`.
+
+### `list_asset_group_signals(customer_id, asset_group_id=None)`
+Read-only PMax signals.
+
+---
+
+## Experiments
+
+### `create_experiment(customer_id, base_campaign_id, name, traffic_split_percent=50, experiment_type="SEARCH_CUSTOM", suffix=" [experiment]")` `[write]`
+Creates a system-managed experiment plus control/treatment arms.
+
+The control arm points to the base campaign. The treatment arm is left without the base campaign so Google can create the in-design draft campaign. Inspect `in_design_campaigns` before modifying/scheduling the treatment.
+
+### `list_experiments(customer_id)`
+Read-only experiment + arm details including in-design campaigns.
+
+### `promote_experiment(customer_id, experiment_resource_name)` `[write]`
+Promotes treatment changes into the base campaign.
+
+### `end_experiment(customer_id, experiment_resource_name)` `[write]`
+Ends without promoting.
+
+---
+
+## Recommendations
+
+### `get_recommendations(customer_id, type_filter=None, include_dismissed=False)`
+Read-only. API v25 uses `recommendation.dismissed`; there is no current recommendation status enum field.
+
+### `apply_recommendation(customer_id, resource_name)` `[write]`
+Applies a Google recommendation through the safety layer. No partial-failure mode.
+
+### `dismiss_recommendation(customer_id, resource_name)` `[write]`
+Dismisses a recommendation through the current nested v25 dismiss operation type.
+
+---
+
+## Safety & audit tools
+
+### `list_pending_actions()`
+Shows unconfirmed actions, age and attempt count.
+
+### `confirm_pending_action(action_id)`
+Executes one proposal. On a transient failure the action remains pending and can be retried with the **same ID**.
+
+### `cancel_pending_action(action_id)`
+Discards a proposal.
+
+### `get_recent_audit_log(limit=20)`
+Recent execution attempts including payload/result metadata.
+
+### `get_audit_action(action_id)`
+Every recorded attempt for one stable action ID.
+
+---
+
+## Operational boundaries
+
+- This server wraps Google Ads, not Merchant Center feed/product administration.
+- Google Business Profile linking is external to the campaign mutate tools.
+- Legacy Local Campaign, Smart Shopping, Call Ad and Message Asset API shapes are not sent to Google v25.
+- `create_call_ad` and `create_message_asset` retain their public names only as compatibility wrappers around current supported structures.
+- Image URLs must be public HTTPS and pass the SSRF/content/size safety checks.
+- Raw HTTP transport is blocked by default; see `docs/SETUP.md`.

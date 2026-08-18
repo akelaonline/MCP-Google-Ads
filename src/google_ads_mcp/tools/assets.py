@@ -1,24 +1,9 @@
-"""Campaign-level assets: sitelinks, call assets, and message assets.
-
-These are the pieces that let an ad push the user straight into a
-conversation (WhatsApp/SMS via Message Asset, a phone call via Call Asset,
-or a specific landing section via Sitelink) instead of relying entirely on
-the landing page to carry the user to the actual point of contact.
-
-Each `create_*_asset` tool does the two-step Google Ads dance in one call:
-1. Create the Asset itself (AssetService).
-2. Link it to the campaign (CampaignAssetService).
-
-Both mutate calls execute together inside the single `execute()` the
-safety layer confirms — so a confirm either creates+links the asset, or
-does nothing at all.
-"""
+"""Campaign-level assets compatible with Google Ads API v25."""
 
 from __future__ import annotations
 
-import urllib.request
-
 from ..context import AppContext
+from ..net import fetch_public_https_image
 
 
 def register(mcp, ctx: AppContext) -> None:
@@ -31,25 +16,16 @@ def register(mcp, ctx: AppContext) -> None:
         description1: str | None = None,
         description2: str | None = None,
     ) -> dict:
-        """Propose creating a sitelink and attaching it to a campaign.
-
-        Args:
-            link_text: Sitelink label, <=25 characters (e.g. "Escribinos por WhatsApp").
-            final_url: Landing URL for the sitelink.
-            description1 / description2: Optional lines, <=35 characters each.
-        """
-        if len(link_text) > 25:
-            raise ValueError("link_text must be 25 characters or fewer.")
-        for label, text in [
-            ("description1", description1),
-            ("description2", description2),
-        ]:
+        """Propose creating a sitelink and attaching it atomically to a campaign."""
+        if not link_text or len(link_text) > 25:
+            raise ValueError("link_text must be 1-25 characters.")
+        for label, text in (("description1", description1), ("description2", description2)):
             if text and len(text) > 35:
                 raise ValueError(f"{label} must be 35 characters or fewer.")
+        if not final_url:
+            raise ValueError("final_url is required.")
 
         client = ctx.client.raw
-        customer_id_clean = customer_id.replace("-", "")
-
         asset_operation = client.get_type("AssetOperation")
         asset = asset_operation.create
         asset.sitelink_asset.link_text = link_text
@@ -59,31 +35,19 @@ def register(mcp, ctx: AppContext) -> None:
         if description2:
             asset.sitelink_asset.description2 = description2
 
-        campaign_resource_name = client.get_service("CampaignService").campaign_path(
-            customer_id_clean, campaign_id
+        description = (
+            f"Create sitelink '{link_text}' -> {final_url} and attach to campaign "
+            f"{campaign_id} atomically"
         )
 
-        description = f"Create sitelink '{link_text}' -> {final_url} and attach to campaign {campaign_id}"
-
         def execute():
-            asset_result = ctx.client.mutate(
-                "AssetService", customer_id, [asset_operation]
+            return _create_asset_and_attach_to_campaign(
+                ctx,
+                customer_id,
+                campaign_id,
+                asset_operation,
+                "SITELINK",
             )
-            asset_resource_name = asset_result.results[0].resource_name
-
-            campaign_asset_operation = client.get_type("CampaignAssetOperation")
-            campaign_asset = campaign_asset_operation.create
-            campaign_asset.campaign = campaign_resource_name
-            campaign_asset.asset = asset_resource_name
-            campaign_asset.field_type = client.enums.AssetFieldTypeEnum.SITELINK
-
-            link_result = ctx.client.mutate(
-                "CampaignAssetService", customer_id, [campaign_asset_operation]
-            )
-            return {
-                "asset_resource_name": asset_resource_name,
-                "campaign_asset_resource_name": link_result.results[0].resource_name,
-            }
 
         return ctx.safety.propose(
             tool_name="create_sitelink_asset",
@@ -106,49 +70,29 @@ def register(mcp, ctx: AppContext) -> None:
         phone_number: str,
         country_code: str = "AR",
     ) -> dict:
-        """Propose creating a call asset (click-to-call extension) and attaching it
-        to a campaign.
+        """Propose creating a call asset and attaching it atomically."""
+        if not phone_number.strip():
+            raise ValueError("phone_number is required.")
+        if len(country_code) != 2:
+            raise ValueError("country_code must be a two-letter code.")
 
-        Args:
-            phone_number: Full phone number, e.g. "+541112345678".
-            country_code: ISO 3166-1 alpha-2, e.g. "AR" for Argentina.
-        """
         client = ctx.client.raw
-        customer_id_clean = customer_id.replace("-", "")
-
         asset_operation = client.get_type("AssetOperation")
-        asset = asset_operation.create
-        asset.call_asset.phone_number = phone_number
-        asset.call_asset.country_code = country_code
-
-        campaign_resource_name = client.get_service("CampaignService").campaign_path(
-            customer_id_clean, campaign_id
-        )
-
+        asset_operation.create.call_asset.phone_number = phone_number
+        asset_operation.create.call_asset.country_code = country_code.upper()
         description = (
-            f"Create call asset {phone_number} ({country_code}) and attach to "
-            f"campaign {campaign_id}"
+            f"Create call asset {phone_number} ({country_code.upper()}) and attach "
+            f"to campaign {campaign_id} atomically"
         )
 
         def execute():
-            asset_result = ctx.client.mutate(
-                "AssetService", customer_id, [asset_operation]
+            return _create_asset_and_attach_to_campaign(
+                ctx,
+                customer_id,
+                campaign_id,
+                asset_operation,
+                "CALL",
             )
-            asset_resource_name = asset_result.results[0].resource_name
-
-            campaign_asset_operation = client.get_type("CampaignAssetOperation")
-            campaign_asset = campaign_asset_operation.create
-            campaign_asset.campaign = campaign_resource_name
-            campaign_asset.asset = asset_resource_name
-            campaign_asset.field_type = client.enums.AssetFieldTypeEnum.CALL
-
-            link_result = ctx.client.mutate(
-                "CampaignAssetService", customer_id, [campaign_asset_operation]
-            )
-            return {
-                "asset_resource_name": asset_resource_name,
-                "campaign_asset_resource_name": link_result.results[0].resource_name,
-            }
 
         return ctx.safety.propose(
             tool_name="create_call_asset",
@@ -157,7 +101,7 @@ def register(mcp, ctx: AppContext) -> None:
             payload={
                 "campaign_id": campaign_id,
                 "phone_number": phone_number,
-                "country_code": country_code,
+                "country_code": country_code.upper(),
             },
             execute=execute,
         )
@@ -172,73 +116,60 @@ def register(mcp, ctx: AppContext) -> None:
         message_text: str,
         call_to_action_text: str = "Escribinos",
     ) -> dict:
-        """Propose creating a message asset (click-to-message, e.g. WhatsApp/SMS)
-        and attaching it to a campaign.
+        """Create the v25 Business Message asset replacement using WhatsApp.
 
-        This is the extension that lets a Search ad open a chat directly —
-        no dependency on the landing page having a working WhatsApp button.
-
-        Args:
-            phone_number: Number the message opens a chat with, e.g. "1112345678"
-                (no country code prefix — that's the separate country_code arg).
-            country_code: ISO 3166-1 alpha-2, e.g. "AR".
-            business_name: Shown to the user before they message you.
-            message_text: Pre-filled text the user's message opens with,
-                <=35 characters (Google Ads limit).
-            call_to_action_text: Button label, e.g. "Escribinos por WhatsApp".
+        The old ``message_asset`` resource was removed. This compatibility tool
+        keeps its public name/signature and creates a ``business_message_asset``
+        with WhatsApp provider, then links it to the campaign as BUSINESS_MESSAGE
+        in the same atomic mutation.
         """
-        if len(message_text) > 35:
-            raise ValueError("message_text must be 35 characters or fewer.")
+        if not message_text or len(message_text) > 300:
+            raise ValueError("message_text must be 1-300 characters.")
+        if len(country_code) != 2:
+            raise ValueError("country_code must be a two-letter code.")
+        if not phone_number.strip():
+            raise ValueError("phone_number is required.")
+        if not call_to_action_text or len(call_to_action_text) > 30:
+            raise ValueError("call_to_action_text must be 1-30 characters.")
 
         client = ctx.client.raw
-        customer_id_clean = customer_id.replace("-", "")
-
         asset_operation = client.get_type("AssetOperation")
-        asset = asset_operation.create
-        asset.message_asset.business_name = business_name
-        asset.message_asset.country_code = country_code
-        asset.message_asset.phone_number = phone_number
-        asset.message_asset.message_text = message_text
-        asset.message_asset.call_to_action_text = call_to_action_text
-        asset.message_asset.extension_text = message_text
-
-        campaign_resource_name = client.get_service("CampaignService").campaign_path(
-            customer_id_clean, campaign_id
+        business_message = asset_operation.create.business_message_asset
+        business_message.message_provider = (
+            client.enums.BusinessMessageProviderEnum.WHATSAPP.value
         )
+        business_message.starter_message = message_text
+        business_message.whatsapp_info.country_code = country_code.upper()
+        business_message.whatsapp_info.phone_number = phone_number
+        business_message.call_to_action.call_to_action_selection = (
+            client.enums.BusinessMessageCallToActionTypeEnum.CONTACT_US.value
+        )
+        business_message.call_to_action.call_to_action_description = call_to_action_text
 
         description = (
-            f"Create message asset ({business_name}, {country_code}{phone_number}) and "
-            f"attach to campaign {campaign_id}"
+            f"Create WhatsApp Business Message asset ({business_name}, "
+            f"{country_code.upper()}{phone_number}) and attach to campaign "
+            f"{campaign_id} atomically"
         )
 
         def execute():
-            asset_result = ctx.client.mutate(
-                "AssetService", customer_id, [asset_operation]
+            return _create_asset_and_attach_to_campaign(
+                ctx,
+                customer_id,
+                campaign_id,
+                asset_operation,
+                "BUSINESS_MESSAGE",
             )
-            asset_resource_name = asset_result.results[0].resource_name
-
-            campaign_asset_operation = client.get_type("CampaignAssetOperation")
-            campaign_asset = campaign_asset_operation.create
-            campaign_asset.campaign = campaign_resource_name
-            campaign_asset.asset = asset_resource_name
-            campaign_asset.field_type = client.enums.AssetFieldTypeEnum.MESSAGE
-
-            link_result = ctx.client.mutate(
-                "CampaignAssetService", customer_id, [campaign_asset_operation]
-            )
-            return {
-                "asset_resource_name": asset_resource_name,
-                "campaign_asset_resource_name": link_result.results[0].resource_name,
-            }
 
         return ctx.safety.propose(
             tool_name="create_message_asset",
             customer_id=customer_id,
             description=description,
             payload={
+                "compatibility_mode": "BUSINESS_MESSAGE_WHATSAPP",
                 "campaign_id": campaign_id,
                 "phone_number": phone_number,
-                "country_code": country_code,
+                "country_code": country_code.upper(),
                 "business_name": business_name,
                 "message_text": message_text,
                 "call_to_action_text": call_to_action_text,
@@ -253,52 +184,27 @@ def register(mcp, ctx: AppContext) -> None:
         image_url: str,
         name: str,
     ) -> dict:
-        """Propose downloading an image from a URL, uploading it as an Asset,
-        and attaching it to a campaign (e.g. for Search's Image Extension, or
-        as a logo/marketing image feeding Performance Max asset groups).
-
-        Args:
-            image_url: Public HTTPS URL of the image to fetch and upload.
-                Fetched at confirm time, not at proposal time.
-            name: Internal asset name shown in the Google Ads UI.
-        """
-        client = ctx.client.raw
-        customer_id_clean = customer_id.replace("-", "")
-
-        campaign_resource_name = client.get_service("CampaignService").campaign_path(
-            customer_id_clean, campaign_id
+        """Propose uploading a public HTTPS image and attaching it atomically."""
+        if not name.strip():
+            raise ValueError("name is required.")
+        description = (
+            f"Upload image '{name}' from {image_url} and attach to campaign "
+            f"{campaign_id} atomically"
         )
 
-        description = f"Upload image '{name}' from {image_url} and attach to campaign {campaign_id}"
-
         def execute():
-            with urllib.request.urlopen(image_url, timeout=30) as response:
-                image_bytes = response.read()
-
+            image_bytes = fetch_public_https_image(image_url)
+            client = ctx.client.raw
             asset_operation = client.get_type("AssetOperation")
-            asset = asset_operation.create
-            asset.name = name
-            asset.image_asset.data = image_bytes
-
-            asset_result = ctx.client.mutate(
-                "AssetService", customer_id, [asset_operation]
+            asset_operation.create.name = name
+            asset_operation.create.image_asset.data = image_bytes
+            return _create_asset_and_attach_to_campaign(
+                ctx,
+                customer_id,
+                campaign_id,
+                asset_operation,
+                "IMAGE",
             )
-            asset_resource_name = asset_result.results[0].resource_name
-
-            campaign_asset_operation = client.get_type("CampaignAssetOperation")
-            campaign_asset = campaign_asset_operation.create
-            campaign_asset.campaign = campaign_resource_name
-            campaign_asset.asset = asset_resource_name
-            campaign_asset.field_type = client.enums.AssetFieldTypeEnum.IMAGE
-
-            link_result = ctx.client.mutate(
-                "CampaignAssetService", customer_id, [campaign_asset_operation]
-            )
-            return {
-                "asset_resource_name": asset_resource_name,
-                "campaign_asset_resource_name": link_result.results[0].resource_name,
-                "bytes_uploaded": len(image_bytes),
-            }
 
         return ctx.safety.propose(
             tool_name="create_image_asset",
@@ -319,34 +225,23 @@ def register(mcp, ctx: AppContext) -> None:
         promotion_code: str | None = None,
         final_url: str | None = None,
     ) -> dict:
-        """Propose creating a promotion extension (e.g. "20% OFF inscripción")
-        and attaching it to a campaign.
-
-        Args:
-            promotion_target: Short label for what's being promoted, e.g.
-                "Curso Regular 2026" — shown alongside the discount.
-            discount_percent: e.g. 20 for 20% off. Provide exactly one of
-                discount_percent or money_amount_off.
-            money_amount_off: Flat amount off, in currency_code units.
-            promotion_code: Optional coupon code the user needs to redeem.
-            final_url: Optional override landing URL; defaults to the ad's URL.
-        """
-        if bool(discount_percent) == bool(money_amount_off):
+        """Propose creating a promotion asset and attaching it atomically."""
+        if (discount_percent is None) == (money_amount_off is None):
             raise ValueError(
                 "Provide exactly one of discount_percent or money_amount_off."
             )
+        if discount_percent is not None and not (0 < discount_percent <= 100):
+            raise ValueError("discount_percent must be greater than 0 and at most 100.")
+        if money_amount_off is not None and money_amount_off <= 0:
+            raise ValueError("money_amount_off must be greater than 0.")
+        if not promotion_target:
+            raise ValueError("promotion_target is required.")
 
         client = ctx.client.raw
-        customer_id_clean = customer_id.replace("-", "")
-
-        campaign_resource_name = client.get_service("CampaignService").campaign_path(
-            customer_id_clean, campaign_id
-        )
-
         asset_operation = client.get_type("AssetOperation")
         asset = asset_operation.create
         asset.promotion_asset.promotion_target = promotion_target
-        asset.promotion_asset.currency_code = currency_code
+        asset.promotion_asset.currency_code = currency_code.upper()
         if discount_percent is not None:
             asset.promotion_asset.percent_off = int(discount_percent * 1_000_000)
         else:
@@ -355,7 +250,7 @@ def register(mcp, ctx: AppContext) -> None:
             asset.promotion_asset.money_amount_off.amount_micros = micros(
                 money_amount_off
             )
-            asset.promotion_asset.money_amount_off.currency_code = currency_code
+            asset.promotion_asset.money_amount_off.currency_code = currency_code.upper()
         if promotion_code:
             asset.promotion_asset.promotion_code = promotion_code
         if final_url:
@@ -364,32 +259,21 @@ def register(mcp, ctx: AppContext) -> None:
         discount_label = (
             f"{discount_percent}% off"
             if discount_percent is not None
-            else f"{money_amount_off} {currency_code} off"
+            else f"{money_amount_off} {currency_code.upper()} off"
         )
         description = (
-            f"Create promotion asset '{promotion_target}' ({discount_label}) and attach to "
-            f"campaign {campaign_id}"
+            f"Create promotion asset '{promotion_target}' ({discount_label}) and "
+            f"attach to campaign {campaign_id} atomically"
         )
 
         def execute():
-            asset_result = ctx.client.mutate(
-                "AssetService", customer_id, [asset_operation]
+            return _create_asset_and_attach_to_campaign(
+                ctx,
+                customer_id,
+                campaign_id,
+                asset_operation,
+                "PROMOTION",
             )
-            asset_resource_name = asset_result.results[0].resource_name
-
-            campaign_asset_operation = client.get_type("CampaignAssetOperation")
-            campaign_asset = campaign_asset_operation.create
-            campaign_asset.campaign = campaign_resource_name
-            campaign_asset.asset = asset_resource_name
-            campaign_asset.field_type = client.enums.AssetFieldTypeEnum.PROMOTION
-
-            link_result = ctx.client.mutate(
-                "CampaignAssetService", customer_id, [campaign_asset_operation]
-            )
-            return {
-                "asset_resource_name": asset_resource_name,
-                "campaign_asset_resource_name": link_result.results[0].resource_name,
-            }
 
         return ctx.safety.propose(
             tool_name="create_promotion_asset",
@@ -400,7 +284,7 @@ def register(mcp, ctx: AppContext) -> None:
                 "promotion_target": promotion_target,
                 "discount_percent": discount_percent,
                 "money_amount_off": money_amount_off,
-                "currency_code": currency_code,
+                "currency_code": currency_code.upper(),
                 "promotion_code": promotion_code,
                 "final_url": final_url,
             },
@@ -409,41 +293,37 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def list_campaign_assets(customer_id: str, campaign_id: str) -> dict:
-        """List assets currently attached to a campaign (sitelinks, calls,
-        messages, images, etc.), with their status."""
+        """List assets currently attached to a campaign."""
         query = f"""
             SELECT campaign_asset.asset, campaign_asset.field_type,
                    campaign_asset.status, asset.type,
                    asset.sitelink_asset.link_text,
                    asset.call_asset.phone_number,
-                   asset.message_asset.business_name,
-                   asset.message_asset.phone_number
+                   asset.business_message_asset.message_provider,
+                   asset.business_message_asset.starter_message,
+                   asset.business_message_asset.whatsapp_info.country_code,
+                   asset.business_message_asset.whatsapp_info.phone_number
             FROM campaign_asset
-            WHERE campaign.id = {campaign_id}
+            WHERE campaign.id = {int(campaign_id)}
         """
         rows = ctx.client.search(customer_id, query)
         return {"campaign_id": campaign_id, "assets": rows, "count": len(rows)}
 
     @mcp.tool()
     def remove_campaign_asset(
-        customer_id: str, campaign_id: str, asset_id: str, field_type: str
+        customer_id: str,
+        campaign_id: str,
+        asset_id: str,
+        field_type: str,
     ) -> dict:
-        """Propose detaching an asset (sitelink/call/message/etc.) from a campaign.
-
-        Args:
-            field_type: The AssetFieldType the asset is linked as (e.g. SITELINK,
-                CALL, MESSAGE) — must match how it was attached.
-        """
+        """Propose detaching an asset from a campaign."""
         client = ctx.client.raw
         customer_id_clean = customer_id.replace("-", "")
-
         field_type_enum = client.enums.AssetFieldTypeEnum[field_type].value
-
         operation = client.get_type("CampaignAssetOperation")
         operation.remove = client.get_service(
             "CampaignAssetService"
         ).campaign_asset_path(customer_id_clean, campaign_id, asset_id, field_type_enum)
-
         description = (
             f"Detach {field_type} asset {asset_id} from campaign {campaign_id}"
         )
@@ -465,61 +345,35 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def create_callout_asset(
-        customer_id: str, campaign_id: str, callout_texts: list[str]
+        customer_id: str,
+        campaign_id: str,
+        callout_texts: list[str],
     ) -> dict:
-        """Propose creating one or more callout extensions and attaching
-        them to a campaign — short, non-clickable trust signals shown
-        alongside the ad (e.g. "Envío gratis", "Atención 24/7", "Sin cargo
-        por consulta").
-
-        Args:
-            callout_texts: Each <=25 characters. Creates one asset per entry.
-        """
-        if any(len(t) > 25 for t in callout_texts):
-            raise ValueError("Each callout text must be 25 characters or fewer.")
+        """Create one or more callouts and attach all of them atomically."""
         if not callout_texts:
             raise ValueError("Provide at least one callout text.")
+        if any(not text or len(text) > 25 for text in callout_texts):
+            raise ValueError("Each callout text must be 1-25 characters.")
 
         client = ctx.client.raw
-        customer_id_clean = customer_id.replace("-", "")
-        campaign_resource_name = client.get_service("CampaignService").campaign_path(
-            customer_id_clean, campaign_id
-        )
-
         asset_operations = []
         for text in callout_texts:
-            op = client.get_type("AssetOperation")
-            op.create.callout_asset.callout_text = text
-            asset_operations.append(op)
-
+            operation = client.get_type("AssetOperation")
+            operation.create.callout_asset.callout_text = text
+            asset_operations.append(operation)
         description = (
-            f"Create {len(callout_texts)} callout(s) {callout_texts} and attach "
-            f"to campaign {campaign_id}"
+            f"Create {len(callout_texts)} callout(s) and attach to campaign "
+            f"{campaign_id} atomically"
         )
 
         def execute():
-            asset_result = ctx.client.mutate(
-                "AssetService", customer_id, asset_operations
+            return _create_many_assets_and_attach_to_campaign(
+                ctx,
+                customer_id,
+                campaign_id,
+                asset_operations,
+                "CALLOUT",
             )
-            asset_resource_names = [r.resource_name for r in asset_result.results]
-
-            campaign_asset_operations = []
-            for asset_resource_name in asset_resource_names:
-                op = client.get_type("CampaignAssetOperation")
-                op.create.campaign = campaign_resource_name
-                op.create.asset = asset_resource_name
-                op.create.field_type = client.enums.AssetFieldTypeEnum.CALLOUT
-                campaign_asset_operations.append(op)
-
-            link_result = ctx.client.mutate(
-                "CampaignAssetService", customer_id, campaign_asset_operations
-            )
-            return {
-                "asset_resource_names": asset_resource_names,
-                "campaign_asset_resource_names": [
-                    r.resource_name for r in link_result.results
-                ],
-            }
 
         return ctx.safety.propose(
             tool_name="create_callout_asset",
@@ -531,64 +385,36 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def create_structured_snippet_asset(
-        customer_id: str, campaign_id: str, header: str, values: list[str]
+        customer_id: str,
+        campaign_id: str,
+        header: str,
+        values: list[str],
     ) -> dict:
-        """Propose creating a structured snippet extension and attaching it
-        to a campaign — a labeled list under a fixed header (e.g. header
-        "Servicios" with values ["Implantes", "Ortodoncia", "Blanqueamiento"]).
-
-        Args:
-            header: One of Google's fixed snippet headers, e.g. "Amenities",
-                "Brands", "Courses", "Degree programs", "Destinations",
-                "Featured hotels", "Insurance coverage", "Models",
-                "Neighborhoods", "Service catalog", "Shows", "Styles",
-                "Types". Pass the enum name in caps with underscores, e.g.
-                "SERVICE_CATALOG" — see HeaderEnum in the API reference for
-                the exact value if unsure.
-            values: 3-10 short strings, each <=25 characters.
-        """
+        """Create a structured snippet and attach it atomically."""
         if not (3 <= len(values) <= 10):
             raise ValueError("Provide between 3 and 10 values.")
-        if any(len(v) > 25 for v in values):
-            raise ValueError("Each value must be 25 characters or fewer.")
+        if any(not value or len(value) > 25 for value in values):
+            raise ValueError("Each value must be 1-25 characters.")
+        if not header:
+            raise ValueError("header is required.")
 
         client = ctx.client.raw
-        customer_id_clean = customer_id.replace("-", "")
-        campaign_resource_name = client.get_service("CampaignService").campaign_path(
-            customer_id_clean, campaign_id
-        )
-
         asset_operation = client.get_type("AssetOperation")
-        asset = asset_operation.create
-        asset.structured_snippet_asset.header = header
-        asset.structured_snippet_asset.values.extend(values)
-
+        asset_operation.create.structured_snippet_asset.header = header
+        asset_operation.create.structured_snippet_asset.values.extend(values)
         description = (
             f"Create structured snippet '{header}': {values} and attach to "
-            f"campaign {campaign_id}"
+            f"campaign {campaign_id} atomically"
         )
 
         def execute():
-            asset_result = ctx.client.mutate(
-                "AssetService", customer_id, [asset_operation]
+            return _create_asset_and_attach_to_campaign(
+                ctx,
+                customer_id,
+                campaign_id,
+                asset_operation,
+                "STRUCTURED_SNIPPET",
             )
-            asset_resource_name = asset_result.results[0].resource_name
-
-            campaign_asset_operation = client.get_type("CampaignAssetOperation")
-            campaign_asset = campaign_asset_operation.create
-            campaign_asset.campaign = campaign_resource_name
-            campaign_asset.asset = asset_resource_name
-            campaign_asset.field_type = (
-                client.enums.AssetFieldTypeEnum.STRUCTURED_SNIPPET
-            )
-
-            link_result = ctx.client.mutate(
-                "CampaignAssetService", customer_id, [campaign_asset_operation]
-            )
-            return {
-                "asset_resource_name": asset_resource_name,
-                "campaign_asset_resource_name": link_result.results[0].resource_name,
-            }
 
         return ctx.safety.propose(
             tool_name="create_structured_snippet_asset",
@@ -597,3 +423,59 @@ def register(mcp, ctx: AppContext) -> None:
             payload={"campaign_id": campaign_id, "header": header, "values": values},
             execute=execute,
         )
+
+
+def _create_asset_and_attach_to_campaign(
+    ctx: AppContext,
+    customer_id: str,
+    campaign_id: str,
+    asset_operation,
+    field_type: str,
+):
+    return _create_many_assets_and_attach_to_campaign(
+        ctx,
+        customer_id,
+        campaign_id,
+        [asset_operation],
+        field_type,
+    )
+
+
+def _create_many_assets_and_attach_to_campaign(
+    ctx: AppContext,
+    customer_id: str,
+    campaign_id: str,
+    asset_operations: list,
+    field_type: str,
+):
+    client = ctx.client.raw
+    customer_id_clean = customer_id.replace("-", "")
+    campaign_resource_name = client.get_service("CampaignService").campaign_path(
+        customer_id_clean, campaign_id
+    )
+    operations = []
+
+    for offset, asset_operation in enumerate(asset_operations, start=1):
+        temp_id = -offset
+        temp_asset_name = client.get_service("AssetService").asset_path(
+            customer_id_clean, temp_id
+        )
+        asset_operation.create.resource_name = temp_asset_name
+        operations.append(_wrap_mutate(client, "asset_operation", asset_operation))
+
+        link_operation = client.get_type("CampaignAssetOperation")
+        link = link_operation.create
+        link.campaign = campaign_resource_name
+        link.asset = temp_asset_name
+        link.field_type = client.enums.AssetFieldTypeEnum[field_type].value
+        operations.append(
+            _wrap_mutate(client, "campaign_asset_operation", link_operation)
+        )
+
+    return ctx.client.mutate_atomic(customer_id, operations)
+
+
+def _wrap_mutate(client, field_name: str, operation):
+    mutate_operation = client.get_type("MutateOperation")
+    client.copy_from(getattr(mutate_operation, field_name), operation)
+    return mutate_operation

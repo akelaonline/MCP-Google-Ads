@@ -1,4 +1,4 @@
-"""Tests for tools/bulk.py — batch status changes and multi-scope negatives."""
+"""Tests for tools/bulk.py — atomic batch status and negative operations."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from conftest import FakeMutateResult, build_ctx, register_module
 from google_ads_mcp import tools
 
 
-def test_bulk_update_keyword_status_single_call():
+def test_bulk_update_keyword_status_single_atomic_call():
     calls = []
 
     def fake_mutate(service_name, customer_id, operations, **kwargs):
@@ -19,7 +19,6 @@ def test_bulk_update_keyword_status_single_call():
 
     ctx = build_ctx(fake_mutate)
     tool_fns = register_module(tools.bulk, ctx)
-
     result = tool_fns["bulk_update_keyword_status"](
         customer_id="123",
         updates=[
@@ -30,8 +29,7 @@ def test_bulk_update_keyword_status_single_call():
         status="PAUSED",
     )
 
-    # Exactly one mutate call carrying all 3 operations, not 3 separate calls.
-    assert calls == [("AdGroupCriterionService", 3, True)]
+    assert calls == [("AdGroupCriterionService", 3, False)]
     assert result["status"] == "executed"
 
 
@@ -45,16 +43,15 @@ def test_bulk_update_keyword_status_requires_updates():
         )
 
 
-def test_bulk_add_negative_keywords_multi_scope_splits_by_service():
+def test_bulk_add_negative_keywords_multi_scope_is_one_atomic_call():
     calls = []
 
     def fake_mutate(service_name, customer_id, operations, **kwargs):
         calls.append((service_name, len(list(operations))))
-        return FakeMutateResult("x", "y")
+        return {"atomic": True}
 
     ctx = build_ctx(fake_mutate)
     tool_fns = register_module(tools.bulk, ctx)
-
     result = tool_fns["bulk_add_negative_keywords_multi_scope"](
         customer_id="123",
         campaign_negatives={
@@ -66,11 +63,9 @@ def test_bulk_add_negative_keywords_multi_scope_splits_by_service():
         },
     )
 
-    called_services = {name for name, _count in calls}
-    assert called_services == {"CampaignCriterionService", "AdGroupCriterionService"}
-    campaign_call = next(c for c in calls if c[0] == "CampaignCriterionService")
-    assert campaign_call[1] == 2  # one op per campaign
+    assert calls == [("GoogleAdsService", 3)]
     assert result["status"] == "executed"
+    assert result["result"]["atomic"] is True
 
 
 def test_bulk_add_negative_keywords_multi_scope_requires_at_least_one_scope():
@@ -81,16 +76,17 @@ def test_bulk_add_negative_keywords_multi_scope_requires_at_least_one_scope():
         tool_fns["bulk_add_negative_keywords_multi_scope"](customer_id="123")
 
 
-def test_bulk_update_ad_status_single_call():
+def test_bulk_update_ad_status_remove_uses_single_atomic_service_call():
     calls = []
 
     def fake_mutate(service_name, customer_id, operations, **kwargs):
-        calls.append((service_name, len(list(operations))))
+        operations = list(operations)
+        calls.append((service_name, len(operations), kwargs.get("partial_failure")))
+        assert all("remove" in operation._children for operation in operations)
         return FakeMutateResult("a", "b")
 
     ctx = build_ctx(fake_mutate)
     tool_fns = register_module(tools.bulk, ctx)
-
     result = tool_fns["bulk_update_ad_status"](
         customer_id="123",
         updates=[
@@ -100,5 +96,5 @@ def test_bulk_update_ad_status_single_call():
         status="REMOVED",
     )
 
-    assert calls == [("AdGroupAdService", 2)]
+    assert calls == [("AdGroupAdService", 2, False)]
     assert result["status"] == "executed"

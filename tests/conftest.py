@@ -1,6 +1,7 @@
-"""Shared test fakes for exercising tool modules without a real Google Ads
-client: a proto-plus-ish auto-vivifying builder, a minimal MCP registrar,
-and an AppContext wired to a mocked mutate().
+"""Shared test fakes for tool-level unit tests.
+
+These fakes intentionally remain lightweight. API-contract correctness is
+covered separately by tests that instantiate Google's real v25 protobuf types.
 """
 
 from __future__ import annotations
@@ -13,18 +14,11 @@ from google_ads_mcp.safety import SafetyLayer
 
 
 class FakeMutateResult:
-    """Mimics a MutateXResponse with one or more .results, each carrying a
-    .resource_name — enough for every tool in this repo, which only ever
-    reads result.results[i].resource_name."""
-
     def __init__(self, *resource_names: str):
         self.results = [SimpleNamespace(resource_name=rn) for rn in resource_names]
 
 
 class FakeMcp:
-    """Minimal stand-in for FastMCP: @mcp.tool() just registers the function
-    under its own name so tests can call it directly."""
-
     def __init__(self):
         self.registered: dict = {}
 
@@ -45,14 +39,22 @@ class AssetFieldTypeEnum(enum.Enum):
     UNSPECIFIED = 0
     SITELINK = 1
     CALL = 2
-    MESSAGE = 3
+    BUSINESS_MESSAGE = 3
     IMAGE = 4
     PROMOTION = 5
     HEADLINE = 6
     LONG_HEADLINE = 7
     DESCRIPTION = 8
     BUSINESS_NAME = 9
-    LOCAL = 10
+    CALLOUT = 10
+    STRUCTURED_SNIPPET = 11
+    MARKETING_IMAGE = 12
+    SQUARE_MARKETING_IMAGE = 13
+    PORTRAIT_MARKETING_IMAGE = 14
+    LOGO = 15
+    LANDSCAPE_LOGO = 16
+    VIDEO = 17
+    YOUTUBE_VIDEO = 18
 
 
 class ConversionActionStatusEnum(enum.Enum):
@@ -67,6 +69,25 @@ class AdGroupCriterionStatusEnum(enum.Enum):
     ENABLED = 2
     PAUSED = 3
     REMOVED = 4
+
+
+class AdGroupStatusEnum(enum.Enum):
+    UNSPECIFIED = 0
+    ENABLED = 2
+    PAUSED = 3
+    REMOVED = 4
+
+
+class AdGroupTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    SEARCH_STANDARD = 2
+    DISPLAY_STANDARD = 3
+    SHOPPING_PRODUCT_ADS = 4
+    VIDEO_BUMPER = 8
+    VIDEO_TRUE_VIEW_IN_STREAM = 9
+    VIDEO_TRUE_VIEW_IN_DISPLAY = 10
+    VIDEO_NON_SKIPPABLE_IN_STREAM = 11
+    VIDEO_RESPONSIVE = 16
 
 
 class AdGroupAdStatusEnum(enum.Enum):
@@ -95,14 +116,89 @@ class AdvertisingChannelTypeEnum(enum.Enum):
     SEARCH = 2
     DISPLAY = 3
     SHOPPING = 4
-    LOCAL = 10
     PERFORMANCE_MAX = 13
+    DEMAND_GEN = 14
 
 
 class AdvertisingChannelSubTypeEnum(enum.Enum):
     UNSPECIFIED = 0
     STANDARD_SHOPPING = 8
-    SMART_SHOPPING = 12
+
+
+class EuPoliticalAdvertisingStatusEnum(enum.Enum):
+    UNSPECIFIED = 0
+    CONTAINS_EU_POLITICAL_ADVERTISING = 2
+    DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING = 3
+
+
+class AssetTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    IMAGE = 2
+
+
+class BusinessMessageProviderEnum(enum.Enum):
+    UNSPECIFIED = 0
+    WHATSAPP = 2
+
+
+class BusinessMessageCallToActionTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    CONTACT_US = 4
+
+
+class CallConversionReportingStateEnum(enum.Enum):
+    UNSPECIFIED = 0
+    DISABLED = 2
+    USE_ACCOUNT_LEVEL_CALL_CONVERSION_ACTION = 3
+
+
+class ListingGroupFilterTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    SUBDIVISION = 2
+    UNIT_INCLUDED = 3
+    UNIT_EXCLUDED = 4
+
+
+class ListingGroupFilterListingSourceEnum(enum.Enum):
+    UNSPECIFIED = 0
+    SHOPPING = 2
+
+
+class ListingGroupFilterProductConditionEnum(enum.Enum):
+    UNSPECIFIED = 0
+    NEW = 2
+    USED = 3
+    REFURBISHED = 4
+
+
+class ListingGroupFilterProductTypeLevelEnum(enum.Enum):
+    UNSPECIFIED = 0
+    LEVEL1 = 2
+
+
+class UserListMembershipStatusEnum(enum.Enum):
+    UNSPECIFIED = 0
+    OPEN = 2
+    CLOSED = 3
+
+
+class UserListPrepopulationStatusEnum(enum.Enum):
+    UNSPECIFIED = 0
+    REQUESTED = 2
+    FINISHED = 3
+    FAILED = 4
+
+
+class UserListStringRuleItemOperatorEnum(enum.Enum):
+    UNSPECIFIED = 0
+    CONTAINS = 2
+    EQUALS = 3
+
+
+class UserListFlexibleRuleOperatorEnum(enum.Enum):
+    UNSPECIFIED = 0
+    AND = 2
+    OR = 3
 
 
 class CustomerMatchUploadKeyTypeEnum(enum.Enum):
@@ -154,15 +250,46 @@ class DeviceEnum(enum.Enum):
     DESKTOP = 4
 
 
+class ExperimentTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    SEARCH_CUSTOM = 2
+
+
+class ExperimentStatusEnum(enum.Enum):
+    UNSPECIFIED = 0
+    SETUP = 2
+    INITIALIZING = 3
+    ENABLED = 4
+    GRADUATED = 5
+    REMOVED = 6
+    PROMOTED = 7
+    ENDED = 8
+
+
 class FakeEnums:
     AssetFieldTypeEnum = AssetFieldTypeEnum
     ConversionActionStatusEnum = ConversionActionStatusEnum
     AdGroupCriterionStatusEnum = AdGroupCriterionStatusEnum
+    AdGroupStatusEnum = AdGroupStatusEnum
+    AdGroupTypeEnum = AdGroupTypeEnum
     AdGroupAdStatusEnum = AdGroupAdStatusEnum
     CampaignStatusEnum = CampaignStatusEnum
     AssetGroupStatusEnum = AssetGroupStatusEnum
     AdvertisingChannelTypeEnum = AdvertisingChannelTypeEnum
     AdvertisingChannelSubTypeEnum = AdvertisingChannelSubTypeEnum
+    EuPoliticalAdvertisingStatusEnum = EuPoliticalAdvertisingStatusEnum
+    AssetTypeEnum = AssetTypeEnum
+    BusinessMessageProviderEnum = BusinessMessageProviderEnum
+    BusinessMessageCallToActionTypeEnum = BusinessMessageCallToActionTypeEnum
+    CallConversionReportingStateEnum = CallConversionReportingStateEnum
+    ListingGroupFilterTypeEnum = ListingGroupFilterTypeEnum
+    ListingGroupFilterListingSourceEnum = ListingGroupFilterListingSourceEnum
+    ListingGroupFilterProductConditionEnum = ListingGroupFilterProductConditionEnum
+    ListingGroupFilterProductTypeLevelEnum = ListingGroupFilterProductTypeLevelEnum
+    UserListMembershipStatusEnum = UserListMembershipStatusEnum
+    UserListPrepopulationStatusEnum = UserListPrepopulationStatusEnum
+    UserListStringRuleItemOperatorEnum = UserListStringRuleItemOperatorEnum
+    UserListFlexibleRuleOperatorEnum = UserListFlexibleRuleOperatorEnum
     DayOfWeekEnum = DayOfWeekEnum
     MinuteOfHourEnum = MinuteOfHourEnum
     DeviceEnum = DeviceEnum
@@ -170,13 +297,11 @@ class FakeEnums:
     OfflineUserDataJobTypeEnum = OfflineUserDataJobTypeEnum
     KeywordMatchTypeEnum = KeywordMatchTypeEnum
     KeywordPlanNetworkEnum = KeywordPlanNetworkEnum
+    ExperimentTypeEnum = ExperimentTypeEnum
+    ExperimentStatusEnum = ExperimentStatusEnum
 
 
 class AutoVivify:
-    """A nested attribute sandbox: reading an unset attribute creates and
-    caches a fresh AutoVivify, so arbitrarily deep proto-style attribute
-    chains (asset.sitelink_asset.link_text = ...) just work in a fake."""
-
     def __init__(self):
         object.__setattr__(self, "_children", {})
         object.__setattr__(self, "_list", [])
@@ -203,9 +328,6 @@ class AutoVivify:
         return len(object.__getattribute__(self, "_list"))
 
     def CopyFrom(self, value):
-        # field_mask_pb2.FieldMask(...).CopyFrom target — no-op is fine, the
-        # tests only assert on which services/mutations get called, not on
-        # the exact field mask contents.
         pass
 
     def SetInParent(self):
@@ -229,17 +351,16 @@ class FakePathService:
         self._name = name
 
     def __getattr__(self, name):
-        # e.g. campaign_path(...), asset_path(...), campaign_asset_path(...)
         def _path(*args):
-            return f"customers/{args[0]}/{self._name}Path/{'/'.join(str(a) for a in args[1:])}"
+            return (
+                f"customers/{args[0]}/{self._name}Path/"
+                f"{'/'.join(str(a) for a in args[1:])}"
+            )
 
         return _path
 
 
 class FakeRawClient:
-    """Fakes the bits of google.ads.googleads.client.GoogleAdsClient that
-    tool modules touch: get_type, get_service, enums."""
-
     enums = FakeEnums
 
     def __init__(self, extra_services: dict | None = None):
@@ -253,17 +374,43 @@ class FakeRawClient:
             return self._extra_services[name]
         return FakePathService(name)
 
+    def copy_from(self, target, source):
+        return None
 
-def build_ctx(mutate_side_effect, extra_services: dict | None = None):
-    """AppContext with a real SafetyLayer (auto-approve, so propose() runs
-    execute() immediately) and a client whose .mutate() is fully mocked."""
+
+def build_ctx(
+    mutate_side_effect,
+    extra_services: dict | None = None,
+    search_side_effect=None,
+):
+    """Build a test context whose normal/atomic mutates are observable."""
+    raw = FakeRawClient(extra_services=extra_services)
+
+    def mutate_atomic(customer_id, operations, **kwargs):
+        return mutate_side_effect(
+            "GoogleAdsService",
+            customer_id,
+            operations,
+            **kwargs,
+        )
+
+    def fake_search(customer_id, query):
+        if search_side_effect is not None:
+            return search_side_effect(customer_id, query)
+        return [{"campaign": {"advertising_channel_type": "SEARCH"}}]
+
     fake_client = SimpleNamespace(
-        raw=FakeRawClient(extra_services=extra_services),
+        raw=raw,
         mutate=mutate_side_effect,
+        mutate_atomic=mutate_atomic,
+        search=fake_search,
     )
     safety = SafetyLayer(auto_approve=True, ttl_minutes=30, audit_log=FakeAuditLog())
     return AppContext(
-        settings=None, client=fake_client, safety=safety, audit=FakeAuditLog()
+        settings=None,
+        client=fake_client,
+        safety=safety,
+        audit=FakeAuditLog(),
     )
 
 

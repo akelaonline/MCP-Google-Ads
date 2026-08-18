@@ -1,15 +1,4 @@
-"""Campaign experiments (A/B trials) — test a change (new bidding
-strategy, new ad copy, budget change) against a control campaign on a
-traffic split before rolling it out account-wide.
-
-Workflow: create_experiment (draft, referencing a base campaign) ->
-Google Ads UI or a future tool edits the draft/trial arm's settings ->
-promote_experiment (roll the winning arm's changes into the base
-campaign) or end_experiment (discard). This module covers the
-create/list/end/promote lifecycle; editing the trial arm's own
-settings once created is done with the normal campaign/bidding/ads
-tools, targeting the trial campaign's own customer_id + campaign_id.
-"""
+"""Campaign experiments (A/B trials) compatible with Google Ads API v25."""
 
 from __future__ import annotations
 
@@ -24,24 +13,23 @@ def register(mcp, ctx: AppContext) -> None:
         name: str,
         traffic_split_percent: int = 50,
         experiment_type: str = "SEARCH_CUSTOM",
+        suffix: str = " [experiment]",
     ) -> dict:
-        """Propose creating a campaign experiment (A/B trial) from an
-        existing base campaign. Creates a trial arm campaign that starts as
-        a copy of the base — make changes to the trial campaign afterward
-        with the normal campaign/bidding/ads tools to define what's being
-        tested.
+        """Propose setting up a system-managed campaign experiment.
 
-        Args:
-            base_campaign_id: The existing (control) campaign to branch from.
-            traffic_split_percent: % of the base campaign's traffic diverted
-                to the trial arm, 1-100. The remainder stays on the control.
-            experiment_type: SEARCH_CUSTOM (most common — test anything on a
-                Search campaign) or DISPLAY_CUSTOM / DISPLAY_AUTOMATED_BIDDING_STRATEGY
-                / SEARCH_AUTOMATED_BIDDING_STRATEGY / SMART_MATCHING for
-                narrower, Google-guided experiment types.
+        The control arm references ``base_campaign_id``. The treatment arm must
+        NOT reference the base campaign: for system-managed experiments Google
+        creates its in-design draft campaign automatically. Use
+        ``list_experiments`` afterward to retrieve ``in_design_campaigns`` and
+        modify that draft with the normal campaign/bidding/ad tools before
+        scheduling the experiment.
         """
-        if not (1 <= traffic_split_percent <= 100):
-            raise ValueError("traffic_split_percent must be between 1 and 100.")
+        if not (1 <= traffic_split_percent <= 99):
+            raise ValueError("traffic_split_percent must be between 1 and 99.")
+        if not name.strip():
+            raise ValueError("name must not be empty.")
+        if not suffix.strip():
+            raise ValueError("suffix is required for system-managed experiments.")
 
         client = ctx.client.raw
         customer_id_clean = customer_id.replace("-", "")
@@ -49,13 +37,13 @@ def register(mcp, ctx: AppContext) -> None:
         experiment_operation = client.get_type("ExperimentOperation")
         experiment = experiment_operation.create
         experiment.name = name
-        experiment.type_ = client.enums.ExperimentTypeEnum[experiment_type]
-        experiment.status = client.enums.ExperimentStatusEnum.SETUP
-        experiment.traffic_split_percentage = traffic_split_percent
+        experiment.suffix = suffix
+        experiment.type_ = client.enums.ExperimentTypeEnum[experiment_type].value
+        experiment.status = client.enums.ExperimentStatusEnum.SETUP.value
 
         description = (
             f"Create experiment '{name}' from campaign {base_campaign_id} "
-            f"({traffic_split_percent}% traffic to trial arm, {experiment_type})"
+            f"({traffic_split_percent}% traffic to treatment, {experiment_type})"
         )
 
         def execute():
@@ -68,14 +56,6 @@ def register(mcp, ctx: AppContext) -> None:
                 "CampaignService"
             ).campaign_path(customer_id_clean, base_campaign_id)
 
-            arm_operation = client.get_type("ExperimentArmOperation")
-            arm = arm_operation.create
-            arm.experiment = experiment_resource_name
-            arm.name = f"{name} - Trial"
-            arm.control = False
-            arm.traffic_split = traffic_split_percent
-            arm.campaigns.append(base_campaign_resource_name)
-
             control_arm_operation = client.get_type("ExperimentArmOperation")
             control_arm = control_arm_operation.create
             control_arm.experiment = experiment_resource_name
@@ -84,19 +64,27 @@ def register(mcp, ctx: AppContext) -> None:
             control_arm.traffic_split = 100 - traffic_split_percent
             control_arm.campaigns.append(base_campaign_resource_name)
 
+            treatment_arm_operation = client.get_type("ExperimentArmOperation")
+            treatment_arm = treatment_arm_operation.create
+            treatment_arm.experiment = experiment_resource_name
+            treatment_arm.name = f"{name} - Treatment"
+            treatment_arm.control = False
+            treatment_arm.traffic_split = traffic_split_percent
+            # Deliberately no campaigns here. Google generates the draft/in-design
+            # campaign for the treatment arm in standard system-managed experiments.
+
             arm_result = ctx.client.mutate(
                 "ExperimentArmService",
                 customer_id,
-                [control_arm_operation, arm_operation],
+                [control_arm_operation, treatment_arm_operation],
             )
 
             return {
                 "experiment_resource_name": experiment_resource_name,
                 "arms": [r.resource_name for r in arm_result.results],
-                "note": (
-                    "Experiment created in SETUP status. Use the Google Ads UI "
-                    "or scheduling to move it to RUNNING once the trial arm's "
-                    "campaign changes are made."
+                "next_step": (
+                    "Call list_experiments to get the treatment arm's "
+                    "in_design_campaigns, modify that draft, then schedule the experiment."
                 ),
             }
 
@@ -109,27 +97,29 @@ def register(mcp, ctx: AppContext) -> None:
                 "name": name,
                 "traffic_split_percent": traffic_split_percent,
                 "experiment_type": experiment_type,
+                "suffix": suffix,
             },
             execute=execute,
         )
 
     @mcp.tool()
     def list_experiments(customer_id: str) -> dict:
-        """List campaign experiments (A/B trials) on the account, with
-        status. Traffic split lives per-arm, not on the experiment itself —
-        each arm's split is included via a second query."""
+        """List experiments plus control/treatment arms and draft campaigns."""
         query = """
             SELECT
                 experiment.resource_name, experiment.name, experiment.status,
-                experiment.type
+                experiment.type, experiment.suffix,
+                experiment.promote_status, experiment.long_running_operation
             FROM experiment
         """
         rows = ctx.client.search(customer_id, query)
 
         arms_query = """
             SELECT
-                experiment_arm.experiment, experiment_arm.name,
-                experiment_arm.control, experiment_arm.traffic_split
+                experiment_arm.resource_name, experiment_arm.experiment,
+                experiment_arm.name, experiment_arm.control,
+                experiment_arm.traffic_split, experiment_arm.campaigns,
+                experiment_arm.in_design_campaigns
             FROM experiment_arm
         """
         arm_rows = ctx.client.search(customer_id, arms_query)
@@ -146,23 +136,19 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def promote_experiment(customer_id: str, experiment_resource_name: str) -> dict:
-        """Propose promoting an experiment — permanently applies the trial
-        arm's changes to the base campaign and ends the experiment.
-        Irreversible; do this once the trial has shown a clear winner.
-        """
+        """Propose promoting a completed experiment into its base campaign."""
         client = ctx.client.raw
         experiment_service = client.get_service("ExperimentService")
-
         description = (
-            f"PROMOTE experiment {experiment_resource_name} — applies trial arm "
-            f"changes to the base campaign permanently (irreversible)"
+            f"PROMOTE experiment {experiment_resource_name} — applies treatment "
+            "changes to the base campaign (irreversible)"
         )
 
         def execute():
             operation = experiment_service.promote_experiment(
                 resource_name=experiment_resource_name
             )
-            return {"result": str(operation)}
+            return {"operation": str(operation)}
 
         return ctx.safety.propose(
             tool_name="promote_experiment",
@@ -174,12 +160,12 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def end_experiment(customer_id: str, experiment_resource_name: str) -> dict:
-        """Propose ending an experiment without promoting it — discards the
-        trial arm and its changes, base campaign is unaffected."""
+        """Propose ending an experiment without promoting its treatment."""
         client = ctx.client.raw
         experiment_service = client.get_service("ExperimentService")
-
-        description = f"End experiment {experiment_resource_name} without promoting (discard trial)"
+        description = (
+            f"End experiment {experiment_resource_name} without promoting treatment"
+        )
 
         def execute():
             experiment_service.end_experiment(resource_name=experiment_resource_name)

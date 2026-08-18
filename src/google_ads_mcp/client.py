@@ -1,7 +1,8 @@
 """Thin wrapper around google.ads.googleads.client.GoogleAdsClient.
 
-Centralizes client construction, GAQL search, and mutate execution so
-every tool module shares the same retry/error handling.
+Centralizes client construction, GAQL search, compatibility normalization,
+and mutate execution so every tool module shares the same API version and
+error handling.
 """
 
 from __future__ import annotations
@@ -13,12 +14,7 @@ from .config import Settings
 from .errors import GoogleAdsMcpError, format_google_ads_exception
 from .helpers import normalize_customer_id
 
-# Intentionally not pinning a specific Google Ads API version here. The
-# `google-ads` PyPI package periodically drops the oldest supported API
-# version (e.g. 31.x dropped v20 support entirely) — pinning a literal
-# string like "v20" breaks on every upgrade. Omitting `version` makes
-# GoogleAdsClient use whatever DEFAULT_VERSION ships with the installed
-# library, which is always one it actually supports.
+GOOGLE_ADS_API_VERSION = "v25"
 
 
 class GoogleAdsClientWrapper:
@@ -34,7 +30,8 @@ class GoogleAdsClientWrapper:
             from google.ads.googleads.client import GoogleAdsClient
 
             self._client = GoogleAdsClient.load_from_dict(
-                self._settings.google_ads_yaml_dict
+                self._settings.google_ads_yaml_dict,
+                version=GOOGLE_ADS_API_VERSION,
             )
         return self._client
 
@@ -63,7 +60,7 @@ class GoogleAdsClientWrapper:
         except GoogleAdsException as ex:
             raise GoogleAdsMcpError(format_google_ads_exception(ex)) from ex
 
-    # ---- Mutations -------------------------------------------------------
+    # ---- Mutations -----------------------------------------------------
 
     def mutate(
         self,
@@ -75,13 +72,18 @@ class GoogleAdsClientWrapper:
         partial_failure: bool = False,
         validate_only: bool = False,
     ):
-        """Execute a mutate call. Callers build the typed operation(s) first."""
+        """Execute a resource-specific mutate call."""
         import inspect
 
         from google.ads.googleads.errors import GoogleAdsException
 
         service = self.service(service_name)
         customer_id = normalize_customer_id(customer_id)
+        operation_list = list(operations)
+        if service_name == "CampaignService":
+            for operation in operation_list:
+                _normalize_campaign_create(self.raw, operation)
+
         method_name = _mutate_method_name(service_name)
         method = getattr(service, method_name, None)
         if method is None:
@@ -93,17 +95,12 @@ class GoogleAdsClientWrapper:
 
         kwargs: dict[str, Any] = {
             "customer_id": customer_id,
-            operations_field: list(operations),
+            operations_field: operation_list,
         }
-        # Not every mutate RPC accepts partial_failure / validate_only (e.g.
-        # CampaignBudgetService.mutate_campaign_budgets does not in some API
-        # versions). Only pass what the underlying method actually declares.
         try:
             accepted_params = set(inspect.signature(method).parameters)
         except (TypeError, ValueError):
-            accepted_params = (
-                None  # signature unavailable (e.g. C-extension) — be permissive
-            )
+            accepted_params = None
 
         if accepted_params is None or "partial_failure" in accepted_params:
             kwargs["partial_failure"] = partial_failure
@@ -115,10 +112,34 @@ class GoogleAdsClientWrapper:
         except GoogleAdsException as ex:
             raise GoogleAdsMcpError(format_google_ads_exception(ex)) from ex
 
+    def mutate_atomic(
+        self,
+        customer_id: str,
+        mutate_operations: Iterable[Any],
+        *,
+        validate_only: bool = False,
+    ):
+        """Execute cross-resource operations atomically via GoogleAdsService.Mutate."""
+        from google.ads.googleads.errors import GoogleAdsException
 
-# Google Ads API service -> mutate method names that don't follow the regular
-# "add a trailing s" pluralization (e.g. Criterion -> Criteria, not Criterions).
-# Keep this list alphabetized and add to it whenever a new irregular shows up.
+        service = self.service("GoogleAdsService")
+        customer_id = normalize_customer_id(customer_id)
+        operation_list = list(mutate_operations)
+        for operation in operation_list:
+            campaign_operation = getattr(operation, "campaign_operation", None)
+            if campaign_operation is not None:
+                _normalize_campaign_create(self.raw, campaign_operation)
+        try:
+            return service.mutate(
+                customer_id=customer_id,
+                mutate_operations=operation_list,
+                partial_failure=False,
+                validate_only=validate_only,
+            )
+        except GoogleAdsException as ex:
+            raise GoogleAdsMcpError(format_google_ads_exception(ex)) from ex
+
+
 _IRREGULAR_MUTATE_METHODS: dict[str, str] = {
     "AdGroupCriterionService": "mutate_ad_group_criteria",
     "AssetGroupCriterionService": "mutate_asset_group_criteria",
@@ -128,9 +149,6 @@ _IRREGULAR_MUTATE_METHODS: dict[str, str] = {
 
 
 def _mutate_method_name(service_name: str) -> str:
-    # e.g. "CampaignService" -> "mutate_campaigns"
-    # e.g. "CampaignBudgetService" -> "mutate_campaign_budgets"
-    # e.g. "CampaignCriterionService" -> "mutate_campaign_criteria" (irregular plural)
     if service_name in _IRREGULAR_MUTATE_METHODS:
         return _IRREGULAR_MUTATE_METHODS[service_name]
 
@@ -139,6 +157,42 @@ def _mutate_method_name(service_name: str) -> str:
     base = service_name.removesuffix("Service")
     snake = re.sub(r"(?<!^)(?=[A-Z])", "_", base).lower()
     return f"mutate_{snake}s"
+
+
+def _normalize_campaign_create(client, operation) -> None:
+    """Apply v25-required fields and repair legacy PMax bidding shapes."""
+    pb = getattr(operation, "_pb", None)
+    if pb is None or pb.WhichOneof("operation") != "create":
+        return
+
+    campaign = operation.create
+    campaign_pb = getattr(campaign, "_pb", None)
+
+    # API v21+ requires an explicit EU political advertising declaration for
+    # campaign creation. Only fill it if the caller did not already provide one.
+    political_value = getattr(campaign, "contains_eu_political_advertising", 0)
+    if not political_value:
+        campaign.contains_eu_political_advertising = (
+            client.enums.EuPoliticalAdvertisingStatusEnum.DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING
+        )
+
+    if (
+        campaign.advertising_channel_type
+        != client.enums.AdvertisingChannelTypeEnum.PERFORMANCE_MAX
+    ):
+        return
+
+    # PMax supports Maximize Conversions (+ optional target CPA) or Maximize
+    # Conversion Value (+ optional target ROAS). Older code in this repository
+    # used standalone TargetCpa/TargetRoas, which current PMax creation rejects.
+    if campaign_pb is not None and campaign_pb.HasField("target_cpa"):
+        target_cpa_micros = campaign.target_cpa.target_cpa_micros
+        campaign_pb.ClearField("target_cpa")
+        campaign.maximize_conversions.target_cpa_micros = target_cpa_micros
+    elif campaign_pb is not None and campaign_pb.HasField("target_roas"):
+        target_roas = campaign.target_roas.target_roas
+        campaign_pb.ClearField("target_roas")
+        campaign.maximize_conversion_value.target_roas = target_roas
 
 
 def _row_to_dict(row) -> dict[str, Any]:

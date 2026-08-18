@@ -1,21 +1,20 @@
-"""Conversion action management + offline conversion upload.
-
-Offline upload is the key tool for a WhatsApp/CRM-driven funnel: when a
-lead closes days after the click, you upload the conversion back against
-the original gclid so Smart Bidding can learn from real outcomes.
-"""
+"""Conversion action management and offline conversion uploads for API v25."""
 
 from __future__ import annotations
+
+import hashlib
+import re
 
 from google.protobuf import field_mask_pb2
 
 from ..context import AppContext
+from ..errors import GoogleAdsMcpError
 
 
 def register(mcp, ctx: AppContext) -> None:
     @mcp.tool()
     def list_conversion_actions(customer_id: str) -> dict:
-        """List conversion actions configured in the account (id, name, status, category)."""
+        """List conversion actions configured in the account."""
         query = """
             SELECT conversion_action.id, conversion_action.name,
                    conversion_action.status, conversion_action.category,
@@ -26,7 +25,7 @@ def register(mcp, ctx: AppContext) -> None:
             ORDER BY conversion_action.name
         """
         rows = ctx.client.search(customer_id, query)
-        return {"conversion_actions": rows}
+        return {"conversion_actions": rows, "count": len(rows)}
 
     @mcp.tool()
     def create_conversion_action(
@@ -36,48 +35,50 @@ def register(mcp, ctx: AppContext) -> None:
         counting_type: str = "ONE_PER_CLICK",
         value: float | None = None,
         currency_code: str = "USD",
+        conversion_action_type: str = "WEBPAGE",
     ) -> dict:
-        """Propose creating a new website conversion action (e.g. "WhatsApp
-        Click", "Formulario Enviado", "Compra"). Created ENABLED and
-        included in the main Conversions metric/bidding by default.
+        """Propose creating a conversion action.
 
-        This is a WEBSITE-type conversion action tracked via the Google Ads
-        tag — for a conversion coming from a click ID you'll upload later
-        with upload_offline_conversion, still create it here first so there's
-        a conversion_action_id to upload against.
-
-        Args:
-            category: One of PURCHASE, LEAD, SIGNUP, PAGE_VIEW, DOWNLOAD,
-                CONTACT, SUBMIT_LEAD_FORM, BOOK_APPOINTMENT,
-                REQUEST_QUOTE, GET_DIRECTIONS, OUTBOUND_CLICK, PHONE_CALL_LEAD,
-                or OTHER — pick the closest match to what's actually happening.
-            counting_type: ONE_PER_CLICK (leads/signups — count once per click)
-                or MANY_PER_CLICK (purchases — count every conversion, e.g.
-                repeat purchases from the same click).
-            value: Optional default value credited per conversion when no
-                dynamic value is passed at conversion time (e.g. average
-                order value). Omit for actions with no clear monetary value
-                (e.g. a WhatsApp click).
+        ``conversion_action_type`` defaults to ``WEBPAGE`` for tag-tracked web
+        conversions. Use ``UPLOAD_CLICKS`` when the action will receive GCLID/
+        GBRAID/WBRAID offline uploads through ``upload_offline_conversion`` or
+        ``upload_enhanced_conversion``. The type is immutable after creation.
         """
+        if not name.strip():
+            raise ValueError("name must not be empty.")
+        if counting_type not in {"ONE_PER_CLICK", "MANY_PER_CLICK"}:
+            raise ValueError("counting_type must be ONE_PER_CLICK or MANY_PER_CLICK.")
+        if value is not None and value < 0:
+            raise ValueError("value must be zero or greater.")
+        if not currency_code or len(currency_code) != 3:
+            raise ValueError("currency_code must be a three-letter currency code.")
+
         client = ctx.client.raw
+        try:
+            action_type = client.enums.ConversionActionTypeEnum[
+                conversion_action_type
+            ].value
+            category_value = client.enums.ConversionActionCategoryEnum[category].value
+        except KeyError as ex:
+            raise ValueError(f"Invalid conversion enum value: {ex.args[0]}") from ex
 
         operation = client.get_type("ConversionActionOperation")
         action = operation.create
         action.name = name
-        action.type_ = client.enums.ConversionActionTypeEnum.WEBSITE
-        action.category = client.enums.ConversionActionCategoryEnum[category].value
-        action.status = client.enums.ConversionActionStatusEnum.ENABLED
+        action.type_ = action_type
+        action.category = category_value
+        action.status = client.enums.ConversionActionStatusEnum.ENABLED.value
         action.counting_type = client.enums.ConversionActionCountingTypeEnum[
             counting_type
         ].value
         if value is not None:
             action.value_settings.default_value = value
-            action.value_settings.default_currency_code = currency_code
+            action.value_settings.default_currency_code = currency_code.upper()
             action.value_settings.always_use_default_value = False
 
         description = (
-            f"Create conversion action '{name}' (category={category}, "
-            f"counting={counting_type}), status ENABLED"
+            f"Create conversion action '{name}' (type={conversion_action_type}, "
+            f"category={category}, counting={counting_type}), status ENABLED"
         )
 
         def execute():
@@ -92,7 +93,8 @@ def register(mcp, ctx: AppContext) -> None:
                 "category": category,
                 "counting_type": counting_type,
                 "value": value,
-                "currency_code": currency_code,
+                "currency_code": currency_code.upper(),
+                "conversion_action_type": conversion_action_type,
             },
             execute=execute,
         )
@@ -108,44 +110,48 @@ def register(mcp, ctx: AppContext) -> None:
         conversion_value: float | None = None,
         currency_code: str = "USD",
     ) -> dict:
-        """Propose uploading an offline click conversion WITH Enhanced
-        Conversions user identifiers (hashed email and/or phone), which
-        improves Google's ability to match the conversion back to the
-        original ad click/user even when cookies or click IDs alone would
-        miss it. Increasingly important as browser tracking restrictions
-        tighten.
+        """Propose uploading an enhanced offline click conversion.
 
-        Prefer this over plain upload_offline_conversion whenever you have
-        the lead's email or phone at the time of upload (e.g. a WhatsApp
-        lead that later left contact info in a CRM).
-
-        Args:
-            gclid: The Google Click ID from the original ad click.
-            conversion_date_time: "YYYY-MM-DD HH:MM:SS+TZ:00".
-            email: Lead's email, plain text — this tool hashes it (SHA-256,
-                normalized lowercase/trimmed) before sending, per Google's
-                Enhanced Conversions requirements. Never send pre-hashed values.
-            phone_number: Lead's phone in E.164 format (e.g. "+5493416506894").
-                Hashed the same way as email.
+        The conversion action must be ENABLED and type ``UPLOAD_CLICKS``.
+        Email and phone are normalized according to Google's enhanced-conversion
+        rules and SHA-256 hashed locally; raw identifiers are never included in
+        the audit payload.
         """
         if not email and not phone_number:
-            raise ValueError(
-                "Provide at least one of email or phone_number for Enhanced "
-                "Conversions to have anything to match on."
-            )
+            raise ValueError("Provide at least one of email or phone_number.")
+        _validate_click_upload_inputs(gclid, conversion_date_time, conversion_value)
+        _ensure_upload_click_action(ctx, customer_id, conversion_action_id)
+
+        normalized_phone = _normalize_e164(phone_number) if phone_number else None
+        hashed_email = _normalize_and_hash_email(email) if email else None
+        hashed_phone = _hash_normalized(normalized_phone) if normalized_phone else None
 
         client = ctx.client.raw
         conversion_upload_service = client.get_service("ConversionUploadService")
+        click_conversion = _build_click_conversion(
+            client,
+            customer_id,
+            conversion_action_id,
+            gclid,
+            conversion_date_time,
+            conversion_value,
+            currency_code,
+        )
 
-        click_conversion = client.get_type("ClickConversion")
-        click_conversion.conversion_action = client.get_service(
-            "ConversionActionService"
-        ).conversion_action_path(customer_id.replace("-", ""), conversion_action_id)
-        click_conversion.gclid = gclid
-        click_conversion.conversion_date_time = conversion_date_time
-        if conversion_value is not None:
-            click_conversion.conversion_value = conversion_value
-            click_conversion.currency_code = currency_code
+        if hashed_email:
+            identifier = client.get_type("UserIdentifier")
+            identifier.user_identifier_source = (
+                client.enums.UserIdentifierSourceEnum.FIRST_PARTY.value
+            )
+            identifier.hashed_email = hashed_email
+            click_conversion.user_identifiers.append(identifier)
+        if hashed_phone:
+            identifier = client.get_type("UserIdentifier")
+            identifier.user_identifier_source = (
+                client.enums.UserIdentifierSourceEnum.FIRST_PARTY.value
+            )
+            identifier.hashed_phone_number = hashed_phone
+            click_conversion.user_identifiers.append(identifier)
 
         description = (
             f"Upload Enhanced Conversion: action {conversion_action_id}, "
@@ -154,24 +160,10 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
         def execute():
-            import hashlib
-
-            def _hash(value: str) -> str:
-                return hashlib.sha256(value.strip().lower().encode("utf-8")).hexdigest()
-
-            if email:
-                identifier = client.get_type("UserIdentifier")
-                identifier.hashed_email = _hash(email)
-                click_conversion.user_identifiers.append(identifier)
-            if phone_number:
-                identifier = client.get_type("UserIdentifier")
-                identifier.hashed_phone_number = _hash(phone_number)
-                click_conversion.user_identifiers.append(identifier)
-
-            return conversion_upload_service.upload_click_conversions(
-                customer_id=customer_id.replace("-", ""),
-                conversions=[click_conversion],
-                partial_failure=True,
+            return _upload_click_conversion(
+                conversion_upload_service,
+                customer_id,
+                click_conversion,
             )
 
         return ctx.safety.propose(
@@ -180,12 +172,12 @@ def register(mcp, ctx: AppContext) -> None:
             description=description,
             payload={
                 "conversion_action_id": conversion_action_id,
-                "gclid": gclid,
+                "gclid_prefix": gclid[:12],
                 "conversion_date_time": conversion_date_time,
                 "has_email": bool(email),
                 "has_phone": bool(phone_number),
                 "conversion_value": conversion_value,
-                "currency_code": currency_code,
+                "currency_code": currency_code.upper(),
             },
             execute=execute,
         )
@@ -194,31 +186,25 @@ def register(mcp, ctx: AppContext) -> None:
     def update_conversion_action_status(
         customer_id: str, conversion_action_id: str, status: str
     ) -> dict:
-        """Propose enabling, pausing, or removing a conversion action.
+        """Propose changing a conversion action status.
 
-        Use PAUSED (not REMOVED) to stop a soft/vanity signal (e.g. a page_view
-        or a "Test de Nivel" click) from being counted toward bidding without
-        losing its historical data.
-
-        Args:
-            status: ENABLED, REMOVED, or HIDDEN.
+        Current writable statuses are ENABLED, HIDDEN and REMOVED; there is no
+        PAUSED conversion-action status in Google Ads API v25.
         """
+        if status not in {"ENABLED", "HIDDEN", "REMOVED"}:
+            raise ValueError("status must be ENABLED, HIDDEN, or REMOVED.")
         client = ctx.client.raw
         resource_name = client.get_service(
             "ConversionActionService"
         ).conversion_action_path(customer_id.replace("-", ""), conversion_action_id)
-
         operation = client.get_type("ConversionActionOperation")
         operation.update.resource_name = resource_name
         operation.update.status = client.enums.ConversionActionStatusEnum[status].value
         operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["status"]))
-
         description = f"Set conversion action {conversion_action_id} status -> {status}"
 
         def execute():
-            return ctx.client.mutate(
-                "ConversionActionService", customer_id, [operation]
-            )
+            return ctx.client.mutate("ConversionActionService", customer_id, [operation])
 
         return ctx.safety.propose(
             tool_name="update_conversion_action_status",
@@ -234,40 +220,36 @@ def register(mcp, ctx: AppContext) -> None:
         conversion_action_id: str,
         include_in_conversions_metric: bool,
     ) -> dict:
-        """Propose including or excluding a conversion action from the account's
-        main "Conversions" column and from automated bidding (Maximize
-        Conversions / Target CPA / Target ROAS all optimize toward this metric).
+        """Set whether a conversion action is primary/biddable.
 
-        This is the tool for "stop letting Smart Bidding chase this soft signal"
-        without touching whether the action still records data at all — prefer
-        this over pausing when you just want it out of the optimization goal.
-
-        Args:
-            include_in_conversions_metric: False = tracked but excluded from
-                bidding and the primary Conversions column.
+        ``include_in_conversions_metric`` is retained as the public argument for
+        backwards compatibility, but Google made that resource field immutable.
+        API v25 requires managing ``primary_for_goal`` instead. ``False`` makes
+        the action secondary/non-biddable for normal customer/campaign goals.
         """
         client = ctx.client.raw
         resource_name = client.get_service(
             "ConversionActionService"
         ).conversion_action_path(customer_id.replace("-", ""), conversion_action_id)
-
         operation = client.get_type("ConversionActionOperation")
         operation.update.resource_name = resource_name
-        operation.update.include_in_conversions_metric = include_in_conversions_metric
+        operation.update.primary_for_goal = include_in_conversions_metric
         operation.update_mask.CopyFrom(
-            field_mask_pb2.FieldMask(paths=["include_in_conversions_metric"])
+            field_mask_pb2.FieldMask(paths=["primary_for_goal"])
         )
 
-        verb = "Include" if include_in_conversions_metric else "Exclude"
+        verb = (
+            "primary/biddable"
+            if include_in_conversions_metric
+            else "secondary/non-biddable"
+        )
         description = (
-            f"{verb} conversion action {conversion_action_id} in/from the Conversions "
-            f"metric and automated bidding"
+            f"Set conversion action {conversion_action_id} -> {verb} "
+            "using primary_for_goal"
         )
 
         def execute():
-            return ctx.client.mutate(
-                "ConversionActionService", customer_id, [operation]
-            )
+            return ctx.client.mutate("ConversionActionService", customer_id, [operation])
 
         return ctx.safety.propose(
             tool_name="set_conversion_action_counting",
@@ -276,6 +258,7 @@ def register(mcp, ctx: AppContext) -> None:
             payload={
                 "conversion_action_id": conversion_action_id,
                 "include_in_conversions_metric": include_in_conversions_metric,
+                "primary_for_goal": include_in_conversions_metric,
             },
             execute=execute,
         )
@@ -289,36 +272,34 @@ def register(mcp, ctx: AppContext) -> None:
         conversion_value: float,
         currency_code: str = "USD",
     ) -> dict:
-        """Propose uploading an offline (click) conversion — e.g. a lead that closed later.
+        """Propose uploading an offline click conversion.
 
-        Args:
-            gclid: The Google Click ID captured at the time of the original ad click.
-            conversion_date_time: "YYYY-MM-DD HH:MM:SS+TZ:00", must be after the click
-                and within the conversion action's lookback window.
-            conversion_value: Revenue/value to attribute, in currency_code units.
+        The target conversion action must be ENABLED and type ``UPLOAD_CLICKS``.
         """
+        _validate_click_upload_inputs(gclid, conversion_date_time, conversion_value)
+        _ensure_upload_click_action(ctx, customer_id, conversion_action_id)
+
         client = ctx.client.raw
         conversion_upload_service = client.get_service("ConversionUploadService")
-
-        click_conversion = client.get_type("ClickConversion")
-        click_conversion.conversion_action = client.get_service(
-            "ConversionActionService"
-        ).conversion_action_path(customer_id.replace("-", ""), conversion_action_id)
-        click_conversion.gclid = gclid
-        click_conversion.conversion_date_time = conversion_date_time
-        click_conversion.conversion_value = conversion_value
-        click_conversion.currency_code = currency_code
-
+        click_conversion = _build_click_conversion(
+            client,
+            customer_id,
+            conversion_action_id,
+            gclid,
+            conversion_date_time,
+            conversion_value,
+            currency_code,
+        )
         description = (
             f"Upload offline conversion: action {conversion_action_id}, "
-            f"gclid={gclid[:12]}…, value={conversion_value} {currency_code}"
+            f"gclid={gclid[:12]}…, value={conversion_value} {currency_code.upper()}"
         )
 
         def execute():
-            return conversion_upload_service.upload_click_conversions(
-                customer_id=customer_id.replace("-", ""),
-                conversions=[click_conversion],
-                partial_failure=True,
+            return _upload_click_conversion(
+                conversion_upload_service,
+                customer_id,
+                click_conversion,
             )
 
         return ctx.safety.propose(
@@ -327,10 +308,10 @@ def register(mcp, ctx: AppContext) -> None:
             description=description,
             payload={
                 "conversion_action_id": conversion_action_id,
-                "gclid": gclid,
+                "gclid_prefix": gclid[:12],
                 "conversion_date_time": conversion_date_time,
                 "conversion_value": conversion_value,
-                "currency_code": currency_code,
+                "currency_code": currency_code.upper(),
             },
             execute=execute,
         )
@@ -344,39 +325,25 @@ def register(mcp, ctx: AppContext) -> None:
         audience_condition: str | None = None,
         device_type: str | None = None,
     ) -> dict:
-        """Propose creating a Conversion Value Rule — adjusts the reported
-        value of a conversion based on who/where/what-device the click came
-        from, without touching the underlying conversion action. Common use:
-        count a converted sale as worth more when it comes from a
-        high-value geography or from a remarketing audience, so
-        value-based bidding (Maximize Conversion Value / Target ROAS)
-        optimizes toward the segments that actually matter.
-
-        Args:
-            action: "MULTIPLY" (scale the value, action_value is the
-                multiplier e.g. 1.5 for +50%) or "SET" (replace the value
-                outright, action_value is the new absolute value).
-            geo_target_ids: Optional list of geo target constant IDs — rule
-                applies only to conversions from these locations.
-            audience_condition: Optional user list resource name — rule
-                applies only to conversions from users in this audience.
-            device_type: Optional, one of MOBILE / DESKTOP / TABLET — rule
-                applies only to conversions from this device.
-        """
-        if action not in ("MULTIPLY", "SET"):
-            raise ValueError('action must be "MULTIPLY" or "SET".')
+        """Propose creating an ENABLED Conversion Value Rule."""
+        if action not in {"ADD", "MULTIPLY", "SET"}:
+            raise ValueError('action must be "ADD", "MULTIPLY", or "SET".')
+        if action == "MULTIPLY" and action_value <= 0:
+            raise ValueError("MULTIPLY action_value must be greater than 0.")
+        if action in {"ADD", "SET"} and action_value < 0:
+            raise ValueError(f"{action} action_value must be zero or greater.")
         if not (geo_target_ids or audience_condition or device_type):
             raise ValueError(
-                "Provide at least one condition: geo_target_ids, "
-                "audience_condition, or device_type."
+                "Provide at least one condition: geo_target_ids, audience_condition, "
+                "or device_type."
             )
 
         client = ctx.client.raw
         operation = client.get_type("ConversionValueRuleOperation")
         rule = operation.create
-
-        rule.action.operation = client.enums.ValueRuleOperationEnum[action]
+        rule.action.operation = client.enums.ValueRuleOperationEnum[action].value
         rule.action.value = action_value
+        rule.status = client.enums.ConversionValueRuleStatusEnum.ENABLED.value
 
         if geo_target_ids:
             geo_service = client.get_service("GeoTargetConstantService")
@@ -384,8 +351,8 @@ def register(mcp, ctx: AppContext) -> None:
                 rule.geo_location_condition.geo_target_constants.append(
                     geo_service.geo_target_constant_path(str(geo_id))
                 )
-            rule.geo_location_condition.excluded_geo_match_type = (
-                client.enums.ValueRuleGeoLocationMatchTypeEnum.ANY
+            rule.geo_location_condition.geo_match_type = (
+                client.enums.ValueRuleGeoLocationMatchTypeEnum.ANY.value
             )
 
         if audience_condition:
@@ -393,7 +360,7 @@ def register(mcp, ctx: AppContext) -> None:
 
         if device_type:
             rule.device_condition.device_types.append(
-                client.enums.ValueRuleDeviceTypeEnum[device_type]
+                client.enums.ValueRuleDeviceTypeEnum[device_type].value
             )
 
         description = (
@@ -403,9 +370,7 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
         def execute():
-            return ctx.client.mutate(
-                "ConversionValueRuleService", customer_id, [operation]
-            )
+            return ctx.client.mutate("ConversionValueRuleService", customer_id, [operation])
 
         return ctx.safety.propose(
             tool_name="create_conversion_value_rule",
@@ -423,7 +388,7 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def list_conversion_value_rules(customer_id: str) -> dict:
-        """List all Conversion Value Rules on the account, read-only."""
+        """List all Conversion Value Rules on the account."""
         query = """
             SELECT
                 conversion_value_rule.resource_name,
@@ -434,3 +399,113 @@ def register(mcp, ctx: AppContext) -> None:
         """
         rows = ctx.client.search(customer_id, query)
         return {"conversion_value_rules": rows, "count": len(rows)}
+
+
+def _upload_click_conversion(service, customer_id: str, click_conversion):
+    """Upload one click conversion and turn partial row failures into errors.
+
+    Google requires partial_failure=True for conversion imports. Because this MCP
+    currently uploads one conversion per tool call, any partial failure means the
+    requested write did not succeed and must be surfaced to the safety/audit layer.
+    """
+    response = service.upload_click_conversions(
+        customer_id=customer_id.replace("-", ""),
+        conversions=[click_conversion],
+        partial_failure=True,
+    )
+    partial_error = getattr(response, "partial_failure_error", None)
+    if partial_error is not None:
+        code = int(getattr(partial_error, "code", 0) or 0)
+        message = str(getattr(partial_error, "message", "") or "").strip()
+        if code or message:
+            detail = f"code={code}" + (f", {message}" if message else "")
+            raise GoogleAdsMcpError(f"Google Ads rejected the conversion upload ({detail}).")
+    return response
+
+
+def _ensure_upload_click_action(
+    ctx: AppContext,
+    customer_id: str,
+    conversion_action_id: str,
+) -> None:
+    query = f"""
+        SELECT conversion_action.id, conversion_action.type, conversion_action.status
+        FROM conversion_action
+        WHERE conversion_action.id = {int(conversion_action_id)}
+        LIMIT 1
+    """
+    rows = ctx.client.search(customer_id, query)
+    if not rows:
+        raise ValueError(
+            f"Conversion action {conversion_action_id} was not found or is not accessible."
+        )
+    action = rows[0].get("conversion_action", {})
+    if action.get("type") != "UPLOAD_CLICKS":
+        raise ValueError(
+            f"Conversion action {conversion_action_id} is type {action.get('type')!r}; "
+            "offline click uploads require UPLOAD_CLICKS."
+        )
+    if action.get("status") != "ENABLED":
+        raise ValueError(
+            f"Conversion action {conversion_action_id} is not ENABLED "
+            f"(status={action.get('status')!r})."
+        )
+
+
+def _build_click_conversion(
+    client,
+    customer_id: str,
+    conversion_action_id: str,
+    gclid: str,
+    conversion_date_time: str,
+    conversion_value: float | None,
+    currency_code: str,
+):
+    click_conversion = client.get_type("ClickConversion")
+    click_conversion.conversion_action = client.get_service(
+        "ConversionActionService"
+    ).conversion_action_path(customer_id.replace("-", ""), conversion_action_id)
+    click_conversion.gclid = gclid.strip()
+    click_conversion.conversion_date_time = conversion_date_time.strip()
+    if conversion_value is not None:
+        click_conversion.conversion_value = conversion_value
+        click_conversion.currency_code = currency_code.upper()
+    return click_conversion
+
+
+def _validate_click_upload_inputs(
+    gclid: str,
+    conversion_date_time: str,
+    conversion_value: float | None,
+) -> None:
+    if not gclid or not gclid.strip():
+        raise ValueError("gclid must not be empty.")
+    if not conversion_date_time or not conversion_date_time.strip():
+        raise ValueError("conversion_date_time must not be empty.")
+    if conversion_value is not None and conversion_value < 0:
+        raise ValueError("conversion_value must be zero or greater.")
+
+
+def _normalize_and_hash_email(email: str) -> str:
+    normalized = email.strip().lower()
+    if normalized.count("@") != 1:
+        raise ValueError("email must contain exactly one @ sign.")
+    local, domain = normalized.split("@", 1)
+    if not local or not domain:
+        raise ValueError("email is invalid.")
+    if domain in {"gmail.com", "googlemail.com"}:
+        local = local.split("+", 1)[0].replace(".", "")
+    return _hash_normalized(f"{local}@{domain}")
+
+
+def _normalize_e164(phone: str) -> str:
+    normalized = re.sub(r"[\s().-]", "", phone.strip())
+    if not re.fullmatch(r"\+[1-9]\d{7,14}", normalized):
+        raise ValueError(
+            "phone_number must be a valid E.164 number, for example +5491112345678."
+        )
+    return normalized
+
+
+def _hash_normalized(value: str) -> str:
+    return hashlib.sha256(value.strip().lower().encode("utf-8")).hexdigest()
