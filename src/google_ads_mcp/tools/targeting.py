@@ -95,7 +95,6 @@ def register(mcp, ctx: AppContext) -> None:
         campaign_resource_name = client.get_service("CampaignService").campaign_path(
             customer_id_clean, campaign_id
         )
-        language_service = client.get_service("LanguageConstantService")
 
         existing_query = f"""
             SELECT campaign_criterion.criterion_id,
@@ -122,7 +121,7 @@ def register(mcp, ctx: AppContext) -> None:
             operation = client.get_type("CampaignCriterionOperation")
             criterion = operation.create
             criterion.campaign = campaign_resource_name
-            criterion.language.language_constant = language_service.language_constant_path(code)
+            criterion.language.language_constant = f"languageConstants/{code}"
             operations.append(operation)
 
         description = (
