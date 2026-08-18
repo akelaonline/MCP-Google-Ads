@@ -11,6 +11,7 @@ from google.ads.googleads.client import GoogleAdsClient
 from google.oauth2.credentials import Credentials
 
 from google_ads_mcp.context import AppContext
+from google_ads_mcp.errors import GoogleAdsMcpError
 from google_ads_mcp.safety import SafetyLayer
 from google_ads_mcp.tools import conversions
 
@@ -18,9 +19,12 @@ from google_ads_mcp.tools import conversions
 class _FakeConversionUploadService:
     def __init__(self):
         self.calls = []
+        self.response = None
 
     def upload_click_conversions(self, **kwargs):
         self.calls.append(kwargs)
+        if self.response is not None:
+            return self.response
         return {"uploaded": len(kwargs["conversions"])}
 
 
@@ -143,6 +147,26 @@ def test_offline_upload_rejects_non_upload_click_action():
         )
 
     assert upload_service.calls == []
+
+
+def test_offline_upload_surfaces_partial_failure_error():
+    ctx, _, upload_service = _ctx()
+    upload_service.response = SimpleNamespace(
+        partial_failure_error=SimpleNamespace(code=3, message="invalid conversion"),
+        results=[],
+    )
+    tool = _tools(ctx)["upload_offline_conversion"]
+
+    with pytest.raises(GoogleAdsMcpError, match="rejected the conversion upload"):
+        tool(
+            customer_id="1234567890",
+            conversion_action_id="777",
+            gclid="test-gclid",
+            conversion_date_time="2026-08-18 12:00:00-03:00",
+            conversion_value=100.0,
+        )
+
+    assert upload_service.calls[0]["partial_failure"] is True
 
 
 def test_enhanced_upload_normalizes_gmail_and_phone_before_hashing():
