@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 SRC = Path(__file__).parents[1] / "src" / "google_ads_mcp"
 TOOLS = SRC / "tools"
 
