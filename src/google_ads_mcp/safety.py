@@ -1,10 +1,9 @@
 """Human-in-the-loop layer for every mutating tool.
 
 Write tools never call the Google Ads API directly. Instead they call
-`SafetyLayer.propose(...)` with a callable that performs the actual mutate.
-That returns a preview + `pending_action_id`. The change is only executed
-when `confirm_pending_action` is called (or immediately, if
-GOOGLE_ADS_MCP_AUTO_APPROVE=true).
+``SafetyLayer.propose(...)`` with a callable that performs the actual mutate.
+The change is executed only when ``confirm_pending_action`` is called, unless
+auto-approve has explicitly been enabled.
 """
 
 from __future__ import annotations
@@ -31,6 +30,7 @@ class PendingAction:
     payload: dict[str, Any]
     execute: Callable[[], Any]
     created_at: float = field(default_factory=time.time)
+    attempts: int = 0
 
 
 class SafetyLayer:
@@ -39,8 +39,6 @@ class SafetyLayer:
         self._ttl_seconds = ttl_minutes * 60
         self._audit = audit_log
         self._pending: dict[str, PendingAction] = {}
-
-    # ---- called by write tools -------------------------------------------
 
     def propose(
         self,
@@ -52,17 +50,20 @@ class SafetyLayer:
         execute: Callable[[], Any],
     ) -> dict[str, Any]:
         self._evict_expired()
+        action_id = uuid.uuid4().hex[:12]
 
         if self._auto_approve:
-            result = self._run(tool_name, customer_id, description, payload, execute)
+            result = self._run(
+                action_id, tool_name, customer_id, description, payload, execute
+            )
             return {
                 "status": "executed",
                 "auto_approved": True,
+                "action_id": action_id,
                 "description": description,
                 "result": result,
             }
 
-        action_id = uuid.uuid4().hex[:12]
         self._pending[action_id] = PendingAction(
             action_id=action_id,
             tool_name=tool_name,
@@ -83,33 +84,49 @@ class SafetyLayer:
             ),
         }
 
-    # ---- exposed as MCP tools by server.py --------------------------------
-
     def confirm(self, action_id: str) -> dict[str, Any]:
-        action = self._pending.pop(action_id, None)
+        self._evict_expired()
+        action = self._pending.get(action_id)
         if action is None:
             raise GoogleAdsMcpError(
                 f"No pending action with id '{action_id}' (it may have expired "
                 "or already been confirmed/cancelled)."
             )
-        result = self._run(
-            action.tool_name,
-            action.customer_id,
-            action.description,
-            action.payload,
-            action.execute,
-        )
+
+        action.attempts += 1
+        try:
+            result = self._run(
+                action.action_id,
+                action.tool_name,
+                action.customer_id,
+                action.description,
+                action.payload,
+                action.execute,
+            )
+        except Exception:
+            # Keep the action pending so transient Google/network failures can be
+            # retried with the same audit/action id instead of silently losing it.
+            raise
+        else:
+            self._pending.pop(action_id, None)
+
         return {
             "status": "executed",
+            "action_id": action.action_id,
             "description": action.description,
             "result": result,
         }
 
     def cancel(self, action_id: str) -> dict[str, Any]:
+        self._evict_expired()
         action = self._pending.pop(action_id, None)
         if action is None:
             raise GoogleAdsMcpError(f"No pending action with id '{action_id}'.")
-        return {"status": "cancelled", "description": action.description}
+        return {
+            "status": "cancelled",
+            "action_id": action.action_id,
+            "description": action.description,
+        }
 
     def list_pending(self) -> list[dict[str, Any]]:
         self._evict_expired()
@@ -120,28 +137,36 @@ class SafetyLayer:
                 "customer_id": a.customer_id,
                 "description": a.description,
                 "age_seconds": round(time.time() - a.created_at),
+                "attempts": a.attempts,
             }
             for a in self._pending.values()
         ]
 
-    # ---- internals ---------------------------------------------------------
-
-    def _run(self, tool_name, customer_id, description, payload, execute) -> Any:
+    def _run(
+        self,
+        action_id: str,
+        tool_name: str,
+        customer_id: str,
+        description: str,
+        payload: dict[str, Any],
+        execute: Callable[[], Any],
+    ) -> Any:
         try:
             result = execute()
+            safe_result = _safe_result(result)
             self._audit.record(
-                action_id=uuid.uuid4().hex[:12],
+                action_id=action_id,
                 tool_name=tool_name,
                 customer_id=customer_id,
                 description=description,
                 payload=payload,
-                result=_safe_result(result),
+                result=safe_result,
                 status="success",
             )
-            return _safe_result(result)
+            return safe_result
         except Exception as ex:
             self._audit.record(
-                action_id=uuid.uuid4().hex[:12],
+                action_id=action_id,
                 tool_name=tool_name,
                 customer_id=customer_id,
                 description=description,
@@ -155,8 +180,8 @@ class SafetyLayer:
         now = time.time()
         expired = [
             aid
-            for aid, a in self._pending.items()
-            if now - a.created_at > self._ttl_seconds
+            for aid, action in self._pending.items()
+            if now - action.created_at > self._ttl_seconds
         ]
         for aid in expired:
             del self._pending[aid]
@@ -171,7 +196,31 @@ def _safe_result(result: Any) -> Any:
     try:
         results = getattr(result, "results", None)
         if results is not None:
-            return {"resource_names": [r.resource_name for r in results]}
+            resource_names = []
+            for item in results:
+                resource_name = getattr(item, "resource_name", None)
+                if resource_name:
+                    resource_names.append(resource_name)
+                    continue
+                # GoogleAdsService.Mutate wraps resource-specific results.
+                for field_name in (
+                    "campaign_result",
+                    "campaign_budget_result",
+                    "ad_group_result",
+                    "ad_group_ad_result",
+                    "ad_result",
+                    "asset_result",
+                    "campaign_asset_result",
+                    "ad_group_asset_result",
+                    "asset_group_result",
+                    "asset_group_asset_result",
+                ):
+                    nested = getattr(item, field_name, None)
+                    nested_name = getattr(nested, "resource_name", None) if nested else None
+                    if nested_name:
+                        resource_names.append(nested_name)
+                        break
+            return {"resource_names": resource_names}
     except Exception:
         logger.debug("Could not convert result to JSON-safe form", exc_info=True)
     return str(result)
