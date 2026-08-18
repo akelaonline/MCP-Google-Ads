@@ -30,6 +30,9 @@ class _Raw:
     def get_service(self, name):
         return self.client.get_service(name)
 
+    def copy_from(self, dest, src):
+        return self.client.copy_from(dest, src)
+
 
 class _BatchJobService:
     def __init__(self, calls):
@@ -43,7 +46,10 @@ class _BatchJobService:
 
     def add_batch_job_operations(self, **kwargs):
         self.calls.append(("add_batch_job_operations", kwargs))
-        return SimpleNamespace(next_sequence_token="seq-1", total_operations=len(kwargs["mutate_operations"]))
+        return SimpleNamespace(
+            next_sequence_token="seq-1",
+            total_operations=len(kwargs["mutate_operations"]),
+        )
 
     def run_batch_job(self, **kwargs):
         self.calls.append(("run_batch_job", kwargs))
@@ -103,9 +109,23 @@ def test_submit_batch_job_builds_real_mixed_v25_mutate_operations():
         customer_id="123-456-7890",
         operations=[
             {"kind": "campaign_status", "campaign_id": "11", "status": "PAUSED"},
-            {"kind": "campaign_budget_amount", "campaign_budget_id": "22", "amount": 42.5},
-            {"kind": "keyword_bid", "ad_group_id": "33", "criterion_id": "44", "cpc_bid": 1.25},
-            {"kind": "add_campaign_negative_keyword", "campaign_id": "11", "text": "free", "match_type": "PHRASE"},
+            {
+                "kind": "campaign_budget_amount",
+                "campaign_budget_id": "22",
+                "amount": 42.5,
+            },
+            {
+                "kind": "keyword_bid",
+                "ad_group_id": "33",
+                "criterion_id": "44",
+                "cpc_bid": 1.25,
+            },
+            {
+                "kind": "add_campaign_negative_keyword",
+                "campaign_id": "11",
+                "text": "free",
+                "match_type": "PHRASE",
+            },
         ],
     )
 
@@ -167,11 +187,16 @@ def test_seasonality_adjustment_builds_real_v25_contract():
 
     assert result["status"] == "executed"
     assert result["risk_level"] == "spend"
-    call = next(call for call in client.calls if call[0] == "BiddingSeasonalityAdjustmentService")
+    call = next(
+        call for call in client.calls if call[0] == "BiddingSeasonalityAdjustmentService"
+    )
     operation = call[2][0]
     item = operation.create
     assert item.scope.name == "CHANNEL"
-    assert [value.name for value in item.advertising_channel_types] == ["SEARCH", "SHOPPING"]
+    assert [value.name for value in item.advertising_channel_types] == [
+        "SEARCH",
+        "SHOPPING",
+    ]
     assert item.conversion_rate_modifier == 1.8
     assert [value.name for value in item.devices] == ["DESKTOP", "MOBILE"]
 
