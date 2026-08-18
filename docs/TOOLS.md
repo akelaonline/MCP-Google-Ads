@@ -221,8 +221,11 @@ Creates image assets plus the PAUSED RDA atomically.
 
 v0.12 requires at least one landscape marketing image and one square marketing image for the current RDA contract.
 
-### `create_video_ad(customer_id, ad_group_id, youtube_video_id, headline, final_urls, description1=None, description2=None, companion_banner_asset_resource_name=None)` `[write]`
-Creates a PAUSED video ad referencing an existing YouTube video ID.
+### `create_video_ad(customer_id, ad_group_id, youtube_video_id, headline, final_urls, description1=None, description2=None, companion_banner_asset_resource_name=None)`
+**Compatibility endpoint; no write.** Google Ads API v25 only supports fetching/reporting for legacy `VIDEO` campaigns. This tool returns `status=unsupported`, performs no mutation, and points clients to `create_demand_gen_video_ad`.
+
+### `create_demand_gen_video_ad(customer_id, ad_group_id, youtube_video_ids, headlines, long_headlines, descriptions, business_name, final_urls, logo_image_urls)` `[write]`
+Creates YouTube video assets, square logo assets and a PAUSED `DemandGenVideoResponsiveAd` in one atomic `GoogleAdsService.Mutate` request. Supports 1-5 videos/headlines/long-headlines/descriptions/logos. Headlines are <=40 chars, long headlines/descriptions <=90, business name <=25.
 
 ### `create_call_ad(customer_id, ad_group_id, country_code, phone_number, business_name, headlines, descriptions, final_urls, call_tracking_enabled=True)` `[write]`
 **Compatibility tool.** Google removed legacy Call Ads. v0.12 creates a PAUSED RSA + Call Asset + ad-group asset link atomically.

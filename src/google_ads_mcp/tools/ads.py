@@ -12,6 +12,7 @@ from ..context import AppContext
 from ..net import fetch_public_https_image
 
 _IMAGE_MAX_BYTES = 5_120_000
+_DEMAND_GEN_LOGO_MAX_BYTES = 150_000
 
 
 def register(mcp, ctx: AppContext) -> None:
@@ -186,49 +187,134 @@ def register(mcp, ctx: AppContext) -> None:
         description2: str | None = None,
         companion_banner_asset_resource_name: str | None = None,
     ) -> dict:
-        """Propose creating an in-stream YouTube video ad. Created PAUSED."""
-        if len(youtube_video_id) != 11:
-            raise ValueError("youtube_video_id must be the 11-character YouTube video ID.")
-        if not headline or len(headline) > 15:
-            raise ValueError("headline must be 1-15 characters.")
+        """Compatibility endpoint for legacy Video campaigns; never mutates."""
+        return {
+            "status": "unsupported",
+            "reason": (
+                "Google Ads API v25 supports legacy VIDEO campaigns for fetching and "
+                "reporting only; it does not support creating or updating Video campaigns "
+                "or their ads. No Google Ads mutation was attempted."
+            ),
+            "replacement_tool": "create_demand_gen_video_ad",
+            "migration": (
+                "Use a DEMAND_GEN campaign/ad group and create_demand_gen_video_ad for "
+                "programmatic video delivery across YouTube and other Demand Gen inventory."
+            ),
+            "customer_id": customer_id,
+            "ad_group_id": ad_group_id,
+            "youtube_video_id": youtube_video_id,
+        }
+
+    @mcp.tool()
+    def create_demand_gen_video_ad(
+        customer_id: str,
+        ad_group_id: str,
+        youtube_video_ids: list[str],
+        headlines: list[str],
+        long_headlines: list[str],
+        descriptions: list[str],
+        business_name: str,
+        final_urls: list[str],
+        logo_image_urls: list[str],
+    ) -> dict:
+        """Create a PAUSED Demand Gen video responsive ad atomically."""
+        if not (1 <= len(youtube_video_ids) <= 5):
+            raise ValueError("Provide between 1 and 5 YouTube video IDs.")
+        if any(len(video_id) != 11 for video_id in youtube_video_ids):
+            raise ValueError("Each youtube_video_id must be the 11-character YouTube ID.")
+        if not (1 <= len(headlines) <= 5):
+            raise ValueError("Provide between 1 and 5 Demand Gen video headlines.")
+        if any(len(value) > 40 for value in headlines):
+            raise ValueError("Each Demand Gen video headline must be 40 characters or fewer.")
+        if not (1 <= len(long_headlines) <= 5):
+            raise ValueError("Provide between 1 and 5 Demand Gen video long headlines.")
+        if any(len(value) > 90 for value in long_headlines):
+            raise ValueError("Each Demand Gen video long headline must be 90 characters or fewer.")
+        if not (1 <= len(descriptions) <= 5):
+            raise ValueError("Provide between 1 and 5 Demand Gen video descriptions.")
+        if any(len(value) > 90 for value in descriptions):
+            raise ValueError("Each Demand Gen video description must be 90 characters or fewer.")
+        if not business_name or len(business_name) > 25:
+            raise ValueError("business_name is required and must be 25 characters or fewer.")
         if not final_urls:
             raise ValueError("Provide at least one final URL.")
+        if not (1 <= len(logo_image_urls) <= 5):
+            raise ValueError("Provide between 1 and 5 square logo image URLs.")
 
         client = ctx.client.raw
-        operation = client.get_type("AdGroupAdOperation")
-        ad_group_ad = operation.create
-        ad_group_ad.ad_group = client.get_service("AdGroupService").ad_group_path(
-            customer_id.replace("-", ""), ad_group_id
+        customer_id_clean = customer_id.replace("-", "")
+        ad_group_resource_name = client.get_service("AdGroupService").ad_group_path(
+            customer_id_clean, ad_group_id
         )
-        ad_group_ad.status = client.enums.AdGroupAdStatusEnum.PAUSED
-        video_ad = ad_group_ad.ad.video_ad
-        video_ad.video.video_id = youtube_video_id
-        video_ad.in_stream.action_button_label = headline
-        video_ad.in_stream.action_headline = description1 or headline
-        if companion_banner_asset_resource_name:
-            video_ad.companion_banner.asset = companion_banner_asset_resource_name
-        ad_group_ad.ad.final_urls.extend(final_urls)
-
-        description = (
-            f"Create in-stream video ad in ad group {ad_group_id} "
-            f"(YouTube video {youtube_video_id}), created PAUSED"
+        description_text = (
+            f"Create Demand Gen video responsive ad in ad group {ad_group_id} "
+            f"({len(youtube_video_ids)} video(s), {len(headlines)} headline(s)), "
+            "created PAUSED; atomic mutation"
         )
 
         def execute():
-            return ctx.client.mutate("AdGroupAdService", customer_id, [operation])
+            operations = []
+            video_refs: list[str] = []
+            next_temp_id = -1
+
+            for youtube_video_id in youtube_video_ids:
+                resource_name = client.get_service("AssetService").asset_path(
+                    customer_id_clean, next_temp_id
+                )
+                next_temp_id -= 1
+                asset_operation = client.get_type("AssetOperation")
+                asset_operation.create.resource_name = resource_name
+                asset_operation.create.youtube_video_asset.youtube_video_id = youtube_video_id
+                operations.append(_wrap_mutate(client, "asset_operation", asset_operation))
+                video_refs.append(resource_name)
+
+            logo_refs, logo_ops, next_temp_id = _build_image_asset_operations(
+                client,
+                customer_id_clean,
+                logo_image_urls,
+                next_temp_id,
+                max_bytes=_DEMAND_GEN_LOGO_MAX_BYTES,
+            )
+            operations.extend(logo_ops)
+
+            ad_operation = client.get_type("AdGroupAdOperation")
+            ad_group_ad = ad_operation.create
+            ad_group_ad.ad_group = ad_group_resource_name
+            ad_group_ad.status = client.enums.AdGroupAdStatusEnum.PAUSED
+            ad = ad_group_ad.ad
+            ad.final_urls.extend(final_urls)
+            demand_gen_video = ad.demand_gen_video_responsive_ad
+            demand_gen_video.business_name.text = business_name
+
+            for resource_name in video_refs:
+                video_link = client.get_type("AdVideoAsset")
+                video_link.asset = resource_name
+                demand_gen_video.videos.append(video_link)
+            for resource_name in logo_refs:
+                demand_gen_video.logo_images.append(_image_ref(client, resource_name))
+            for value in headlines:
+                demand_gen_video.headlines.append(_text_asset(client, value))
+            for value in long_headlines:
+                demand_gen_video.long_headlines.append(_text_asset(client, value))
+            for value in descriptions:
+                demand_gen_video.descriptions.append(_text_asset(client, value))
+
+            operations.append(_wrap_mutate(client, "ad_group_ad_operation", ad_operation))
+            return ctx.client.mutate_atomic(customer_id, operations)
 
         return ctx.safety.propose(
-            tool_name="create_video_ad",
+            tool_name="create_demand_gen_video_ad",
             customer_id=customer_id,
-            description=description,
+            description=description_text,
             payload={
                 "ad_group_id": ad_group_id,
-                "youtube_video_id": youtube_video_id,
-                "headline": headline,
+                "youtube_video_ids": youtube_video_ids,
+                "headlines": headlines,
+                "long_headlines": long_headlines,
+                "descriptions": descriptions,
+                "business_name": business_name,
                 "final_urls": final_urls,
-                "description1": description1,
-                "description2": description2,
-                "companion_banner_asset_resource_name": companion_banner_asset_resource_name,
+                "logo_image_urls": logo_image_urls,
             },
             execute=execute,
         )
@@ -714,11 +800,13 @@ def _build_image_asset_operations(
     customer_id_clean: str,
     urls: list[str],
     next_temp_id: int,
+    *,
+    max_bytes: int = _IMAGE_MAX_BYTES,
 ):
     resource_names: list[str] = []
     mutate_operations = []
     for url in urls:
-        image_bytes = fetch_public_https_image(url, max_bytes=_IMAGE_MAX_BYTES)
+        image_bytes = fetch_public_https_image(url, max_bytes=max_bytes)
         resource_name = client.get_service("AssetService").asset_path(
             customer_id_clean, next_temp_id
         )
