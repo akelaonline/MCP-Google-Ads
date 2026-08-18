@@ -58,18 +58,23 @@ def test_no_mutation_of_immutable_include_in_conversions_metric():
 
 def test_no_silent_partial_failure_true_in_normal_mutate_tools():
     hits = _hits(TOOLS, "partial_failure=True")
+    explicitly_parsed_modules = {
+        "tools/conversions.py:",
+        "tools/conversion_adjustments.py:",
+    }
     unexpected = [
         hit
         for hit in hits
         if "enable_partial_failure=True" not in hit
-        and not hit.startswith("tools/conversions.py:")
+        and not any(hit.startswith(prefix) for prefix in explicitly_parsed_modules)
     ]
     assert not unexpected, (
         "Normal mutate helpers must not silently accept partial failure without parsing it:\n"
         + "\n".join(unexpected)
     )
 
-    conversions_source = (TOOLS / "conversions.py").read_text(encoding="utf-8")
-    assert "partial_failure=True" in conversions_source
-    assert "partial_failure_error" in conversions_source
-    assert "GoogleAdsMcpError" in conversions_source
+    for filename in ("conversions.py", "conversion_adjustments.py"):
+        source = (TOOLS / filename).read_text(encoding="utf-8")
+        assert "partial_failure=True" in source
+        assert "partial_failure_error" in source
+        assert "GoogleAdsMcpError" in source
