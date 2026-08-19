@@ -147,7 +147,7 @@ def register(mcp, ctx: AppContext) -> None:
         raw = ctx.client.raw
         request = raw.get_type("EnablePMaxBrandGuidelinesRequest")
         request.customer_id = customer
-        operation = raw.get_type("EnableOperation")
+        operation = raw.get_type("EnablePMaxBrandGuidelinesRequest.EnableOperation")
         operation.campaign = raw.get_service("CampaignService").campaign_path(
             customer, campaign
         )
