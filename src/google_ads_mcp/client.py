@@ -224,6 +224,7 @@ _IRREGULAR_MUTATE_METHODS: dict[str, str] = {
     "CampaignCriterionService": "mutate_campaign_criteria",
     "CustomerNegativeCriterionService": "mutate_customer_negative_criteria",
     "SharedCriterionService": "mutate_shared_criteria",
+    "CustomerClientLinkService": "mutate_customer_client_link",
     "CustomerUserAccessInvitationService": "mutate_customer_user_access_invitation",
     "CustomerUserAccessService": "mutate_customer_user_access",
 }
