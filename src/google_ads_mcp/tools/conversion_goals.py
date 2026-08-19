@@ -1,13 +1,44 @@
-"""Conversion goals, custom goals, lifecycle goals, and audience customer types."""
+"""Conversion-goal and lifecycle-goal management for Google Ads API v25.
+
+Google Ads API v25 removed the legacy CustomerLifecycleGoalService and
+CampaignLifecycleGoalService. Lifecycle configuration now lives in GoalService
+and CampaignGoalConfigService. This module intentionally uses only v25
+contracts so the MCP cannot advertise stale lifecycle tools.
+"""
 
 from __future__ import annotations
+
+from typing import Any
 
 from google.protobuf import field_mask_pb2
 
 from ..context import AppContext
 
+_GOAL_TYPES = {
+    "NEW_CUSTOMER_ACQUISITION": "new_customer_acquisition_goal_settings",
+    "CUSTOMER_RETENTION": "retention_goal_settings",
+    "LOYALTY_RETENTION": "loyalty_retention_goal_settings",
+}
+_CAMPAIGN_GOAL_SETTINGS = {
+    "NEW_CUSTOMER_ACQUISITION": "campaign_new_customer_acquisition_settings",
+    "CUSTOMER_RETENTION": "campaign_retention_settings",
+    "LOYALTY_RETENTION": "campaign_loyalty_retention_settings",
+}
+_LIFECYCLE_TARGET_OPTIONS = {
+    "TARGET_ALL",
+    "BID_HIGHER_FOR_ALL",
+    "TARGET_SPECIFIC",
+    "BID_HIGHER_FOR_SPECIFIC",
+    "EXCLUDE_SPECIFIC",
+}
 
-def _resource(ctx: AppContext, customer_id: str, value: str, field_name: str) -> tuple[str, str]:
+
+def _resource(
+    ctx: AppContext,
+    customer_id: str,
+    value: str,
+    field_name: str,
+) -> tuple[str, str]:
     customer = ctx.client.assert_customer_allowed(customer_id)
     resource = ctx.client.assert_resource_name_customer(
         customer, value, field_name=field_name
@@ -15,10 +46,62 @@ def _resource(ctx: AppContext, customer_id: str, value: str, field_name: str) ->
     return customer, resource
 
 
+def _goal_type(value: str) -> str:
+    clean = str(value).strip().upper()
+    if clean not in _GOAL_TYPES:
+        raise ValueError(
+            "goal_type must be NEW_CUSTOMER_ACQUISITION, CUSTOMER_RETENTION, "
+            "or LOYALTY_RETENTION."
+        )
+    return clean
+
+
+def _value_mode(value: str) -> str:
+    clean = str(value).strip().upper()
+    if clean not in {"ADDITIONAL", "MULTIPLIER"}:
+        raise ValueError("value_mode must be ADDITIONAL or MULTIPLIER.")
+    return clean
+
+
+def _set_lifecycle_value_settings(
+    value_settings: Any,
+    *,
+    value_mode: str,
+    value: float,
+    high_lifetime_value: float | None,
+) -> list[str]:
+    mode = _value_mode(value_mode)
+    if value < 0:
+        raise ValueError("value must be zero or greater.")
+    if high_lifetime_value is not None and high_lifetime_value < 0:
+        raise ValueError("high_lifetime_value must be zero or greater.")
+    if high_lifetime_value is not None and high_lifetime_value < value:
+        raise ValueError("high_lifetime_value must be greater than or equal to value.")
+
+    if mode == "ADDITIONAL":
+        value_settings.additional_value = value
+        paths = ["additional_value"]
+        if high_lifetime_value is not None:
+            value_settings.additional_high_lifetime_value = high_lifetime_value
+            paths.append("additional_high_lifetime_value")
+        return paths
+
+    value_settings.value_multiplier = value
+    paths = ["value_multiplier"]
+    if high_lifetime_value is not None:
+        value_settings.high_lifetime_value_multiplier = high_lifetime_value
+        paths.append("high_lifetime_value_multiplier")
+    return paths
+
+
+def _escape_gaql(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
 def register(mcp, ctx: AppContext) -> None:
     @mcp.tool()
     def list_customer_conversion_goals(customer_id: str) -> dict:
-        """List account-level conversion goals and whether each is biddable."""
+        """List account-level category/origin conversion goals and biddability."""
         rows = ctx.client.search(
             customer_id,
             """
@@ -78,15 +161,19 @@ def register(mcp, ctx: AppContext) -> None:
         customer_id: str,
         campaign_id: str | None = None,
     ) -> dict:
-        """List campaign-specific conversion goal overrides."""
+        """List campaign-specific category/origin conversion goal overrides."""
+        customer = ctx.client.assert_customer_allowed(customer_id)
         where = ""
         if campaign_id is not None:
             campaign = str(campaign_id).strip()
             if not campaign.isdigit():
                 raise ValueError("campaign_id must be numeric.")
-            where = f"WHERE campaign.id = {campaign}"
+            where = (
+                "WHERE campaign_conversion_goal.campaign = "
+                f"'customers/{customer}/campaigns/{campaign}'"
+            )
         rows = ctx.client.search(
-            customer_id,
+            customer,
             f"""
             SELECT
                 campaign_conversion_goal.resource_name,
@@ -271,6 +358,7 @@ def register(mcp, ctx: AppContext) -> None:
             payload={
                 "custom_conversion_goal_resource_name": resource,
                 "fields": paths,
+                "status": status,
                 "validate_only": bool(validate_only),
             },
             execute=execute,
@@ -314,7 +402,7 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def list_conversion_goal_campaign_configs(customer_id: str) -> dict:
-        """List whether campaigns use customer, campaign, or custom conversion goals."""
+        """List whether campaigns use customer/campaign/custom conversion goals."""
         rows = ctx.client.search(
             customer_id,
             """
@@ -337,7 +425,7 @@ def register(mcp, ctx: AppContext) -> None:
         custom_conversion_goal_resource_name: str | None = None,
         validate_only: bool = False,
     ) -> dict:
-        """Propose switching a campaign between customer/campaign/custom goal config."""
+        """Propose switching a campaign between customer and campaign goal config."""
         customer = ctx.client.assert_customer_allowed(customer_id)
         campaign = str(campaign_id).strip()
         if not campaign.isdigit():
@@ -391,7 +479,7 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def list_user_list_customer_types(customer_id: str) -> dict:
-        """List lifecycle/customer-type labels assigned to audience lists."""
+        """List customer-type labels assigned to audience lists."""
         rows = ctx.client.search(
             customer_id,
             """
@@ -484,190 +572,8 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
-    def list_customer_lifecycle_goals(customer_id: str) -> dict:
-        """List account-level new-customer acquisition value settings."""
-        rows = ctx.client.search(
-            customer_id,
-            """
-            SELECT
-                customer_lifecycle_goal.resource_name,
-                customer_lifecycle_goal.owner_customer,
-                customer_lifecycle_goal.customer_acquisition_goal_value_settings.value,
-                customer_lifecycle_goal.customer_acquisition_goal_value_settings.high_lifetime_value
-            FROM customer_lifecycle_goal
-            """,
-        )
-        return {"customer_lifecycle_goals": rows, "count": len(rows)}
-
-    @mcp.tool()
-    def set_customer_acquisition_values(
-        customer_id: str,
-        value: float,
-        high_lifetime_value: float | None = None,
-        validate_only: bool = False,
-    ) -> dict:
-        """Propose creating/updating the account new-customer acquisition values."""
-        if value < 0:
-            raise ValueError("value must be zero or greater.")
-        if high_lifetime_value is not None and high_lifetime_value <= value:
-            raise ValueError("high_lifetime_value must be greater than value.")
-        customer = ctx.client.assert_customer_allowed(customer_id)
-        existing = ctx.client.search(
-            customer,
-            "SELECT customer_lifecycle_goal.resource_name FROM customer_lifecycle_goal LIMIT 1",
-        )
-        raw = ctx.client.raw
-        operation = raw.get_type("CustomerLifecycleGoalOperation")
-        if existing:
-            goal = operation.update
-            goal.resource_name = existing[0]["customer_lifecycle_goal"]["resource_name"]
-            paths = ["customer_acquisition_goal_value_settings.value"]
-            goal.customer_acquisition_goal_value_settings.value = value
-            if high_lifetime_value is not None:
-                goal.customer_acquisition_goal_value_settings.high_lifetime_value = high_lifetime_value
-                paths.append("customer_acquisition_goal_value_settings.high_lifetime_value")
-            operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=paths))
-            mode = "update"
-        else:
-            goal = operation.create
-            goal.customer_acquisition_goal_value_settings.value = value
-            if high_lifetime_value is not None:
-                goal.customer_acquisition_goal_value_settings.high_lifetime_value = high_lifetime_value
-            mode = "create"
-
-        def execute():
-            return ctx.client.mutate(
-                "CustomerLifecycleGoalService",
-                customer,
-                [operation],
-                validate_only=validate_only,
-            )
-
-        return ctx.safety.propose(
-            tool_name="set_customer_acquisition_values",
-            customer_id=customer,
-            description=(
-                f"{mode.title()} customer acquisition values: value={value}, "
-                f"high_lifetime_value={high_lifetime_value}"
-            ),
-            payload={
-                "mode": mode,
-                "value": value,
-                "high_lifetime_value": high_lifetime_value,
-                "validate_only": bool(validate_only),
-            },
-            execute=execute,
-        )
-
-    @mcp.tool()
-    def list_campaign_lifecycle_goals(
-        customer_id: str,
-        campaign_id: str | None = None,
-    ) -> dict:
-        """List campaign-level new-customer acquisition settings."""
-        where = ""
-        if campaign_id is not None:
-            campaign = str(campaign_id).strip()
-            if not campaign.isdigit():
-                raise ValueError("campaign_id must be numeric.")
-            where = f"WHERE campaign.id = {campaign}"
-        rows = ctx.client.search(
-            customer_id,
-            f"""
-            SELECT
-                campaign_lifecycle_goal.resource_name,
-                campaign_lifecycle_goal.campaign,
-                campaign_lifecycle_goal.customer_acquisition_goal_settings.optimization_mode,
-                campaign_lifecycle_goal.customer_acquisition_goal_settings.value_settings.value,
-                campaign_lifecycle_goal.customer_acquisition_goal_settings.value_settings.high_lifetime_value
-            FROM campaign_lifecycle_goal
-            {where}
-            ORDER BY campaign_lifecycle_goal.campaign
-            """,
-        )
-        return {"campaign_lifecycle_goals": rows, "count": len(rows)}
-
-    @mcp.tool()
-    def set_campaign_acquisition_goal(
-        customer_id: str,
-        campaign_id: str,
-        optimization_mode: str,
-        value: float | None = None,
-        high_lifetime_value: float | None = None,
-        validate_only: bool = False,
-    ) -> dict:
-        """Propose creating/updating a campaign new-customer acquisition goal."""
-        customer = ctx.client.assert_customer_allowed(customer_id)
-        campaign = str(campaign_id).strip()
-        if not campaign.isdigit():
-            raise ValueError("campaign_id must be numeric.")
-        mode_name = optimization_mode.strip().upper()
-        allowed = {
-            "TARGET_ALL_EQUALLY",
-            "BID_HIGHER_FOR_NEW_CUSTOMERS",
-            "TARGET_NEW_CUSTOMER",
-        }
-        if mode_name not in allowed:
-            raise ValueError("optimization_mode must be one of: " + ", ".join(sorted(allowed)))
-        if value is not None and value < 0:
-            raise ValueError("value must be zero or greater.")
-        if high_lifetime_value is not None:
-            if value is None:
-                raise ValueError("value is required when high_lifetime_value is supplied.")
-            if high_lifetime_value <= value:
-                raise ValueError("high_lifetime_value must be greater than value.")
-        raw = ctx.client.raw
-        resource_name = f"customers/{customer}/campaignLifecycleGoals/{campaign}"
-        existing = ctx.client.search(
-            customer,
-            f"SELECT campaign_lifecycle_goal.resource_name FROM campaign_lifecycle_goal WHERE campaign.id = {campaign} LIMIT 1",
-        )
-        operation = raw.get_type("CampaignLifecycleGoalOperation")
-        goal = operation.update if existing else operation.create
-        if existing:
-            goal.resource_name = resource_name
-        else:
-            goal.campaign = raw.get_service("CampaignService").campaign_path(customer, campaign)
-        goal.customer_acquisition_goal_settings.optimization_mode = getattr(
-            raw.enums.CustomerAcquisitionOptimizationModeEnum, mode_name
-        )
-        if value is not None:
-            goal.customer_acquisition_goal_settings.value_settings.value = value
-        if high_lifetime_value is not None:
-            goal.customer_acquisition_goal_settings.value_settings.high_lifetime_value = high_lifetime_value
-        if existing:
-            paths = ["customer_acquisition_goal_settings.optimization_mode"]
-            if value is not None:
-                paths.append("customer_acquisition_goal_settings.value_settings.value")
-            if high_lifetime_value is not None:
-                paths.append("customer_acquisition_goal_settings.value_settings.high_lifetime_value")
-            operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=paths))
-
-        def execute():
-            return ctx.client.mutate(
-                "CampaignLifecycleGoalService",
-                customer,
-                [operation],
-                validate_only=validate_only,
-            )
-
-        return ctx.safety.propose(
-            tool_name="set_campaign_acquisition_goal",
-            customer_id=customer,
-            description=f"Set campaign {campaign} acquisition goal to {mode_name}",
-            payload={
-                "campaign_id": campaign,
-                "optimization_mode": mode_name,
-                "value": value,
-                "high_lifetime_value": high_lifetime_value,
-                "validate_only": bool(validate_only),
-            },
-            execute=execute,
-        )
-
-    @mcp.tool()
-    def list_goals(customer_id: str) -> dict:
-        """List v25 Goal resources for acquisition, retention, and loyalty retention."""
+    def list_lifecycle_goals(customer_id: str) -> dict:
+        """List unified v25 acquisition, retention, and loyalty lifecycle goals."""
         rows = ctx.client.search(
             customer_id,
             """
@@ -679,41 +585,63 @@ def register(mcp, ctx: AppContext) -> None:
                 goal.owner_customer,
                 goal.new_customer_acquisition_goal_settings.value_settings.additional_value,
                 goal.new_customer_acquisition_goal_settings.value_settings.additional_high_lifetime_value,
+                goal.new_customer_acquisition_goal_settings.value_settings.value_multiplier,
+                goal.new_customer_acquisition_goal_settings.value_settings.high_lifetime_value_multiplier,
                 goal.retention_goal_settings.value_settings.additional_value,
                 goal.retention_goal_settings.value_settings.additional_high_lifetime_value,
+                goal.retention_goal_settings.value_settings.value_multiplier,
+                goal.retention_goal_settings.value_settings.high_lifetime_value_multiplier,
                 goal.loyalty_retention_goal_settings.value_settings.additional_value,
-                goal.loyalty_retention_goal_settings.value_settings.additional_high_lifetime_value
+                goal.loyalty_retention_goal_settings.value_settings.additional_high_lifetime_value,
+                goal.loyalty_retention_goal_settings.value_settings.value_multiplier,
+                goal.loyalty_retention_goal_settings.value_settings.high_lifetime_value_multiplier
             FROM goal
-            ORDER BY goal.goal_id
+            ORDER BY goal.goal_type
             """,
         )
         return {"goals": rows, "count": len(rows)}
 
     @mcp.tool()
-    def create_retention_goal(
+    def set_lifecycle_goal(
         customer_id: str,
-        additional_value: float,
-        additional_high_lifetime_value: float | None = None,
+        goal_type: str,
+        value_mode: str,
+        value: float,
+        high_lifetime_value: float | None = None,
         validate_only: bool = False,
     ) -> dict:
-        """Propose creating a v25 customer-retention Goal resource."""
-        if additional_value < 0:
-            raise ValueError("additional_value must be zero or greater.")
-        if (
-            additional_high_lifetime_value is not None
-            and additional_high_lifetime_value <= additional_value
-        ):
-            raise ValueError(
-                "additional_high_lifetime_value must be greater than additional_value."
-            )
+        """Propose creating or updating a unified v25 lifecycle Goal.
+
+        ``goal_type`` supports NEW_CUSTOMER_ACQUISITION, CUSTOMER_RETENTION, and
+        LOYALTY_RETENTION. ``value_mode`` is ADDITIONAL or MULTIPLIER. Google
+        allows at most one Goal per lifecycle type per customer.
+        """
         customer = ctx.client.assert_customer_allowed(customer_id)
+        clean_type = _goal_type(goal_type)
+        settings_field = _GOAL_TYPES[clean_type]
+        safe_type = _escape_gaql(clean_type)
+        existing = ctx.client.search(
+            customer,
+            f"SELECT goal.resource_name, goal.goal_type FROM goal WHERE goal.goal_type = '{safe_type}' LIMIT 1",
+        )
         raw = ctx.client.raw
         operation = raw.get_type("GoalOperation")
-        goal = operation.create
-        goal.retention_goal_settings.value_settings.additional_value = additional_value
-        if additional_high_lifetime_value is not None:
-            goal.retention_goal_settings.value_settings.additional_high_lifetime_value = (
-                additional_high_lifetime_value
+        mode = "update" if existing else "create"
+        goal = operation.update if existing else operation.create
+        if existing:
+            goal.resource_name = existing[0]["goal"]["resource_name"]
+        value_settings = getattr(getattr(goal, settings_field), "value_settings")
+        suffix_paths = _set_lifecycle_value_settings(
+            value_settings,
+            value_mode=value_mode,
+            value=value,
+            high_lifetime_value=high_lifetime_value,
+        )
+        if existing:
+            operation.update_mask.CopyFrom(
+                field_mask_pb2.FieldMask(
+                    paths=[f"{settings_field}.value_settings.{p}" for p in suffix_paths]
+                )
             )
 
         def execute():
@@ -722,20 +650,26 @@ def register(mcp, ctx: AppContext) -> None:
             )
 
         return ctx.safety.propose(
-            tool_name="create_retention_goal",
+            tool_name="set_lifecycle_goal",
             customer_id=customer,
-            description=f"Create retention Goal with additional value {additional_value}",
+            description=(
+                f"{mode.title()} {clean_type} lifecycle Goal using "
+                f"{_value_mode(value_mode)} value {value}"
+            ),
             payload={
-                "additional_value": additional_value,
-                "additional_high_lifetime_value": additional_high_lifetime_value,
+                "goal_type": clean_type,
+                "mode": mode,
+                "value_mode": _value_mode(value_mode),
+                "value": value,
+                "high_lifetime_value": high_lifetime_value,
                 "validate_only": bool(validate_only),
             },
             execute=execute,
         )
 
     @mcp.tool()
-    def list_campaign_goal_configs(customer_id: str) -> dict:
-        """List campaign links to v25 Goal resources and per-campaign overrides."""
+    def list_campaign_lifecycle_goal_configs(customer_id: str) -> dict:
+        """List campaign links to unified v25 lifecycle Goals and overrides."""
         rows = ctx.client.search(
             customer_id,
             """
@@ -744,29 +678,44 @@ def register(mcp, ctx: AppContext) -> None:
                 campaign_goal_config.campaign,
                 campaign_goal_config.goal,
                 campaign_goal_config.goal_type,
+                campaign_goal_config.campaign_new_customer_acquisition_settings.target_option,
                 campaign_goal_config.campaign_retention_settings.target_option,
+                campaign_goal_config.campaign_loyalty_retention_settings.target_option,
+                campaign_goal_config.campaign_new_customer_acquisition_settings.value_settings_override.additional_value,
+                campaign_goal_config.campaign_new_customer_acquisition_settings.value_settings_override.additional_high_lifetime_value,
+                campaign_goal_config.campaign_new_customer_acquisition_settings.value_settings_override.value_multiplier,
+                campaign_goal_config.campaign_new_customer_acquisition_settings.value_settings_override.high_lifetime_value_multiplier,
                 campaign_goal_config.campaign_retention_settings.value_settings_override.additional_value,
                 campaign_goal_config.campaign_retention_settings.value_settings_override.additional_high_lifetime_value,
-                campaign_goal_config.campaign_new_customer_acquisition_settings.target_option,
-                campaign_goal_config.campaign_new_customer_acquisition_settings.value_settings_override.additional_value,
-                campaign_goal_config.campaign_new_customer_acquisition_settings.value_settings_override.additional_high_lifetime_value
+                campaign_goal_config.campaign_retention_settings.value_settings_override.value_multiplier,
+                campaign_goal_config.campaign_retention_settings.value_settings_override.high_lifetime_value_multiplier,
+                campaign_goal_config.campaign_loyalty_retention_settings.value_settings_override.additional_value,
+                campaign_goal_config.campaign_loyalty_retention_settings.value_settings_override.additional_high_lifetime_value,
+                campaign_goal_config.campaign_loyalty_retention_settings.value_settings_override.value_multiplier,
+                campaign_goal_config.campaign_loyalty_retention_settings.value_settings_override.high_lifetime_value_multiplier
             FROM campaign_goal_config
-            ORDER BY campaign_goal_config.campaign
+            ORDER BY campaign_goal_config.campaign, campaign_goal_config.goal_type
             """,
         )
         return {"campaign_goal_configs": rows, "count": len(rows)}
 
     @mcp.tool()
-    def attach_goal_to_campaign(
+    def attach_lifecycle_goal_to_campaign(
         customer_id: str,
         campaign_resource_name: str,
         goal_resource_name: str,
         target_option: str = "TARGET_ALL",
-        additional_value_override: float | None = None,
-        additional_high_lifetime_value_override: float | None = None,
+        value_mode_override: str | None = None,
+        value_override: float | None = None,
+        high_lifetime_value_override: float | None = None,
         validate_only: bool = False,
     ) -> dict:
-        """Propose attaching a v25 Goal to a campaign with optional value overrides."""
+        """Propose attaching a unified v25 lifecycle Goal to a campaign.
+
+        The goal type is read first, then the correct campaign settings branch is
+        populated. This prevents retention settings from being accidentally used
+        for acquisition or loyalty-retention goals.
+        """
         customer = ctx.client.assert_customer_allowed(customer_id)
         campaign = ctx.client.assert_resource_name_customer(
             customer, campaign_resource_name, field_name="campaign_resource_name"
@@ -774,24 +723,41 @@ def register(mcp, ctx: AppContext) -> None:
         goal_resource = ctx.client.assert_resource_name_customer(
             customer, goal_resource_name, field_name="goal_resource_name"
         )
+        safe_goal = _escape_gaql(goal_resource)
+        goal_rows = ctx.client.search(
+            customer,
+            f"SELECT goal.resource_name, goal.goal_type FROM goal WHERE goal.resource_name = '{safe_goal}' LIMIT 1",
+        )
+        if not goal_rows:
+            raise ValueError("goal_resource_name was not found in the target customer.")
+        clean_type = _goal_type(goal_rows[0]["goal"]["goal_type"])
+        settings_field = _CAMPAIGN_GOAL_SETTINGS[clean_type]
         target = target_option.strip().upper()
+        if target not in _LIFECYCLE_TARGET_OPTIONS:
+            raise ValueError(
+                "target_option must be TARGET_ALL, BID_HIGHER_FOR_ALL, TARGET_SPECIFIC, "
+                "BID_HIGHER_FOR_SPECIFIC, or EXCLUDE_SPECIFIC."
+            )
+        if value_mode_override is None and (
+            value_override is not None or high_lifetime_value_override is not None
+        ):
+            raise ValueError("value_mode_override is required when value overrides are supplied.")
+        if value_mode_override is not None and value_override is None:
+            raise ValueError("value_override is required when value_mode_override is supplied.")
+
         raw = ctx.client.raw
-        try:
-            target_value = getattr(raw.enums.CustomerLifecycleOptimizationModeEnum, target)
-        except AttributeError as ex:
-            raise ValueError("Unknown target_option lifecycle optimization enum.") from ex
         operation = raw.get_type("CampaignGoalConfigOperation")
         config = operation.create
         config.campaign = campaign
         config.goal = goal_resource
-        config.campaign_retention_settings.target_option = target_value
-        if additional_value_override is not None:
-            config.campaign_retention_settings.value_settings_override.additional_value = (
-                additional_value_override
-            )
-        if additional_high_lifetime_value_override is not None:
-            config.campaign_retention_settings.value_settings_override.additional_high_lifetime_value = (
-                additional_high_lifetime_value_override
+        settings = getattr(config, settings_field)
+        settings.target_option = getattr(raw.enums.CustomerLifecycleOptimizationModeEnum, target)
+        if value_mode_override is not None:
+            _set_lifecycle_value_settings(
+                settings.value_settings_override,
+                value_mode=value_mode_override,
+                value=float(value_override),
+                high_lifetime_value=high_lifetime_value_override,
             )
 
         def execute():
@@ -803,27 +769,32 @@ def register(mcp, ctx: AppContext) -> None:
             )
 
         return ctx.safety.propose(
-            tool_name="attach_goal_to_campaign",
+            tool_name="attach_lifecycle_goal_to_campaign",
             customer_id=customer,
-            description=f"Attach Goal {goal_resource} to campaign {campaign}",
+            description=(
+                f"Attach {clean_type} Goal {goal_resource} to campaign {campaign} "
+                f"with target option {target}"
+            ),
             payload={
                 "campaign_resource_name": campaign,
                 "goal_resource_name": goal_resource,
+                "goal_type": clean_type,
                 "target_option": target,
-                "additional_value_override": additional_value_override,
-                "additional_high_lifetime_value_override": additional_high_lifetime_value_override,
+                "value_mode_override": value_mode_override,
+                "value_override": value_override,
+                "high_lifetime_value_override": high_lifetime_value_override,
                 "validate_only": bool(validate_only),
             },
             execute=execute,
         )
 
     @mcp.tool()
-    def remove_campaign_goal_config(
+    def remove_campaign_lifecycle_goal_config(
         customer_id: str,
         campaign_goal_config_resource_name: str,
         validate_only: bool = False,
     ) -> dict:
-        """Propose removing a Goal-to-campaign config."""
+        """Propose removing a unified lifecycle Goal-to-campaign config."""
         customer, resource = _resource(
             ctx,
             customer_id,
@@ -843,9 +814,9 @@ def register(mcp, ctx: AppContext) -> None:
             )
 
         return ctx.safety.propose(
-            tool_name="remove_campaign_goal_config",
+            tool_name="remove_campaign_lifecycle_goal_config",
             customer_id=customer,
-            description=f"Remove campaign goal config {resource}",
+            description=f"Remove campaign lifecycle goal config {resource}",
             payload={
                 "campaign_goal_config_resource_name": resource,
                 "validate_only": bool(validate_only),
