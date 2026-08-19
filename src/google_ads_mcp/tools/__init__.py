@@ -22,6 +22,7 @@ from . import (
     keywords,
     labels,
     performance_max,
+    product_links,
     recommendations,
     reporting,
     shared_sets,
@@ -32,6 +33,7 @@ from . import (
 ALL_MODULES = [
     accounts,
     account_access,
+    product_links,
     reporting,
     billing,
     campaigns,
