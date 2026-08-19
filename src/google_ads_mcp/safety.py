@@ -45,6 +45,7 @@ _SENSITIVE_TOOLS = {
     "invite_account_user",
     "update_user_access_role",
     "submit_batch_job",
+    "create_billing_setup",
 }
 
 _DESTRUCTIVE_TOOLS = {
@@ -57,6 +58,10 @@ _DESTRUCTIVE_TOOLS = {
     "cancel_manager_link_invitation",
     "move_manager_link",
     "revoke_user_access_invitation",
+    "cancel_pending_billing_setup",
+    "end_account_budget",
+    "remove_future_account_budget",
+    "cancel_pending_account_budget_proposal",
 }
 
 _SPEND_TOOLS = {
@@ -78,6 +83,8 @@ _SPEND_TOOLS = {
     "add_ad_schedule",
     "create_seasonality_adjustment",
     "create_data_exclusion",
+    "create_account_budget",
+    "update_account_budget",
 }
 
 _SPEND_PAYLOAD_KEYS = {
@@ -90,6 +97,7 @@ _SPEND_PAYLOAD_KEYS = {
     "target_cpa",
     "target_roas",
     "max_cpc_bid_ceiling",
+    "spending_limit",
 }
 
 
