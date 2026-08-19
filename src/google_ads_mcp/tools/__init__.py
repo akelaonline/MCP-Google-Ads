@@ -31,6 +31,7 @@ from . import (
     smart_bidding_controls,
     smart_campaigns,
     targeting,
+    youtube_uploads,
 )
 
 ALL_MODULES = [
@@ -50,6 +51,7 @@ ALL_MODULES = [
     ad_groups,
     ads,
     assets,
+    youtube_uploads,
     labels,
     keywords,
     shared_sets,
