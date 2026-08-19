@@ -40,6 +40,7 @@ _SENSITIVE_TOOLS = {
     "upload_offline_conversion",
     "retract_conversion",
     "restate_conversion_value",
+    "assign_user_list_customer_type",
     # Account access and hierarchy.
     "accept_manager_link",
     "invite_manager_link",
@@ -59,6 +60,8 @@ _SENSITIVE_TOOLS = {
     # YouTube publishing through the Ads identity.
     "upload_youtube_video",
     "update_youtube_video_upload",
+    # One-way PMax brand migration / identity controls.
+    "enable_pmax_brand_guidelines",
 }
 
 _DESTRUCTIVE_TOOLS = {
@@ -107,6 +110,14 @@ _SPEND_TOOLS = {
     "create_account_budget",
     "update_account_budget",
     "create_smart_campaign",
+    # Conversion and lifecycle goals can materially change Smart Bidding behavior.
+    "set_customer_conversion_goal_biddable",
+    "set_campaign_conversion_goal_biddable",
+    "create_custom_conversion_goal",
+    "update_custom_conversion_goal",
+    "set_conversion_goal_campaign_config",
+    "set_lifecycle_goal",
+    "attach_lifecycle_goal_to_campaign",
 }
 
 _SPEND_PAYLOAD_KEYS = {
