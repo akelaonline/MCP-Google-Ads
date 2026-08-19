@@ -32,6 +32,9 @@ class RiskLevel(str, Enum):
 
 _SENSITIVE_TOOLS = {
     "upload_customer_match_members",
+    "upload_customer_match_members_data_manager",
+    "create_data_manager_customer_match_list",
+    "update_data_manager_customer_match_list",
     "upload_enhanced_conversion",
     "upload_offline_conversion",
     "retract_conversion",
@@ -46,6 +49,9 @@ _SENSITIVE_TOOLS = {
 
 _DESTRUCTIVE_TOOLS = {
     "end_experiment",
+    "delete_data_manager_customer_match_list",
+    "remove_customer_match_members_data_manager",
+    "remove_all_customer_match_members_data_manager",
     "decline_manager_link",
     "unlink_manager",
     "cancel_manager_link_invitation",
