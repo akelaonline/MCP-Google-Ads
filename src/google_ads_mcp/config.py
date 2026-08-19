@@ -57,6 +57,8 @@ class Settings:
     auto_approve_spend: bool = False
     auto_approve_destructive: bool = False
     auto_approve_sensitive: bool = False
+    data_manager_project_id: str | None = None
+    data_manager_refresh_token: str | None = None
 
     @property
     def google_ads_yaml_dict(self) -> dict:
@@ -98,6 +100,13 @@ def load_settings() -> Settings:
             "GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS entry."
         )
 
+    data_manager_project_id = (
+        os.environ.get("GOOGLE_ADS_DATA_MANAGER_PROJECT_ID", "").strip() or None
+    )
+    data_manager_refresh_token = (
+        os.environ.get("GOOGLE_ADS_DATA_MANAGER_REFRESH_TOKEN", "").strip() or None
+    )
+
     return Settings(
         developer_token=os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
         client_id=os.environ.get("GOOGLE_ADS_CLIENT_ID", ""),
@@ -118,4 +127,6 @@ def load_settings() -> Settings:
             "GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE", False
         ),
         auto_approve_sensitive=_bool("GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE", False),
+        data_manager_project_id=data_manager_project_id,
+        data_manager_refresh_token=data_manager_refresh_token,
     )
