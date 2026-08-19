@@ -1,11 +1,13 @@
-"""OAuth2 helper: run this module directly to mint a refresh token.
+"""OAuth2 helper for Google Ads and optional Data Manager credentials.
+
+Examples:
 
     python -m google_ads_mcp.auth --generate-refresh-token
+    python -m google_ads_mcp.auth --generate-refresh-token --include-data-manager
 
-Requires GOOGLE_ADS_CLIENT_ID / GOOGLE_ADS_CLIENT_SECRET to already be set
-(a Desktop-app OAuth client from Google Cloud Console). Opens a local
-browser flow and prints the resulting refresh token — paste it into
-GOOGLE_ADS_REFRESH_TOKEN in your .env file.
+The Data Manager API scope is sensitive and may require Google OAuth app
+verification for public user-account OAuth clients. Existing Google Ads-only
+users can keep their current refresh token unchanged.
 """
 
 from __future__ import annotations
@@ -23,15 +25,17 @@ if _ENV_FILE:
 else:
     load_dotenv(Path.cwd() / ".env")
 
-SCOPES = ["https://www.googleapis.com/auth/adwords"]
+GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
+DATA_MANAGER_SCOPE = "https://www.googleapis.com/auth/datamanager"
+CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 
 
-def generate_refresh_token() -> None:
+def generate_refresh_token(*, include_data_manager: bool = False) -> None:
     try:
         from google_auth_oauthlib.flow import InstalledAppFlow
     except ImportError:
         print(
-            "Missing dependency. Install it with:\n  pip install google-auth-oauthlib",
+            "Missing dependency. Install it with:\n  pip install -e '.[auth]'",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -46,6 +50,10 @@ def generate_refresh_token() -> None:
         )
         sys.exit(1)
 
+    scopes = [GOOGLE_ADS_SCOPE]
+    if include_data_manager:
+        scopes.extend([DATA_MANAGER_SCOPE, CLOUD_PLATFORM_SCOPE])
+
     client_config = {
         "installed": {
             "client_id": client_id,
@@ -56,11 +64,30 @@ def generate_refresh_token() -> None:
         }
     }
 
-    flow = InstalledAppFlow.from_client_config(client_config, scopes=SCOPES)
-    credentials = flow.run_local_server(port=0)
+    flow = InstalledAppFlow.from_client_config(client_config, scopes=scopes)
+    credentials = flow.run_local_server(
+        port=0,
+        access_type="offline",
+        prompt="consent",
+    )
+
+    if not credentials.refresh_token:
+        print(
+            "OAuth completed but Google returned no refresh token. Revoke the app's "
+            "existing grant and retry so Google can issue a new offline grant.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     print("\nSuccess. Add this to your .env file:\n")
-    print(f"GOOGLE_ADS_REFRESH_TOKEN={credentials.refresh_token}\n")
+    print(f"GOOGLE_ADS_REFRESH_TOKEN={credentials.refresh_token}")
+    if include_data_manager:
+        print(f"GOOGLE_ADS_DATA_MANAGER_REFRESH_TOKEN={credentials.refresh_token}")
+        print(
+            "\nAlso set GOOGLE_ADS_DATA_MANAGER_PROJECT_ID to the Google Cloud "
+            "project where Data Manager API is enabled."
+        )
+    print()
 
 
 def main() -> None:
@@ -70,10 +97,21 @@ def main() -> None:
         action="store_true",
         help="Run the OAuth desktop flow and print a refresh token.",
     )
+    parser.add_argument(
+        "--include-data-manager",
+        action="store_true",
+        help=(
+            "Request Google Ads + Data Manager + Cloud Platform scopes. Use this "
+            "for new Customer Match integrations that need Data Manager API."
+        ),
+    )
     args = parser.parse_args()
 
+    if args.include_data_manager and not args.generate_refresh_token:
+        parser.error("--include-data-manager requires --generate-refresh-token")
+
     if args.generate_refresh_token:
-        generate_refresh_token()
+        generate_refresh_token(include_data_manager=args.include_data_manager)
     else:
         parser.print_help()
 
