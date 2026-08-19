@@ -23,6 +23,7 @@ from . import (
     keywords,
     labels,
     performance_max,
+    pmax_admin,
     product_links,
     recommendations,
     remarketing_actions,
@@ -65,5 +66,6 @@ ALL_MODULES = [
     conversion_adjustments,
     experiments,
     performance_max,
+    pmax_admin,
     recommendations,
 ]
