@@ -65,6 +65,36 @@ class GoogleAdsClientWrapper:
             )
         return normalized
 
+    def assert_resource_name_customer(
+        self,
+        customer_id: str,
+        resource_name: str,
+        *,
+        field_name: str = "resource_name",
+    ) -> str:
+        """Require a customer-scoped resource name to belong to ``customer_id``.
+
+        This is used by direct-action APIs that do not travel through a normal
+        resource-specific mutate operation (for example RecommendationService
+        apply/dismiss calls). It prevents a caller from pairing customer A with
+        a resource name owned by customer B when both customers are accessible.
+        """
+        customer = self.assert_customer_allowed(customer_id)
+        value = str(resource_name).strip()
+        owner = _customer_id_from_resource_name(value)
+        if owner is None:
+            raise GoogleAdsMcpError(
+                f"{field_name} must be a customer-scoped Google Ads resource name "
+                "starting with 'customers/{customer_id}/'."
+            )
+        if owner != customer:
+            raise GoogleAdsMcpError(
+                f"{field_name} belongs to customer {owner}, but this request targets "
+                f"customer {customer}. Cross-customer mutation was blocked before "
+                "contacting Google Ads."
+            )
+        return value
+
     def filter_allowed_customer_ids(self, customer_ids: Iterable[str]) -> list[str]:
         """Filter account-discovery results to this deployment's configured scope."""
         normalized = [normalize_customer_id(customer_id) for customer_id in customer_ids]
@@ -116,6 +146,8 @@ class GoogleAdsClientWrapper:
         if service_name == "CampaignService":
             for operation in operation_list:
                 _normalize_campaign_create(self.raw, operation)
+
+        _assert_mutation_targets_customer(customer_id, operation_list)
 
         method_name = _mutate_method_name(service_name)
         method = getattr(service, method_name, None)
@@ -172,6 +204,9 @@ class GoogleAdsClientWrapper:
             campaign_operation = getattr(operation, "campaign_operation", None)
             if campaign_operation is not None:
                 _normalize_campaign_create(self.raw, campaign_operation)
+
+        _assert_mutation_targets_customer(customer_id, operation_list)
+
         try:
             return service.mutate(
                 customer_id=customer_id,
@@ -203,6 +238,78 @@ def _mutate_method_name(service_name: str) -> str:
     base = service_name.removesuffix("Service")
     snake = re.sub(r"(?<!^)(?=[A-Z])", "_", base).lower()
     return f"mutate_{snake}s"
+
+
+def _customer_id_from_resource_name(resource_name: str) -> str | None:
+    """Extract the owning customer from a customer-scoped resource name."""
+    import re
+
+    match = re.match(r"^customers/(\d+)/", str(resource_name).strip())
+    return match.group(1) if match else None
+
+
+def _mutation_target_resource_names(operation: Any) -> list[str]:
+    """Return update/remove target resource names from a Google Ads operation.
+
+    Handles both normal resource-specific operations (CampaignOperation,
+    AdGroupOperation, ...) and GoogleAdsService ``MutateOperation`` wrappers.
+    Create operations intentionally return no target because they do not yet
+    have a resource name; their request customer_id still defines the account
+    in which the resource is created.
+    """
+    pb = getattr(operation, "_pb", None)
+    if pb is None:
+        return []
+
+    try:
+        selected = pb.WhichOneof("operation")
+    except (ValueError, AttributeError):
+        return []
+
+    if not selected:
+        return []
+    if selected == "remove":
+        value = getattr(operation, "remove", None)
+        return [str(value)] if value else []
+    if selected == "update":
+        updated = getattr(operation, "update", None)
+        resource_name = getattr(updated, "resource_name", None)
+        return [str(resource_name)] if resource_name else []
+
+    nested = getattr(operation, selected, None)
+    if nested is None:
+        return []
+    return _mutation_target_resource_names(nested)
+
+
+def _assert_mutation_targets_customer(
+    customer_id: str,
+    operations: Iterable[Any],
+) -> None:
+    """Block update/remove operations targeting a different customer.
+
+    An MCC credential can legitimately access many child accounts. The API
+    request's customer_id therefore is not enough isolation by itself: every
+    mutation target must also belong to that same customer. This guard executes
+    before any Google Ads mutate RPC and catches mixed-client operation lists.
+    """
+    customer = normalize_customer_id(customer_id)
+    mismatches: list[str] = []
+
+    for operation in operations:
+        for resource_name in _mutation_target_resource_names(operation):
+            owner = _customer_id_from_resource_name(resource_name)
+            if owner is not None and owner != customer:
+                mismatches.append(resource_name)
+
+    if mismatches:
+        preview = ", ".join(mismatches[:3])
+        if len(mismatches) > 3:
+            preview += f", ... (+{len(mismatches) - 3} more)"
+        raise GoogleAdsMcpError(
+            f"Cross-customer mutation blocked: request targets customer {customer}, "
+            f"but operation target(s) belong to another customer: {preview}"
+        )
 
 
 def _normalize_campaign_create(client, operation) -> None:
