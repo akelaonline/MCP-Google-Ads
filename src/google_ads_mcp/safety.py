@@ -37,6 +37,7 @@ _SENSITIVE_TOOLS = {
     "retract_conversion",
     "restate_conversion_value",
     "accept_manager_link",
+    "invite_manager_link",
     "create_customer_client",
     "invite_account_user",
     "update_user_access_role",
@@ -45,6 +46,10 @@ _SENSITIVE_TOOLS = {
 
 _DESTRUCTIVE_TOOLS = {
     "end_experiment",
+    "decline_manager_link",
+    "unlink_manager",
+    "cancel_manager_link_invitation",
+    "move_manager_link",
     "revoke_user_access_invitation",
 }
 
