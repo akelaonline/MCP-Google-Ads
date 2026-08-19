@@ -31,6 +31,7 @@ class RiskLevel(str, Enum):
 
 
 _SENSITIVE_TOOLS = {
+    # First-party/customer data.
     "upload_customer_match_members",
     "upload_customer_match_members_data_manager",
     "create_data_manager_customer_match_list",
@@ -39,29 +40,49 @@ _SENSITIVE_TOOLS = {
     "upload_offline_conversion",
     "retract_conversion",
     "restate_conversion_value",
+    # Account access and hierarchy.
     "accept_manager_link",
     "invite_manager_link",
     "create_customer_client",
     "invite_account_user",
     "update_user_access_role",
     "submit_batch_job",
+    # Billing identity.
     "create_billing_setup",
+    # External product / creator connections.
+    "create_product_link",
+    "accept_product_link_invitation",
+    "request_youtube_video_link",
+    "accept_youtube_video_link",
+    # Persistent automated account policy.
+    "set_recommendation_subscription",
+    # YouTube publishing through the Ads identity.
+    "upload_youtube_video",
+    "update_youtube_video_upload",
 }
 
 _DESTRUCTIVE_TOOLS = {
     "end_experiment",
+    # Audience data/list destruction.
     "delete_data_manager_customer_match_list",
     "remove_customer_match_members_data_manager",
     "remove_all_customer_match_members_data_manager",
+    # MCC/access destruction.
     "decline_manager_link",
     "unlink_manager",
     "cancel_manager_link_invitation",
     "move_manager_link",
     "revoke_user_access_invitation",
+    # Billing/account-budget destruction.
     "cancel_pending_billing_setup",
     "end_account_budget",
     "remove_future_account_budget",
     "cancel_pending_account_budget_proposal",
+    # Product/creator invitation destruction.
+    "reject_product_link_invitation",
+    "revoke_product_link_invitation",
+    "reject_youtube_video_link",
+    "revoke_youtube_video_link_request",
 }
 
 _SPEND_TOOLS = {
@@ -85,11 +106,13 @@ _SPEND_TOOLS = {
     "create_data_exclusion",
     "create_account_budget",
     "update_account_budget",
+    "create_smart_campaign",
 }
 
 _SPEND_PAYLOAD_KEYS = {
     "daily_amount",
     "new_daily_amount",
+    "daily_budget",
     "cpc_bid",
     "new_cpc_bid",
     "bid_modifier",
