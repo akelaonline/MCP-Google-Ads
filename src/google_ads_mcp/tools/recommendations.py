@@ -6,7 +6,6 @@ import proto
 
 from ..context import AppContext
 from ..errors import GoogleAdsMcpError, format_google_ads_exception
-from ..helpers import normalize_customer_id
 
 
 def register(mcp, ctx: AppContext) -> None:
@@ -108,20 +107,22 @@ def register(mcp, ctx: AppContext) -> None:
     @mcp.tool()
     def apply_recommendation(customer_id: str, resource_name: str) -> dict:
         """Propose applying a Google Ads recommendation by resource_name."""
-        if not resource_name.strip():
-            raise ValueError("resource_name must not be empty.")
+        resource = ctx.client.assert_resource_name_customer(
+            customer_id,
+            resource_name,
+            field_name="recommendation resource_name",
+        )
+        customer = ctx.client.assert_customer_allowed(customer_id)
         from google.ads.googleads.errors import GoogleAdsException
-
-        customer_id_norm = normalize_customer_id(customer_id)
 
         def execute():
             client = ctx.client.raw
             service = client.get_service("RecommendationService")
             operation = client.get_type("ApplyRecommendationOperation")
-            operation.resource_name = resource_name
+            operation.resource_name = resource
             try:
                 return service.apply_recommendation(
-                    customer_id=customer_id_norm,
+                    customer_id=customer,
                     operations=[operation],
                     partial_failure=False,
                 )
@@ -130,20 +131,22 @@ def register(mcp, ctx: AppContext) -> None:
 
         return ctx.safety.propose(
             tool_name="apply_recommendation",
-            customer_id=customer_id,
-            description=f"Apply recommendation {resource_name}",
-            payload={"resource_name": resource_name},
+            customer_id=customer,
+            description=f"Apply recommendation {resource}",
+            payload={"resource_name": resource},
             execute=execute,
         )
 
     @mcp.tool()
     def dismiss_recommendation(customer_id: str, resource_name: str) -> dict:
         """Propose dismissing a Google Ads recommendation by resource_name."""
-        if not resource_name.strip():
-            raise ValueError("resource_name must not be empty.")
+        resource = ctx.client.assert_resource_name_customer(
+            customer_id,
+            resource_name,
+            field_name="recommendation resource_name",
+        )
+        customer = ctx.client.assert_customer_allowed(customer_id)
         from google.ads.googleads.errors import GoogleAdsException
-
-        customer_id_norm = normalize_customer_id(customer_id)
 
         def execute():
             client = ctx.client.raw
@@ -151,10 +154,10 @@ def register(mcp, ctx: AppContext) -> None:
             operation = client.get_type(
                 "DismissRecommendationRequest.DismissRecommendationOperation"
             )
-            operation.resource_name = resource_name
+            operation.resource_name = resource
             try:
                 return service.dismiss_recommendation(
-                    customer_id=customer_id_norm,
+                    customer_id=customer,
                     operations=[operation],
                     partial_failure=False,
                 )
@@ -163,8 +166,8 @@ def register(mcp, ctx: AppContext) -> None:
 
         return ctx.safety.propose(
             tool_name="dismiss_recommendation",
-            customer_id=customer_id,
-            description=f"Dismiss recommendation {resource_name}",
-            payload={"resource_name": resource_name},
+            customer_id=customer,
+            description=f"Dismiss recommendation {resource}",
+            payload={"resource_name": resource},
             execute=execute,
         )
