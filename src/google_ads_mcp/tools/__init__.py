@@ -28,6 +28,7 @@ from . import (
     reporting,
     shared_sets,
     smart_bidding_controls,
+    smart_campaigns,
     targeting,
 )
 
@@ -40,6 +41,7 @@ ALL_MODULES = [
     billing,
     campaigns,
     campaign_types,
+    smart_campaigns,
     budgets,
     bidding,
     smart_bidding_controls,
