@@ -77,10 +77,10 @@ A campaign operation for customer A cannot quietly carry an asset/campaign/ad-gr
 resource from customer B even when both are accessible through the same manager credential.
 
 Read isolation is also enforced for MCC hierarchy/link surfaces. When a deployment allowlist
-is configured, `customer_client` and `customer_client_link` rows outside that allowlist are
-filtered before they are returned, including through raw GAQL. If a hierarchy/link query omits
-the field needed to identify the referenced child customer safely, it fails closed instead of
-returning ambiguous cross-tenant metadata.
+is configured, `customer_client`, `customer_client_link`, and `customer_manager_link` rows
+outside that allowlist are filtered before they are returned, including through raw GAQL.
+If a hierarchy/link query omits the field needed to identify the referenced customer safely,
+it fails closed instead of returning ambiguous cross-tenant metadata.
 
 The one intentional mutation exception is manager/client linking. A
 `CustomerClientLinkService` CREATE may reference the second customer, but that customer must
@@ -167,9 +167,9 @@ Risk classes:
 - `sensitive`
 
 Delivery-changing operations such as keyword creation/match changes/negatives,
-location/language/placement targeting, audience/topic attachment and conversion-biddability
-changes are classified conservatively as `spend` even when their payload contains no explicit
-currency amount.
+location/language/placement targeting, audience/topic attachment, conversion-biddability,
+live asset attachment, and editing an existing live RSA are classified conservatively as
+`spend` even when their payload contains no explicit currency amount.
 
 Even if global auto-approve is enabled, high-risk classes need their own explicit opt-in:
 
@@ -181,8 +181,8 @@ GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
 ```
 
 For live accounts, keeping all auto-approve values `false` is the conservative default.
-Normal creative/resource preparation such as callouts and sitelinks remains `standard` by
-design.
+Resource-only preparation and ads explicitly created `PAUSED` can remain `standard`; helpers
+that create **and attach** an asset to live delivery are `spend`.
 
 If Google/network execution fails after confirmation, the proposal remains available for
 retry and keeps the same action ID in audit history.
