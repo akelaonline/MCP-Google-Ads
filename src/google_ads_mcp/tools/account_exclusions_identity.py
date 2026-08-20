@@ -1,4 +1,4 @@
-"""Account-level exclusions, identity verification, and SKAd schema controls for API v25."""
+"""Account-level exclusions, identity verification, and SKAd schema visibility for API v25."""
 
 from __future__ import annotations
 
@@ -76,7 +76,9 @@ def register(mcp, ctx: AppContext) -> None:
             raise ValueError("criterion must contain exactly one exclusion type.")
         kind = next(iter(criterion))
         if kind not in _NEGATIVE_CRITERIA:
-            raise ValueError(f"Unsupported criterion type {kind!r}; use one of {sorted(_NEGATIVE_CRITERIA)}.")
+            raise ValueError(
+                f"Unsupported criterion type {kind!r}; use one of {sorted(_NEGATIVE_CRITERIA)}."
+            )
         raw = ctx.client.raw
         operation = raw.get_type("CustomerNegativeCriterionOperation")
         try:
@@ -84,11 +86,15 @@ def register(mcp, ctx: AppContext) -> None:
         except Exception as ex:
             raise ValueError(f"Invalid {kind} criterion payload: {ex}") from ex
 
-        # The only customer-scoped nested reference is the shared negative-keyword list.
         if kind == "negative_keyword_list":
             shared_set = getattr(operation.create.negative_keyword_list, "shared_set", "")
             if shared_set:
-                _owned(ctx, customer, shared_set, "criterion.negative_keyword_list.shared_set")
+                _owned(
+                    ctx,
+                    customer,
+                    shared_set,
+                    "criterion.negative_keyword_list.shared_set",
+                )
 
         def execute():
             return ctx.client.mutate(
@@ -176,7 +182,11 @@ def register(mcp, ctx: AppContext) -> None:
                 "start_identity_verification",
                 request=request,
             )
-            return {"customer_id": customer, "verification_program": program, "started": True}
+            return {
+                "customer_id": customer,
+                "verification_program": program,
+                "started": True,
+            }
 
         return ctx.safety.propose(
             tool_name="start_identity_verification",
@@ -188,10 +198,11 @@ def register(mcp, ctx: AppContext) -> None:
 
     @mcp.tool()
     def list_customer_skad_network_conversion_value_schemas(customer_id: str) -> dict:
-        """List SKAdNetwork conversion-value schema resources available to the account.
+        """List SKAdNetwork conversion-value schemas visible to the account.
 
-        Detailed mappings are returned when selectable by the linked app-attribution
-        integration; raw GAQL remains available for any newly added v25 subfields.
+        Google Ads API v25 documents the resource and nested schema fields as
+        output-only. This tool is intentionally read-only; no generic SKAd schema
+        writer is exposed by the MCP.
         """
         rows = ctx.client.search(
             customer_id,
@@ -203,47 +214,8 @@ def register(mcp, ctx: AppContext) -> None:
             ORDER BY customer_sk_ad_network_conversion_value_schema.resource_name
             """,
         )
-        return {"skad_network_conversion_value_schemas": rows, "count": len(rows)}
-
-    @mcp.tool()
-    def update_customer_skad_network_conversion_value_schema(
-        customer_id: str,
-        resource_name: str,
-        schema: dict,
-        validate_only: bool = False,
-    ) -> dict:
-        """Propose the v25 SKAdNetwork schema update operation.
-
-        This advanced endpoint is primarily useful to eligible app-attribution
-        integrations. ``schema`` uses the protobuf-JSON shape of
-        CustomerSkAdNetworkConversionValueSchema.schema. Google validates linked
-        app/account eligibility and schema semantics server-side.
-        """
-        customer = ctx.client.assert_customer_allowed(customer_id)
-        resource = _owned(ctx, customer, resource_name, "resource_name")
-        if not isinstance(schema, dict) or not schema:
-            raise ValueError("schema must be a non-empty protobuf-JSON object.")
-        raw = ctx.client.raw
-        operation = raw.get_type("CustomerSkAdNetworkConversionValueSchemaOperation")
-        operation.update.resource_name = resource
-        try:
-            json_format.ParseDict(schema, operation.update.schema._pb, ignore_unknown_fields=False)
-        except Exception as ex:
-            raise ValueError(f"Invalid SKAdNetwork schema payload: {ex}") from ex
-
-        def execute():
-            return ctx.client.mutate(
-                "CustomerSkAdNetworkConversionValueSchemaService",
-                customer,
-                [operation],
-                operations_field="operation",
-                validate_only=validate_only,
-            )
-
-        return ctx.safety.propose(
-            tool_name="update_customer_skad_network_conversion_value_schema",
-            customer_id=customer,
-            description=f"Update SKAdNetwork conversion-value schema {resource}",
-            payload={"resource_name": resource, "schema": schema, "validate_only": validate_only},
-            execute=execute,
-        )
+        return {
+            "skad_network_conversion_value_schemas": rows,
+            "count": len(rows),
+            "mutation_surface": "not_exposed",
+        }
