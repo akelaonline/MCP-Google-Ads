@@ -86,7 +86,8 @@ When configured:
 - customer-scoped reads outside the list are blocked;
 - writes outside the list are blocked;
 - account discovery is filtered;
-- MCC `customer_client` / `customer_client_link` rows are filtered to allowed child accounts;
+- MCC `customer_client`, `customer_client_link`, and `customer_manager_link` rows
+  are filtered to allowed referenced accounts;
 - nested resource references in mutations are inspected for cross-customer mixing.
 
 If the MCP needs to query an MCC hierarchy, include the manager customer itself in
@@ -95,11 +96,17 @@ the allowlist as well.
 ### Raw GAQL against MCC hierarchy resources
 
 `run_gaql_query()` uses the same central isolation path. In an allowlisted
-deployment, raw `customer_client` queries must select `customer_client.id`, and
-raw `customer_client_link` queries must select `customer_client_link.client_customer`.
-Those fields are needed to prove which child customer owns each returned row. If
-they are omitted, the query fails closed rather than returning unfilterable
-cross-client metadata.
+deployment:
+
+- `FROM customer_client` queries must select `customer_client.id`;
+- `FROM customer_client_link` queries must select
+  `customer_client_link.client_customer`;
+- `FROM customer_manager_link` queries must select
+  `customer_manager_link.manager_customer`.
+
+Those fields are needed to prove which referenced Google Ads customer owns each
+returned relationship row. If they are omitted, the query fails closed rather
+than returning unfilterable cross-client metadata.
 
 ### MCC link operations
 
@@ -159,8 +166,10 @@ GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
 
 0.16 classifies delivery-changing actions conservatively. Adding enabled keywords,
 changing match types/negatives, location/language/placement targeting,
-audience/topic attachment and conversion-biddability changes are `spend` risk,
-not ordinary `standard` writes.
+audience/topic attachment, conversion-biddability changes, attaching newly created
+campaign assets, and editing an existing RSA are `spend` risk rather than ordinary
+`standard` writes. Ads explicitly created `PAUSED` and harmless administration such
+as renaming a campaign can remain `standard`.
 
 ## 6. Audit DB and durable pending actions
 
@@ -330,9 +339,14 @@ Recommended sequence:
 3. switch to confirmation mode and propose a harmless write, then cancel;
 4. propose a harmless write, then confirm;
 5. propose a write, restart the MCP, then confirm the same pending ID;
-6. when using an MCC, deliberately query hierarchy rows outside the allowlist and verify they are filtered;
+6. when using an MCC, deliberately query `customer_client`,
+   `customer_client_link`, and `customer_manager_link` relationships outside the
+   allowlist and verify they are filtered;
 7. deliberately try a campaign resource from another allowed customer and verify it is blocked;
-8. separately test the legitimate manager/client-link flow if your deployment uses it.
+8. separately test the legitimate manager/client-link flow if your deployment uses it;
+9. with standard auto-approve enabled but spend auto-approve disabled, verify a
+   PAUSED ad can auto-approve while live asset attachment/RSA editing remains
+   pending confirmation.
 
 ## Troubleshooting
 
@@ -355,10 +369,14 @@ supposed to control and add only the intended customer.
 
 ### Raw MCC GAQL says an ownership field must be selected
 
-Add `customer_client.id` when querying `FROM customer_client`, or
-`customer_client_link.client_customer` when querying `FROM customer_client_link`.
-The field is required only so the MCP can enforce the configured child-account
-allowlist on every returned row.
+Select the relevant relationship owner:
+
+- `customer_client.id` for `FROM customer_client`;
+- `customer_client_link.client_customer` for `FROM customer_client_link`;
+- `customer_manager_link.manager_customer` for `FROM customer_manager_link`.
+
+The field is required only so the MCP can enforce the configured account allowlist
+on every returned row.
 
 ### Write says the MCP is running in read-only mode
 
