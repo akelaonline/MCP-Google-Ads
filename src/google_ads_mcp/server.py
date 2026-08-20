@@ -13,20 +13,27 @@ from .invocation import install_tool_tracking
 from .logging_config import setup_logging
 
 MCP_INSTRUCTIONS = """
-Google Ads MCP — full read/write account management.
+Google Ads MCP — Google Ads account management and reporting.
 
-Safety model: every write tool does NOT touch the account immediately. It
+Safety model: every normal write tool does NOT touch the account immediately. It
 returns a preview and a pending_action_id. Call confirm_pending_action(action_id)
 to execute it, or cancel_pending_action(action_id) to discard it. Always show
 the user the preview before confirming unless they've explicitly asked you to
 proceed without asking each time.
 
+A deployment may run with GOOGLE_ADS_MCP_READ_ONLY=true. In that mode reads,
+reports, GAQL, pending inspection and cancellation remain available, while new
+write proposals and confirm_pending_action are blocked centrally. Do not tell the
+user a write was proposed or executed when the server reports read-only mode.
+
 Pending confirmations are persisted in SQLite. The original MCP arguments are
 encrypted at rest, so a pending action can still be confirmed after a normal
-server/process restart using the same pending_action_id.
+server/process restart using the same pending_action_id, unless the instance has
+subsequently been switched to read-only mode.
 
 For reporting, prefer the pre-built tools (get_campaign_performance, etc.) and
-fall back to run_gaql_query for anything custom.
+fall back to run_gaql_query for anything custom. Deployment customer allowlists
+also apply to raw GAQL, including MCC hierarchy/link row filtering.
 """
 
 # FastMCP may dispatch synchronous tool calls concurrently. Confirm and cancel
