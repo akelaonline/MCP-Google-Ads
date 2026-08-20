@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "google-ads-mcp"
-version = "0.15.0"
-description = "Full read/write Model Context Protocol server for Google Ads, with human-in-the-loop safety and audit logging."
+version = "0.16.0"
+description = "Production-grade read/write MCP server for Google Ads API v25 with confirmation, audit, durable replay, and MCC customer isolation."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -31,6 +31,7 @@ google-ads-mcp = "google_ads_mcp.server:main"
 [project.urls]
 Homepage = "https://github.com/akelaonline/MCP-Google-Ads"
 Repository = "https://github.com/akelaonline/MCP-Google-Ads"
+Changelog = "https://github.com/akelaonline/MCP-Google-Ads/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]
