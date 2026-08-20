@@ -5,6 +5,7 @@ import pytest
 from google_ads_mcp.client import GoogleAdsClientWrapper, _gaql_from_resource
 from google_ads_mcp.config import Settings
 from google_ads_mcp.errors import GoogleAdsMcpError
+from google_ads_mcp.scoped_client import ScopedGoogleAdsClientWrapper
 
 
 def _settings() -> Settings:
@@ -79,8 +80,44 @@ def test_customer_client_link_rows_filter_by_linked_client():
     assert filtered[0]["customer_client_link"]["client_customer"] == "customers/2222222222"
 
 
+def test_customer_manager_link_rows_filter_by_linked_manager():
+    client = ScopedGoogleAdsClientWrapper(_settings())
+    rows = [
+        {
+            "customer_manager_link": {
+                "manager_customer": "customers/1111111111",
+                "status": "ACTIVE",
+            }
+        },
+        {
+            "customer_manager_link": {
+                "manager_customer": "customers/3333333333",
+                "status": "ACTIVE",
+            }
+        },
+    ]
+    filtered = client._filter_allowed_hierarchy_rows(
+        "SELECT customer_manager_link.manager_customer FROM customer_manager_link",
+        rows,
+    )
+    assert len(filtered) == 1
+    assert filtered[0]["customer_manager_link"]["manager_customer"] == "customers/1111111111"
+
+
+def test_customer_manager_link_query_without_manager_fails_closed():
+    client = ScopedGoogleAdsClientWrapper(_settings())
+    with pytest.raises(
+        GoogleAdsMcpError,
+        match="must select customer_manager_link.manager_customer",
+    ):
+        client._filter_allowed_hierarchy_rows(
+            "SELECT customer_manager_link.status FROM customer_manager_link",
+            [{"customer_manager_link": {"status": "ACTIVE"}}],
+        )
+
+
 def test_non_hierarchy_rows_are_unchanged():
-    client = GoogleAdsClientWrapper(_settings())
+    client = ScopedGoogleAdsClientWrapper(_settings())
     rows = [{"campaign": {"id": 7, "name": "Search"}}]
     assert client._filter_allowed_hierarchy_rows(
         "SELECT campaign.id, campaign.name FROM campaign", rows
