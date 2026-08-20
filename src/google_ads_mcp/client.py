@@ -301,6 +301,7 @@ _IRREGULAR_MUTATE_METHODS: dict[str, str] = {
     "AccountBudgetProposalService": "mutate_account_budget_proposal",
     "BillingSetupService": "mutate_billing_setup",
     "CustomerClientLinkService": "mutate_customer_client_link",
+    "CustomerManagerLinkService": "mutate_customer_manager_link",
     "CustomerUserAccessInvitationService": "mutate_customer_user_access_invitation",
     "CustomerUserAccessService": "mutate_customer_user_access",
     "CustomerSkAdNetworkConversionValueSchemaService": "mutate_customer_sk_ad_network_conversion_value_schema",

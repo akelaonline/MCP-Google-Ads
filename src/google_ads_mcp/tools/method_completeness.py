@@ -110,8 +110,6 @@ def register(mcp, ctx: AppContext) -> None:
             )
             return proto.Message.to_dict(response, preserving_proto_field_name=True)
 
-        # Use the established sensitive ProductLink safety category. Invocation
-        # tracking preserves this public MCP tool name separately for durable replay.
         return ctx.safety.propose(
             tool_name="create_product_link",
             customer_id=customer,
@@ -168,68 +166,24 @@ def register(mcp, ctx: AppContext) -> None:
         return proto.Message.to_dict(response, preserving_proto_field_name=True)
 
     @mcp.tool()
-    def update_customer_skad_network_conversion_value_schema_advanced(
-        customer_id: str,
-        resource_name: str,
-        schema: dict,
-        validate_only: bool = False,
-        enable_warnings: bool = False,
-    ) -> dict:
-        """Propose the full v25 singular SKAdNetwork schema mutation request.
+    def get_customer_skad_network_schema_capability() -> dict:
+        """Explain the conservative SKAdNetwork coverage used by this release.
 
-        This is equivalent to the convenience SKAd tool but also exposes Google's
-        ``enable_warnings`` request flag. ``schema`` uses protobuf JSON for the
-        CustomerSkAdNetworkConversionValueSchema.schema message.
+        The actual schema rows are exposed by
+        ``list_customer_skad_network_conversion_value_schemas`` in the account
+        exclusions/identity module. This helper exists only to make the deliberate
+        write boundary explicit without registering a duplicate list tool.
         """
-        customer = ctx.client.assert_customer_allowed(customer_id)
-        resource = ctx.client.assert_resource_name_customer(
-            customer, resource_name, field_name="resource_name"
-        )
-        if not isinstance(schema, dict) or not schema:
-            raise ValueError("schema must be a non-empty protobuf-JSON object.")
-        raw = ctx.client.raw
-        operation = raw.get_type("CustomerSkAdNetworkConversionValueSchemaOperation")
-        operation.update.resource_name = resource
-        try:
-            json_format.ParseDict(
-                schema,
-                operation.update.schema._pb,
-                ignore_unknown_fields=False,
-            )
-        except Exception as ex:
-            raise ValueError(f"Invalid SKAdNetwork schema payload: {ex}") from ex
-
-        request = raw.get_type(
-            "MutateCustomerSkAdNetworkConversionValueSchemaRequest"
-        )
-        request.customer_id = customer
-        request.operation.CopyFrom(operation)
-        request.validate_only = bool(validate_only)
-        request.enable_warnings = bool(enable_warnings)
-        service = ctx.client.service(
-            "CustomerSkAdNetworkConversionValueSchemaService"
-        )
-
-        def execute():
-            response = _call(
-                service,
-                "mutate_customer_sk_ad_network_conversion_value_schema",
-                request=request,
-            )
-            return proto.Message.to_dict(response, preserving_proto_field_name=True)
-
-        return ctx.safety.propose(
-            tool_name="update_customer_skad_network_conversion_value_schema",
-            customer_id=customer,
-            description=(
-                f"Update SKAdNetwork schema {resource} "
-                f"(warnings={bool(enable_warnings)})"
+        return {
+            "service": "CustomerSkAdNetworkConversionValueSchemaService",
+            "api_version": "v25",
+            "read_visibility": "supported_via_gaql",
+            "public_rpc": "MutateCustomerSkAdNetworkConversionValueSchema",
+            "mutation_surface": "not_exposed",
+            "coverage_status": "specialized",
+            "reason": (
+                "The v25 public resource reference marks schema as output-only, so "
+                "a dict-to-protobuf mutation would be an undocumented production "
+                "capability."
             ),
-            payload={
-                "resource_name": resource,
-                "schema": schema,
-                "validate_only": bool(validate_only),
-                "enable_warnings": bool(enable_warnings),
-            },
-            execute=execute,
-        )
+        }
