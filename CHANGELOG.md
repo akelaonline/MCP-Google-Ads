@@ -8,6 +8,7 @@ Google Ads MCP follows Semantic Versioning. Detailed release notes for productio
 - Audited Google Ads API v25 service coverage matrix in `docs/V25_SERVICE_COVERAGE.md`.
 - Durable pending confirmations across process restart using encrypted invocation arguments in SQLite.
 - Explicit deployment key support through `GOOGLE_ADS_MCP_PENDING_ENCRYPTION_KEY`.
+- Central reporting-only/emergency-freeze mode through `GOOGLE_ADS_MCP_READ_ONLY=true`; reads/audit inspection remain available while new proposals and pending confirmations are blocked.
 - Full manager/client link lifecycle with narrow, allowlist-aware cross-account linking support.
 - ExperimentArm lifecycle and atomic two-arm `traffic_split` updates preserving Google's total=100 invariant.
 - Compatibility alias `update_experiment_traffic_split` for the preferred `update_experiment_arm_traffic_splits` tool.
@@ -18,6 +19,7 @@ Google Ads MCP follows Semantic Versioning. Detailed release notes for productio
 
 ### Fixed
 - Recursive customer isolation now inspects nested customer-scoped references in CREATE, UPDATE and REMOVE operations.
+- MCC hierarchy/link reads now honor the deployment allowlist at row level for `customer_client` and `customer_client_link`, including raw GAQL; unfilterable hierarchy queries fail closed.
 - Legitimate `CustomerClientLinkService` CREATE no longer gets incorrectly blocked by the recursive guard when both accounts are in scope.
 - Durable replay now stores/replays the **public MCP tool name** separately from internal safety aliases, fixing restart confirmation for shared risk helpers.
 - ProductLinkInvitation no longer permits an indirectly referenced Google Ads customer to bypass the deployment allowlist.
@@ -29,6 +31,7 @@ Google Ads MCP follows Semantic Versioning. Detailed release notes for productio
 ### Safety
 - Existing `standard`, `spend`, `destructive` and `sensitive` risk classes remain in force.
 - High-risk classes remain confirmation-gated unless separately opted into auto-approve.
+- `GOOGLE_ADS_MCP_READ_ONLY=true` is a central fail-closed kill switch and also blocks confirmation of pending actions created before read-only was enabled.
 - The new delivery-risk classifications only change unattended behavior for deployments that explicitly enabled global standard auto-approve; `GOOGLE_ADS_MCP_AUTO_APPROVE=false` behavior is unchanged.
 - Normal creative/resource preparation such as callouts and sitelinks remains `standard` by design.
 - Pending invocation arguments required for restart replay are encrypted at rest.
@@ -42,8 +45,8 @@ Google Ads MCP follows Semantic Versioning. Detailed release notes for productio
 - GitHub Actions workflow remains removed; validation is intentionally local/manual for this repository.
 
 ### Validation note
-- Source and contracts were reviewed against Google Ads API v25 and regression tests were added for customer isolation, durable alias replay, atomic experiment splitting, Asset Generation registration/contracts and delivery-risk classification.
-- The completion environment did not have a runnable Google Ads Python dependency stack or live Google Ads credentials, so the full local `pytest`/Ruff/smoke suite and live-account E2E are still required before declaring a specific deployment validated.
+- Source and contracts were reviewed against Google Ads API v25 and regression tests were added for customer isolation, MCC read filtering, durable alias replay, read-only blocking, confirm/cancel serialization, atomic experiment splitting, Asset Generation registration/contracts and delivery-risk classification.
+- The completion environment did not have a runnable Google Ads Python/FastMCP/Ruff dependency stack or live Google Ads credentials, so the full local `pytest`/Ruff/smoke suite and live-account E2E are still required before declaring a specific deployment validated.
 
 See `docs/RELEASE_0.16.0.md`.
 
