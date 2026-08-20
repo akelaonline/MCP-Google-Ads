@@ -4,6 +4,23 @@ Google Ads mutations can change live spend, account access, billing, audiences a
 conversion data. Google Ads MCP therefore treats safety as a central platform
 property rather than a convention individual tools are expected to remember.
 
+## Operating modes
+
+The safety layer supports three explicit modes:
+
+1. **Read-only / emergency freeze** — `GOOGLE_ADS_MCP_READ_ONLY=true`. Reads,
+   reports, GAQL and audit inspection remain available. New write proposals and
+   `confirm_pending_action()` are blocked centrally. Existing pending actions may
+   still be listed or cancelled.
+2. **Write-capable with confirmation** — `GOOGLE_ADS_MCP_READ_ONLY=false` and
+   `GOOGLE_ADS_MCP_AUTO_APPROVE=false`. Recommended for live accounts.
+3. **Controlled unattended automation** — global auto-approve may be enabled, but
+   spend/destructive/sensitive classes still require separate explicit opt-ins.
+
+Read-only is a real kill switch, not an agent instruction. If the server restarts
+with `GOOGLE_ADS_MCP_READ_ONLY=true`, confirmation of a pending action created
+before that restart is also blocked.
+
 ## Default write flow
 
 Every normal mutating tool goes through the shared `SafetyLayer`:
@@ -11,6 +28,10 @@ Every normal mutating tool goes through the shared `SafetyLayer`:
 ```text
 MCP tool
   |
+  v
+read-only enabled? -- yes --> blocked before mutation
+  |
+  no
   v
 validate customer + resource ownership
   |
@@ -33,13 +54,20 @@ SafetyLayer.propose(...)
                        SQLite audit history
 ```
 
-Recommended production default:
+Recommended production default for a write-capable live account:
 
 ```dotenv
+GOOGLE_ADS_MCP_READ_ONLY=false
 GOOGLE_ADS_MCP_AUTO_APPROVE=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_SPEND=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
+```
+
+For a reporting-only instance or emergency freeze:
+
+```dotenv
+GOOGLE_ADS_MCP_READ_ONLY=true
 ```
 
 ## Customer isolation
@@ -135,6 +163,9 @@ GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
 ```
 
+`GOOGLE_ADS_MCP_READ_ONLY=true` overrides all auto-approve choices and blocks the
+write path completely.
+
 ## Pending actions
 
 A write that requires confirmation returns data similar to:
@@ -159,6 +190,8 @@ confirm_pending_action("7f3a2c1e9abc")
 cancel_pending_action("7f3a2c1e9abc")
 list_pending_actions()
 ```
+
+In read-only mode, list/cancel remain allowed while confirmation fails closed.
 
 ### Confirm/cancel serialization
 
@@ -353,7 +386,8 @@ Every new mutating tool must:
 8. use atomic behavior when several related resources must move together;
 9. add real v25 protobuf contract/regression coverage for complex write paths;
 10. preserve MCC read isolation when adding hierarchy/link reports;
-11. never weaken cross-customer isolation to make one special workflow easier —
+11. respect the central read-only policy rather than inventing tool-local bypasses;
+12. never weaken cross-customer isolation to make one special workflow easier —
     use a narrow validated exception instead.
 
 See also [`V25_SERVICE_COVERAGE.md`](V25_SERVICE_COVERAGE.md).
