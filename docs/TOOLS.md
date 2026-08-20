@@ -4,6 +4,14 @@ This file is the **living operator index** for Google Ads MCP. It intentionally 
 
 For the authoritative service-by-service API coverage map, use [`V25_SERVICE_COVERAGE.md`](V25_SERVICE_COVERAGE.md). For production policy, use [`SAFETY.md`](SAFETY.md) and [`SETUP.md`](SETUP.md). Specialized workflows are documented in [`AGENCY_TOOLS.md`](AGENCY_TOOLS.md) and [`BATCH_SMART_BIDDING.md`](BATCH_SMART_BIDDING.md).
 
+## Operating modes
+
+The MCP supports three deliberate deployment modes:
+
+1. **Read-only** — `GOOGLE_ADS_MCP_READ_ONLY=true`. Reporting, GAQL, audit inspection and pending cancellation remain available; new write proposals and pending confirmations are blocked centrally.
+2. **Write-capable with confirmation** — `GOOGLE_ADS_MCP_READ_ONLY=false` and `GOOGLE_ADS_MCP_AUTO_APPROVE=false`. Recommended for live accounts.
+3. **Controlled automation** — global auto-approve can be enabled, but `spend`, `destructive` and `sensitive` classes still require their own explicit opt-ins.
+
 ## Write behavior
 
 Normal mutations follow:
@@ -24,7 +32,7 @@ A typical write returns:
 
 Use `confirm_pending_action(action_id)` to execute, `cancel_pending_action(action_id)` to discard, `list_pending_actions()` to inspect proposals, and `get_audit_action(action_id)` to inspect all attempts for one action.
 
-With the built-in SQLite audit backend, pending actions are durable across process restarts when their public MCP invocation can be reconstructed. Invocation arguments are encrypted at rest. See `SAFETY.md`.
+With the built-in SQLite audit backend, pending actions are durable across process restarts when their public MCP invocation can be reconstructed. Invocation arguments are encrypted at rest. `confirm` and `cancel` are serialized inside one running MCP process to prevent double confirmation races. One running process should own one pending-action database; the SQLite store is not a distributed claim/lease system. See `SAFETY.md`.
 
 ## Accounts, MCC, access and links
 
@@ -47,13 +55,15 @@ Core operator surfaces include:
 
 When `GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS` is configured, reads and writes outside the deployment scope are blocked. Mutations recursively inspect customer-scoped resource references, including nested references in CREATE operations.
 
+MCC hierarchy/link reads are also filtered centrally. Rows from `customer_client` and `customer_client_link` that reference child customers outside the allowlist are removed before they are returned, including through raw GAQL. If a hierarchy/link query omits the field needed to identify the referenced child customer safely, the query fails closed rather than returning ambiguous cross-tenant metadata.
+
 Intentional cross-account manager/client linking is allowed only through the explicit linking path and only when the second customer also passes the deployment allowlist.
 
 ## Reporting and GAQL
 
 The MCP exposes focused reports for the common operator views plus a raw GAQL fallback. Coverage includes campaigns, ad groups, keywords, ads, search terms, devices, geography, assets, audiences, quality score, policy/disapproval, Shopping performance and change history.
 
-Use raw GAQL when a newly added selectable field does not yet deserve a dedicated convenience tool.
+Use raw GAQL when a newly added selectable field does not yet deserve a dedicated convenience tool. Deployment customer isolation still applies to raw GAQL.
 
 ## Campaigns and administration
 
@@ -128,6 +138,8 @@ The MCP covers common assets and the broader v25 asset-link graph:
 - status/remove operations where exposed
 - YouTube upload/status/update/remove where account eligibility permits
 
+Normal creative/resource preparation such as callouts and sitelinks remains `standard` risk by design. Asset attachments or status changes that alter live delivery may be classified more conservatively.
+
 Remote image fetching is SSRF-hardened: public HTTPS only, public DNS/IPs, redirect revalidation, MIME allowlist and bounded response size.
 
 ## Keywords, negatives and planning
@@ -142,6 +154,8 @@ Keyword operations include:
 - shared negative keyword lists
 - bulk operations
 
+Keyword creation, match-type changes and negative targeting are treated as `spend` risk because they can change delivery even without an explicit bid amount in the request.
+
 Planning includes:
 
 - keyword ideas
@@ -151,14 +165,15 @@ Planning includes:
 - Smart Campaign KeywordThemeConstant suggestions
 - Reach Planner v25 request coverage
 
-## Audiences, remarketing and Customer Match
+## Audiences, targeting and Customer Match
 
-Audience workflows include:
+Audience/targeting workflows include:
 
 - website remarketing lists
 - user-list attachment/detachment
 - affinity/in-market segments
 - topic targeting
+- location/language/placement targeting and exclusions
 - Audience / CustomAudience / CustomInterest resources
 - UserListCustomerType
 - RemarketingAction + tag/event snippets
@@ -166,7 +181,7 @@ Audience workflows include:
 - Data Manager Customer Match support
 - small synchronous UserDataService uploads
 
-Customer identifiers are kept out of normal mutation audit payloads; sensitive invocation arguments needed for durable replay are encrypted at rest.
+Live targeting changes are conservatively treated as `spend` risk. Customer identifiers are kept out of normal mutation audit payloads; sensitive invocation arguments needed for durable replay are encrypted at rest.
 
 ## Conversions and goals
 
@@ -182,7 +197,7 @@ Measurement coverage includes:
 - lifecycle/acquisition/retention/loyalty goal controls supported by v25
 - SKAdNetwork conversion-value schema controls
 
-v25 unified goal contracts are used; removed legacy lifecycle goal services are not referenced.
+v25 unified goal contracts are used; removed legacy lifecycle goal services are not referenced. Changes that alter whether a conversion/goal is biddable are treated as `spend` risk; first-party conversion uploads remain `sensitive`.
 
 ## Performance Max
 
@@ -213,9 +228,10 @@ Experiment coverage includes:
 - graduate
 - end
 - ExperimentArm list/create/update/remove
-- `update_experiment_traffic_split` for atomic two-arm split changes
+- `update_experiment_arm_traffic_splits` for atomic two-arm split changes
+- `update_experiment_traffic_split` as a compatibility alias
 
-The split helper updates both arms in a single request and validates the total=100 invariant before the Google Ads RPC.
+The split helper updates both arms in a single request and validates the total=100 invariant before the Google Ads RPC. Traffic-split changes are `spend` risk.
 
 ## Recommendations and batch operations
 
@@ -250,6 +266,8 @@ These tools do not fake entitlement. If the authenticated Google Ads account is 
 - `get_recent_audit_log(limit=20)`
 - `get_audit_action(action_id)`
 
+In read-only mode, list/audit/cancel remain available, while propose/confirm paths are blocked.
+
 ## Compatibility boundaries
 
 - Google Ads API target: **v25**
@@ -257,6 +275,7 @@ These tools do not fake entitlement. If the authenticated Google Ads account is 
 - Google Ads Python client: tested/pinned to the 31.x line
 - `stdio` is the recommended/default MCP transport
 - raw HTTP is blocked unless explicitly enabled behind an external authenticated/restricted boundary
+- one running process should own one `audit.db`
 - Merchant Center feed/catalog management remains outside this MCP
 - Google Business Profile administration remains outside this MCP
 
