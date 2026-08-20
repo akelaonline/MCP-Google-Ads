@@ -58,25 +58,37 @@ Before replacing a running production server, record the exact commit SHA that p
 
 ## Required local validation before restarting production
 
-Run:
+Preferred one-command gate:
 
 ```bash
-python scripts/smoke_test.py
-ruff check src tests scripts
-pytest -q
+.venv/bin/python scripts/validate_local.py
 ```
 
-Also exercise the real server-construction path explicitly:
+This runs, with the same Python interpreter used by the MCP:
+
+1. the isolated offline smoke test;
+2. Ruff over `src`, `tests`, and `scripts`;
+3. the complete pytest suite.
+
+It prints the Git SHA, MCP version, Python version, Google Ads client version, FastMCP version, Ruff version, and pytest version. A successful run ends with:
+
+```text
+LOCAL VALIDATION GREEN
+validated commit: <sha>
+validated version: 0.16.1
+```
+
+The smoke stage uses a temporary SQLite audit DB and forces read-only mode. It does not send Google Ads requests and does not write to the installation's production audit/pending database.
+
+Equivalent individual commands, useful when diagnosing a failure:
 
 ```bash
-python - <<'PY'
-from google_ads_mcp.server import build_server
-server = build_server()
-print("OK build_server", server)
-PY
+.venv/bin/python scripts/smoke_test.py
+.venv/bin/python -m ruff check src tests scripts
+.venv/bin/python -m pytest -q
 ```
 
-Do not replace the currently running production MCP if any of these commands fail.
+Do not replace the currently running production MCP if the validator exits non-zero.
 
 See [`RELEASE_0.16.1.md`](RELEASE_0.16.1.md) for the startup/isolation hotfix and [`VALIDATION_CHECKLIST.md`](VALIDATION_CHECKLIST.md) for the live-account validation sequence.
 
