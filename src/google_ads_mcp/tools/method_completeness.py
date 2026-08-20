@@ -1,15 +1,11 @@
-"""Method/parameter-completeness helpers for Google Ads API v25.
-
-These tools cover public RPC shapes that are easy to miss when a service is
-already represented by higher-level helpers: ProductLinkInvitation.Create,
-full IncentiveService.Fetch inputs, and SKAdNetwork mutation warnings.
-"""
+"""Method/parameter-completeness helpers for Google Ads API v25."""
 
 from __future__ import annotations
 
 import proto
 from google.protobuf import json_format
 
+from ..client import _customer_id_from_resource_name, _customer_scoped_resource_names
 from ..context import AppContext
 from ..errors import GoogleAdsMcpError, format_google_ads_exception
 
@@ -21,6 +17,15 @@ def _call(service, method_name: str, **kwargs):
         return getattr(service, method_name)(**kwargs)
     except GoogleAdsException as ex:
         raise GoogleAdsMcpError(format_google_ads_exception(ex)) from ex
+
+
+def _assert_referenced_customers_allowed(ctx: AppContext, request_customer: str, message) -> None:
+    """Permit intentional account-link references only inside deployment scope."""
+    for resource in _customer_scoped_resource_names(message):
+        owner = _customer_id_from_resource_name(resource)
+        if owner is None or owner == request_customer:
+            continue
+        ctx.client.assert_customer_allowed(owner)
 
 
 def register(mcp, ctx: AppContext) -> None:
@@ -38,13 +43,21 @@ def register(mcp, ctx: AppContext) -> None:
         Merchant Center / Merchant API and can only be accepted/rejected here.
 
         For Advertising Partner invitations, v25 requires
-        ``advertising_partner_properties.allowed_domain``. Google performs the
-        authoritative product-specific permission/field validation server-side.
+        ``advertising_partner_properties.allowed_domain``. Any invited Google Ads
+        customer must also be inside ``GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS`` when a
+        deployment allowlist is configured.
         """
         customer = ctx.client.assert_customer_allowed(customer_id)
         if not isinstance(invitation, dict) or not invitation:
-            raise ValueError("invitation must be a non-empty ProductLinkInvitation protobuf-JSON object.")
-        forbidden = {"product_link_invitation_id", "status", "type"} & set(invitation)
+            raise ValueError(
+                "invitation must be a non-empty ProductLinkInvitation protobuf-JSON object."
+            )
+        forbidden = {
+            "resource_name",
+            "product_link_invitation_id",
+            "status",
+            "type",
+        } & set(invitation)
         if forbidden:
             raise ValueError(
                 "Server/output fields cannot be supplied on invitation create: "
@@ -76,9 +89,7 @@ def register(mcp, ctx: AppContext) -> None:
         except Exception as ex:
             raise ValueError(f"Invalid ProductLinkInvitation payload: {ex}") from ex
 
-        # If the invitation references another Google Ads customer, it is a valid
-        # cross-account linking intent rather than a mixed-resource mutation. We do
-        # not force same-customer ownership here; Google enforces link permissions.
+        _assert_referenced_customers_allowed(ctx, customer, link_invitation)
         service = ctx.client.service("ProductLinkInvitationService")
 
         def execute():
@@ -130,7 +141,9 @@ def register(mcp, ctx: AppContext) -> None:
         if len(country) != 2 or not country.isalpha():
             raise ValueError("country_code must be a two-letter country code.")
         clean_email = str(email).strip() if email is not None else None
-        if clean_email is not None and (clean_email.count("@") != 1 or len(clean_email) > 320):
+        if clean_email is not None and (
+            clean_email.count("@") != 1 or len(clean_email) > 320
+        ):
             raise ValueError("email must be a valid email address when supplied.")
         kind = str(incentive_type).strip().upper()
 
@@ -184,12 +197,16 @@ def register(mcp, ctx: AppContext) -> None:
         except Exception as ex:
             raise ValueError(f"Invalid SKAdNetwork schema payload: {ex}") from ex
 
-        request = raw.get_type("MutateCustomerSkAdNetworkConversionValueSchemaRequest")
+        request = raw.get_type(
+            "MutateCustomerSkAdNetworkConversionValueSchemaRequest"
+        )
         request.customer_id = customer
         request.operation.CopyFrom(operation)
         request.validate_only = bool(validate_only)
         request.enable_warnings = bool(enable_warnings)
-        service = ctx.client.service("CustomerSkAdNetworkConversionValueSchemaService")
+        service = ctx.client.service(
+            "CustomerSkAdNetworkConversionValueSchemaService"
+        )
 
         def execute():
             response = _call(
@@ -202,7 +219,10 @@ def register(mcp, ctx: AppContext) -> None:
         return ctx.safety.propose(
             tool_name="update_customer_skad_network_conversion_value_schema",
             customer_id=customer,
-            description=f"Update SKAdNetwork schema {resource} (warnings={bool(enable_warnings)})",
+            description=(
+                f"Update SKAdNetwork schema {resource} "
+                f"(warnings={bool(enable_warnings)})"
+            ),
             payload={
                 "resource_name": resource,
                 "schema": schema,
