@@ -2,6 +2,8 @@
 
 This repository is designed so an existing local server can be updated directly from GitHub without replacing its credentials or local runtime state.
 
+**Current deployment target: `0.16.1`. Do not deploy `0.16.0`.**
+
 ## Before updating
 
 Know the directory where the repository is installed. The examples below assume:
@@ -29,33 +31,54 @@ git status
 git fetch origin
 git pull --ff-only origin main
 source .venv/bin/activate
-python -m pip install -e .
+python -m pip install -e ".[dev]"
 ```
 
-`pip install -e .` is important after pulling because releases may add or change Python dependencies. For 0.16.0, `cryptography>=42` is required for encrypted durable pending replay.
+Reinstalling the package is important after pulling because releases may add/change Python dependencies. The v0.16 series requires `cryptography>=42` for encrypted durable pending replay.
 
 Do **not** run `cp .env.example .env` on an existing installation; that command is only for first-time setup.
 
-## Verify the installed version
+## Verify the installed version and exact checkout
 
 ```bash
 .venv/bin/python -c "import google_ads_mcp; print(google_ads_mcp.__version__, google_ads_mcp.__file__)"
-```
-
-For the current release this should report:
-
-```text
-0.16.0
-```
-
-Check the Git commit actually installed:
-
-```bash
 git rev-parse HEAD
 git status --short
 ```
 
-`git status --short` should normally be empty except for intentional local files that are not tracked.
+For the current release the package version must report:
+
+```text
+0.16.1
+```
+
+`git status --short` should normally be empty except for intentional local untracked files.
+
+Before replacing a running production server, record the exact commit SHA that passed local validation.
+
+## Required local validation before restarting production
+
+Run:
+
+```bash
+python scripts/smoke_test.py
+ruff check src tests scripts
+pytest -q
+```
+
+Also exercise the real server-construction path explicitly:
+
+```bash
+python - <<'PY'
+from google_ads_mcp.server import build_server
+server = build_server()
+print("OK build_server", server)
+PY
+```
+
+Do not replace the currently running production MCP if any of these commands fail.
+
+See [`RELEASE_0.16.1.md`](RELEASE_0.16.1.md) for the startup/isolation hotfix and [`VALIDATION_CHECKLIST.md`](VALIDATION_CHECKLIST.md) for the live-account validation sequence.
 
 ## Conservative first restart
 
@@ -76,20 +99,6 @@ GOOGLE_ADS_MCP_AUTO_APPROVE_SPEND=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
 ```
-
-## Local validation
-
-If the machine has normal network/package access, install development dependencies and run:
-
-```bash
-source .venv/bin/activate
-pip install -e ".[dev]"
-python scripts/smoke_test.py
-ruff check src tests scripts
-pytest -q
-```
-
-See [`VALIDATION_CHECKLIST.md`](VALIDATION_CHECKLIST.md) for the live-account validation sequence.
 
 ## If `git pull --ff-only` refuses to update
 
