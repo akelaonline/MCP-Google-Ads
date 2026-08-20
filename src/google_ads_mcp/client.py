@@ -229,6 +229,7 @@ _IRREGULAR_MUTATE_METHODS: dict[str, str] = {
     "CustomerClientLinkService": "mutate_customer_client_link",
     "CustomerUserAccessInvitationService": "mutate_customer_user_access_invitation",
     "CustomerUserAccessService": "mutate_customer_user_access",
+    "CustomerSkAdNetworkConversionValueSchemaService": "mutate_customer_sk_ad_network_conversion_value_schema",
 }
 
 
@@ -247,71 +248,85 @@ def _customer_id_from_resource_name(resource_name: str) -> str | None:
     """Extract the owning customer from a customer-scoped resource name."""
     import re
 
-    match = re.match(r"^customers/(\d+)/", str(resource_name).strip())
+    match = re.match(r"^customers/(\d+)(?:/|$)", str(resource_name).strip())
     return match.group(1) if match else None
 
 
-def _mutation_target_resource_names(operation: Any) -> list[str]:
-    """Return update/remove target resource names from a Google Ads operation.
+def _customer_scoped_resource_names(message: Any) -> list[str]:
+    """Recursively collect customer-scoped resource references from a proto message.
 
-    Handles both normal resource-specific operations (CampaignOperation,
-    AdGroupOperation, ...) and GoogleAdsService ``MutateOperation`` wrappers.
-    Create operations intentionally return no target because they do not yet
-    have a resource name; their request customer_id still defines the account
-    in which the resource is created.
+    This intentionally scans *all* populated string fields, not only fields named
+    ``resource_name``. Google Ads create operations commonly reference existing
+    resources through fields such as ``campaign``, ``asset``, ``ad_group`` or
+    ``shared_set``. A mixed-client reference in any of those fields is just as
+    dangerous as an update/remove target.
     """
-    pb = getattr(operation, "_pb", None)
-    if pb is None:
+    pb = getattr(message, "_pb", message)
+    list_fields = getattr(pb, "ListFields", None)
+    if list_fields is None:
         return []
 
     try:
-        selected = pb.WhichOneof("operation")
-    except (ValueError, AttributeError):
+        from google.protobuf.descriptor import FieldDescriptor
+    except Exception:
         return []
 
-    if not selected:
+    found: list[str] = []
+    try:
+        fields = list_fields()
+    except Exception:
         return []
-    if selected == "remove":
-        value = getattr(operation, "remove", None)
-        return [str(value)] if value else []
-    if selected == "update":
-        updated = getattr(operation, "update", None)
-        resource_name = getattr(updated, "resource_name", None)
-        return [str(resource_name)] if resource_name else []
 
-    nested = getattr(operation, selected, None)
-    if nested is None:
-        return []
-    return _mutation_target_resource_names(nested)
+    for descriptor, value in fields:
+        if descriptor.type == FieldDescriptor.TYPE_MESSAGE:
+            if descriptor.is_repeated:
+                for item in value:
+                    found.extend(_customer_scoped_resource_names(item))
+            else:
+                found.extend(_customer_scoped_resource_names(value))
+            continue
+
+        if descriptor.type != FieldDescriptor.TYPE_STRING:
+            continue
+
+        values = list(value) if descriptor.is_repeated else [value]
+        for item in values:
+            text = str(item).strip()
+            if _customer_id_from_resource_name(text) is not None:
+                found.append(text)
+
+    return found
 
 
 def _assert_mutation_targets_customer(
     customer_id: str,
     operations: Iterable[Any],
 ) -> None:
-    """Block update/remove operations targeting a different customer.
+    """Block any mutation carrying a resource reference from another customer.
 
-    An MCC credential can legitimately access many child accounts. The API
-    request's customer_id therefore is not enough isolation by itself: every
-    mutation target must also belong to that same customer. This guard executes
-    before any Google Ads mutate RPC and catches mixed-client operation lists.
+    MCC credentials can access many child accounts, so the request customer_id is
+    not sufficient isolation. Every populated customer-scoped resource reference
+    anywhere in a create/update/remove operation is recursively inspected before
+    any Google Ads RPC. This catches mixed-client create links as well as the
+    traditional update/remove target case.
     """
     customer = normalize_customer_id(customer_id)
     mismatches: list[str] = []
 
     for operation in operations:
-        for resource_name in _mutation_target_resource_names(operation):
+        for resource_name in _customer_scoped_resource_names(operation):
             owner = _customer_id_from_resource_name(resource_name)
             if owner is not None and owner != customer:
                 mismatches.append(resource_name)
 
     if mismatches:
-        preview = ", ".join(mismatches[:3])
-        if len(mismatches) > 3:
-            preview += f", ... (+{len(mismatches) - 3} more)"
+        unique = list(dict.fromkeys(mismatches))
+        preview = ", ".join(unique[:3])
+        if len(unique) > 3:
+            preview += f", ... (+{len(unique) - 3} more)"
         raise GoogleAdsMcpError(
             f"Cross-customer mutation blocked: request targets customer {customer}, "
-            f"but operation target(s) belong to another customer: {preview}"
+            f"but operation reference(s) belong to another customer: {preview}"
         )
 
 
@@ -356,7 +371,3 @@ def _row_to_dict(row) -> dict[str, Any]:
 def micros(amount: float) -> int:
     """Convert a currency amount (e.g. 25.50) to micros (25500000)."""
     return round(amount * 1_000_000)
-
-
-def from_micros(amount_micros: int) -> float:
-    return amount_micros / 1_000_000
