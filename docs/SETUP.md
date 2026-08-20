@@ -1,6 +1,8 @@
 # Setup
 
-This guide configures Google Ads MCP **0.16.0** for Google Ads API v25.
+This guide configures Google Ads MCP **0.16.1** for Google Ads API v25.
+
+> **Deployment target:** use `0.16.1`. Do not deploy `0.16.0`; see `RELEASE_0.16.1.md` for the startup/isolation hotfix.
 
 ## Requirements
 
@@ -34,7 +36,7 @@ Verify:
 Expected version for this release:
 
 ```text
-0.16.0
+0.16.1
 ```
 
 ## 2. Google Ads credentials
@@ -88,7 +90,8 @@ When configured:
 - account discovery is filtered;
 - MCC `customer_client`, `customer_client_link`, and `customer_manager_link` rows
   are filtered to allowed referenced accounts;
-- nested resource references in mutations are inspected for cross-customer mixing.
+- nested resource references in mutations are inspected for cross-customer mixing,
+  including protobuf map/Struct and repeated/list values.
 
 If the MCP needs to query an MCC hierarchy, include the manager customer itself in
 the allowlist as well.
@@ -230,9 +233,9 @@ Persist **both** files:
 If the DB survives but the encryption key does not, old pending actions cannot be
 replayed. Confirmation fails closed; it does not execute an unverified mutation.
 
-## 7. Claude Desktop / Claude Code
+## 7. Claude Desktop / Claude Code / any MCP client
 
-Use the virtualenv Python by absolute path:
+Use the virtualenv Python by absolute path for a local stdio client:
 
 ```json
 {
@@ -247,6 +250,8 @@ Use the virtualenv Python by absolute path:
   }
 }
 ```
+
+The MCP server is client-agnostic: Claude, ChatGPT-compatible MCP tooling, IDE agents, or any other compatible MCP client can operate the same local server. See `CLIENTS.md` for connection patterns.
 
 Restart the MCP client after configuration changes.
 
@@ -293,7 +298,7 @@ GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true
 
 `ALLOW_INSECURE_HTTP=true` does not add authentication.
 
-## 9. Upgrade an existing install to 0.16.0
+## 9. Upgrade an existing install to 0.16.1
 
 Before upgrading a production container, verify that the audit DB and pending key
 are persisted.
@@ -302,14 +307,35 @@ Then:
 
 ```bash
 cd MCP-Google-Ads
-git pull origin main
+git fetch origin
+git pull --ff-only origin main
 source .venv/bin/activate
-pip install -e .
+pip install -e ".[dev]"
 ```
 
-0.16 adds `cryptography>=42` as a runtime dependency.
+Verify:
 
-For a conservative first restart after upgrade, you can start with:
+```bash
+git rev-parse HEAD
+python -c "import google_ads_mcp; print(google_ads_mcp.__version__)"
+python scripts/smoke_test.py
+ruff check src tests scripts
+pytest -q
+```
+
+Also verify the real build path:
+
+```bash
+python - <<'PY'
+from google_ads_mcp.server import build_server
+server = build_server()
+print("OK build_server", server)
+PY
+```
+
+Do not replace the currently running production MCP until these checks pass on the machine that will run it.
+
+For a conservative first restart after upgrade, start with:
 
 ```dotenv
 GOOGLE_ADS_MCP_READ_ONLY=true
@@ -318,37 +344,28 @@ GOOGLE_ADS_MCP_READ_ONLY=true
 verify reports/account scope, then switch to normal confirmation mode only after
 you are satisfied with the deployment.
 
-## 10. Local validation before production
+## 10. Local/live validation before production
 
-```bash
-source .venv/bin/activate
-pip install -e ".[dev]"
-python scripts/smoke_test.py
-ruff check src tests scripts
-pytest -q
-```
+See [`VALIDATION_CHECKLIST.md`](VALIDATION_CHECKLIST.md) for the complete sequence.
 
-For an E2E live test, use a dedicated Google Ads test/customer account, restrict
-`GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS`, and keep all high-risk auto-approve flags
-false.
+Recommended high-level order:
 
-Recommended sequence:
-
-1. start read-only and verify account discovery/reporting;
-2. verify an attempted mutation is blocked in read-only mode;
-3. switch to confirmation mode and propose a harmless write, then cancel;
-4. propose a harmless write, then confirm;
-5. propose a write, restart the MCP, then confirm the same pending ID;
-6. when using an MCC, deliberately query `customer_client`,
-   `customer_client_link`, and `customer_manager_link` relationships outside the
-   allowlist and verify they are filtered;
-7. deliberately try a campaign resource from another allowed customer and verify it is blocked;
-8. separately test the legitimate manager/client-link flow if your deployment uses it;
-9. with standard auto-approve enabled but spend auto-approve disabled, verify a
-   PAUSED ad can auto-approve while live asset attachment/RSA editing remains
-   pending confirmation.
+1. local smoke/Ruff/pytest and `build_server()`;
+2. start read-only and verify account discovery/reporting;
+3. verify an attempted mutation is blocked in read-only mode;
+4. switch to confirmation mode and propose a harmless write, then cancel;
+5. propose a harmless write, then confirm;
+6. propose a write, restart the MCP, then confirm the same pending ID;
+7. test MCC hierarchy/link read isolation;
+8. deliberately try a campaign/resource from another customer and verify it is blocked;
+9. separately test the legitimate manager/client-link flow if used;
+10. verify auto-approve risk boundaries and double-confirm protection.
 
 ## Troubleshooting
+
+### `ImportError: cannot import name 'from_micros'`
+
+That was a 0.16.0 regression. Update to 0.16.1 or newer, reinstall the editable package, and verify `google_ads_mcp.__version__` before restarting the server.
 
 ### `ModuleNotFoundError: google_ads_mcp`
 
@@ -424,6 +441,7 @@ review because fields, enums and services can be removed or reshaped.
 
 See:
 
+- `RELEASE_0.16.1.md`
 - `RELEASE_0.16.0.md`
 - `V25_SERVICE_COVERAGE.md`
 - `SAFETY.md`
