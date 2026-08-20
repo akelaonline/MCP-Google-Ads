@@ -110,8 +110,6 @@ def register(mcp, ctx: AppContext) -> None:
             )
             return proto.Message.to_dict(response, preserving_proto_field_name=True)
 
-        # Use the established sensitive ProductLink safety category. Invocation
-        # tracking preserves this public MCP tool name separately for durable replay.
         return ctx.safety.propose(
             tool_name="create_product_link",
             customer_id=customer,
@@ -168,39 +166,14 @@ def register(mcp, ctx: AppContext) -> None:
         return proto.Message.to_dict(response, preserving_proto_field_name=True)
 
     @mcp.tool()
-    def list_customer_skad_network_conversion_value_schemas(
-        customer_id: str,
-    ) -> dict:
-        """List SKAdNetwork schema resources visible through Google Ads API v25.
-
-        The public v25 resource reference marks both ``resource_name`` and
-        ``schema`` as output-only. The MCP therefore exposes read visibility but
-        deliberately does not fabricate a generic schema writer for live accounts.
-        """
-        customer = ctx.client.assert_customer_allowed(customer_id)
-        rows = ctx.client.search(
-            customer,
-            """
-            SELECT customer_sk_ad_network_conversion_value_schema.resource_name,
-                   customer_sk_ad_network_conversion_value_schema.schema
-            FROM customer_sk_ad_network_conversion_value_schema
-            ORDER BY customer_sk_ad_network_conversion_value_schema.resource_name
-            """,
-        )
-        return {
-            "schemas": rows,
-            "count": len(rows),
-            "mutation_surface": "not_exposed",
-            "reason": (
-                "Google Ads API v25 publishes a dedicated mutate RPC, but its public "
-                "CustomerSkAdNetworkConversionValueSchema resource documents both "
-                "resource_name and schema as output-only."
-            ),
-        }
-
-    @mcp.tool()
     def get_customer_skad_network_schema_capability() -> dict:
-        """Explain the conservative SKAdNetwork coverage used by this release."""
+        """Explain the conservative SKAdNetwork coverage used by this release.
+
+        The actual schema rows are exposed by
+        ``list_customer_skad_network_conversion_value_schemas`` in the account
+        exclusions/identity module. This helper exists only to make the deliberate
+        write boundary explicit without registering a duplicate list tool.
+        """
         return {
             "service": "CustomerSkAdNetworkConversionValueSchemaService",
             "api_version": "v25",
