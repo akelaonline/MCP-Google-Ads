@@ -40,8 +40,6 @@ def test_pending_action_replays_after_new_safety_instance(tmp_path):
             executed.append(secret_value)
             return {"changed": True}
 
-        # Secret is deliberately excluded from the normal audit/pending payload;
-        # durable replay still needs the original argument, encrypted at rest.
         return holder["safety"].propose(
             tool_name="sensitive_change",
             customer_id=customer_id,
@@ -59,8 +57,6 @@ def test_pending_action_replays_after_new_safety_instance(tmp_path):
     assert stored is not None
     assert stored["invocation_arguments"]["secret_value"] == "never-store-me-in-plaintext"
 
-    # Simulate a process restart: the original SafetyLayer's callable is gone,
-    # while the tool registry and SQLite record reconstruct the invocation.
     holder["safety"] = _safety(audit)
     confirmed = holder["safety"].confirm(action_id)
 
@@ -72,6 +68,49 @@ def test_pending_action_replays_after_new_safety_instance(tmp_path):
     entries = audit.by_action_id(action_id)
     assert len(entries) == 1
     assert entries[0]["status"] == "success"
+
+
+def test_pending_shared_safety_alias_replays_original_public_tool(tmp_path):
+    """Public tool name and safety category may differ without breaking replay."""
+    db_path = tmp_path / "audit.db"
+    audit = AuditLog(str(db_path))
+    holder = {"safety": _safety(audit)}
+    executed: list[str] = []
+
+    mcp = _FakeMcp()
+    install_tool_tracking(mcp)
+
+    @mcp.tool()
+    def create_specific_link(customer_id: str, link_id: str) -> dict:
+        def execute():
+            executed.append(link_id)
+            return {"linked": link_id}
+
+        # Mirrors real helpers such as create_merchant_center_link, which share
+        # the lower-level create_product_link safety category.
+        return holder["safety"].propose(
+            tool_name="create_product_link",
+            customer_id=customer_id,
+            description=f"create link {link_id}",
+            payload={"link_id": link_id},
+            execute=execute,
+        )
+
+    proposed = create_specific_link("1234567890", "merchant-42")
+    assert proposed["durable"] is True
+    action_id = proposed["pending_action_id"]
+    stored = audit.get_pending(action_id)
+    assert stored is not None
+    assert (
+        stored["invocation_arguments"]["__google_ads_mcp_replay_tool_name__"]
+        == "create_specific_link"
+    )
+
+    holder["safety"] = _safety(audit)
+    confirmed = holder["safety"].confirm(action_id)
+    assert confirmed["status"] == "executed"
+    assert confirmed["action_id"] == action_id
+    assert executed == ["merchant-42"]
 
 
 def test_pending_invocation_is_encrypted_on_disk(tmp_path):
@@ -91,8 +130,6 @@ def test_pending_invocation_is_encrypted_on_disk(tmp_path):
         created_at=1.0,
     )
 
-    # Check the database and WAL bytes: only the encrypted blob may contain the
-    # invocation; normal metadata/payload intentionally excludes the identifier.
     disk = b""
     for candidate in (db_path, tmp_path / "audit.db-wal"):
         if candidate.exists():
