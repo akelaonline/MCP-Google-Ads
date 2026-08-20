@@ -2,6 +2,21 @@
 
 Google Ads MCP follows Semantic Versioning. Detailed release notes for production releases live in `docs/RELEASE_X.Y.Z.md`.
 
+## 0.16.1 — 2026-08-20
+
+### Fixed
+- Restored the missing `from_micros()` helper in `client.py`. `reporting.py` imported this helper unconditionally, so 0.16.0 could fail while importing `google_ads_mcp.tools` and therefore fail during `build_server()` startup.
+- Fixed recursive MCC/customer isolation for protobuf `map`/`Struct` values. The v0.16.0 walker treated protobuf maps as ordinary repeated fields and iterated map keys rather than nested values, which could miss customer-scoped resource names inside map-backed messages.
+- Added explicit protobuf-list regression coverage so nested cross-customer resource references remain blocked.
+
+### Validation
+- `tests/test_client_helpers.py` already exercises the `micros()` / `from_micros()` round trip and now has its missing implementation restored.
+- `tests/test_recursive_customer_isolation.py` covers same-customer nested creates, cross-customer protobuf-map values, protobuf-list values, and root customer resource references.
+- 0.16.1 exists specifically because 0.16.0 was observed in a real local dependency environment to fail test collection/startup. Do not treat the 0.16.0 package/version as the deployment target.
+- Full pytest/Ruff/smoke and live-account E2E should be run against the exact 0.16.1 commit before replacing an existing production installation.
+
+See `docs/RELEASE_0.16.1.md`.
+
 ## 0.16.0 — 2026-08-20
 
 ### Added
