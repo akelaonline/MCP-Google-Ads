@@ -38,6 +38,22 @@ def test_recursive_guard_blocks_cross_customer_reference_inside_create():
         )
 
 
+def test_recursive_guard_blocks_cross_customer_reference_inside_protobuf_list():
+    message = struct_pb2.Struct()
+    message.update(
+        {
+            "create": {
+                "assets": [
+                    "customers/1234567890/assets/1",
+                    "customers/9999999999/assets/2",
+                ]
+            }
+        }
+    )
+    with pytest.raises(GoogleAdsMcpError, match="Cross-customer mutation blocked"):
+        _assert_mutation_targets_customer("1234567890", [message])
+
+
 def test_recursive_guard_blocks_root_customer_resource_reference():
     message = struct_pb2.Struct()
     message.update({"customer": "customers/9999999999"})
