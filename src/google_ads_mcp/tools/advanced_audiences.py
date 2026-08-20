@@ -484,6 +484,36 @@ def register(mcp, ctx: AppContext) -> None:
         """Propose updating Audience metadata or promoting ASSET_GROUP scope to CUSTOMER."""
         customer = ctx.client.assert_customer_allowed(customer_id)
         resource = _owned(ctx, customer, audience_resource_name, "audience_resource_name")
+
+        current_scope = None
+        if name is not None or promote_scope_to_customer:
+            rows = ctx.client.search(
+                customer,
+                f"""
+                SELECT audience.scope
+                FROM audience
+                WHERE audience.resource_name = '{resource}'
+                LIMIT 1
+                """,
+            )
+            if not rows:
+                raise ValueError("Audience was not found or is not visible to this customer.")
+            raw_scope = rows[0].get("audience", {}).get("scope")
+            current_scope = str(getattr(raw_scope, "name", raw_scope)).upper().rsplit(".", 1)[-1]
+            if current_scope not in _AUDIENCE_SCOPES:
+                raise ValueError("Could not determine the current Audience scope safely.")
+            if name is not None and current_scope == "ASSET_GROUP" and not promote_scope_to_customer:
+                raise ValueError(
+                    "ASSET_GROUP-scoped audiences cannot set or update name. "
+                    "Set promote_scope_to_customer=true and provide the required customer-level name."
+                )
+            if promote_scope_to_customer and current_scope == "CUSTOMER":
+                raise ValueError("Audience is already CUSTOMER-scoped; no scope promotion is needed.")
+            if promote_scope_to_customer and current_scope == "ASSET_GROUP" and name is None:
+                raise ValueError(
+                    "Promoting an ASSET_GROUP audience to CUSTOMER requires a name."
+                )
+
         raw = ctx.client.raw
         operation = raw.get_type("AudienceOperation")
         audience = operation.update
@@ -519,6 +549,7 @@ def register(mcp, ctx: AppContext) -> None:
             payload={
                 "audience_resource_name": resource,
                 "fields": paths,
+                "current_scope": current_scope,
                 "validate_only": validate_only,
             },
             execute=execute,
