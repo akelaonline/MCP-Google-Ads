@@ -55,7 +55,7 @@ Core operator surfaces include:
 
 When `GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS` is configured, reads and writes outside the deployment scope are blocked. Mutations recursively inspect customer-scoped resource references, including nested references in CREATE operations.
 
-MCC hierarchy/link reads are also filtered centrally. Rows from `customer_client` and `customer_client_link` that reference child customers outside the allowlist are removed before they are returned, including through raw GAQL. If a hierarchy/link query omits the field needed to identify the referenced child customer safely, the query fails closed rather than returning ambiguous cross-tenant metadata.
+MCC hierarchy/link reads are also filtered centrally. Rows from `customer_client`, `customer_client_link`, and `customer_manager_link` that reference customers outside the allowlist are removed before they are returned, including through raw GAQL. If a hierarchy/link query omits the ownership field needed to identify the referenced customer safely, the query fails closed rather than returning ambiguous cross-tenant metadata.
 
 Intentional cross-account manager/client linking is allowed only through the explicit linking path and only when the second customer also passes the deployment allowlist.
 
@@ -120,6 +120,8 @@ Creative coverage includes:
 - ad status/remove
 - ad previews where supported
 
+Ads explicitly created `PAUSED` may remain `standard`. Editing an existing RSA is `spend` because it can immediately change live delivery.
+
 ## Assets and AssetSets
 
 The MCP covers common assets and the broader v25 asset-link graph:
@@ -138,7 +140,7 @@ The MCP covers common assets and the broader v25 asset-link graph:
 - status/remove operations where exposed
 - YouTube upload/status/update/remove where account eligibility permits
 
-Normal creative/resource preparation such as callouts and sitelinks remains `standard` risk by design. Asset attachments or status changes that alter live delivery may be classified more conservatively.
+Risk follows effect rather than naming: resource-only preparation may be `standard`, while helpers that create **and attach** sitelink/call/image/promotion/callout/snippet/Business Message assets to live delivery are `spend`, matching the generic `attach_asset_*` policy.
 
 Remote image fetching is SSRF-hardened: public HTTPS only, public DNS/IPs, redirect revalidation, MIME allowlist and bounded response size.
 
