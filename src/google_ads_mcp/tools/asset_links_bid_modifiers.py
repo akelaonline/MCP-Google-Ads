@@ -1,8 +1,4 @@
-"""Customer/ad-group asset links, dedicated bid modifiers, and brand suggestions.
-
-These are distinct Google Ads API v25 services that are not interchangeable
-with CampaignAsset or CampaignCriterion mutations.
-"""
+"""Customer/ad-group assets, bid modifiers, and brand suggestions for API v25."""
 
 from __future__ import annotations
 
@@ -26,33 +22,26 @@ def _owned(ctx: AppContext, customer: str, resource: str, field_name: str) -> st
     return ctx.client.assert_resource_name_customer(customer, resource, field_name=field_name)
 
 
-def _validate_modifier(value: float) -> float:
-    modifier = float(value)
-    if modifier != 0 and not 0.1 <= modifier <= 10.0:
-        raise ValueError("bid_modifier must be 0 (opt out where supported) or between 0.1 and 10.0.")
-    return modifier
+def _modifier(value: float, *, allow_zero: bool) -> float:
+    result = float(value)
+    if result == 0 and allow_zero:
+        return result
+    if not 0.1 <= result <= 10.0:
+        raise ValueError("bid_modifier must be between 0.1 and 10.0" + (", or 0 to opt out." if allow_zero else "."))
+    return result
 
 
 def register(mcp, ctx: AppContext) -> None:
-    # ------------------------------------------------------------------
-    # CustomerAssetService
-    # ------------------------------------------------------------------
+    # Customer assets ---------------------------------------------------
     @mcp.tool()
     def list_customer_assets(customer_id: str) -> dict:
-        """List assets linked at customer/account scope."""
         rows = ctx.client.search(
             customer_id,
             """
-            SELECT customer_asset.resource_name,
-                   customer_asset.asset,
-                   customer_asset.field_type,
-                   customer_asset.status,
-                   customer_asset.primary_status,
-                   customer_asset.primary_status_reasons,
-                   customer_asset.source,
-                   asset.id,
-                   asset.name,
-                   asset.type
+            SELECT customer_asset.resource_name, customer_asset.asset,
+                   customer_asset.field_type, customer_asset.status,
+                   customer_asset.primary_status, customer_asset.primary_status_reasons,
+                   customer_asset.source, asset.id, asset.name, asset.type
             FROM customer_asset
             ORDER BY customer_asset.resource_name
             """,
@@ -84,9 +73,7 @@ def register(mcp, ctx: AppContext) -> None:
         operation.create.status = getattr(raw.enums.AssetLinkStatusEnum, clean_status)
 
         def execute():
-            return ctx.client.mutate(
-                "CustomerAssetService", customer, [operation], validate_only=validate_only
-            )
+            return ctx.client.mutate("CustomerAssetService", customer, [operation], validate_only=validate_only)
 
         return ctx.safety.propose(
             tool_name="attach_asset_to_customer",
@@ -103,7 +90,6 @@ def register(mcp, ctx: AppContext) -> None:
         status: str,
         validate_only: bool = False,
     ) -> dict:
-        """Propose enabling, pausing or removing a customer asset link."""
         customer = ctx.client.assert_customer_allowed(customer_id)
         resource = _owned(ctx, customer, customer_asset_resource_name, "customer_asset_resource_name")
         clean_status = status.strip().upper()
@@ -119,9 +105,7 @@ def register(mcp, ctx: AppContext) -> None:
             operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["status"]))
 
         def execute():
-            return ctx.client.mutate(
-                "CustomerAssetService", customer, [operation], validate_only=validate_only
-            )
+            return ctx.client.mutate("CustomerAssetService", customer, [operation], validate_only=validate_only)
 
         return ctx.safety.propose(
             tool_name="set_customer_asset_status",
@@ -131,29 +115,20 @@ def register(mcp, ctx: AppContext) -> None:
             execute=execute,
         )
 
-    # ------------------------------------------------------------------
-    # AdGroupAssetService
-    # ------------------------------------------------------------------
+    # Ad-group assets ---------------------------------------------------
     @mcp.tool()
     def list_ad_group_assets(customer_id: str, ad_group_id: str | None = None) -> dict:
-        """List assets linked directly at ad-group scope."""
         where = ""
         if ad_group_id is not None:
             where = f"WHERE ad_group.id = {_id(ad_group_id, 'ad_group_id')}"
         rows = ctx.client.search(
             customer_id,
             f"""
-            SELECT ad_group_asset.resource_name,
-                   ad_group_asset.ad_group,
-                   ad_group_asset.asset,
-                   ad_group_asset.field_type,
-                   ad_group_asset.status,
-                   ad_group_asset.primary_status,
-                   ad_group_asset.primary_status_reasons,
-                   ad_group_asset.source,
-                   asset.id,
-                   asset.name,
-                   asset.type
+            SELECT ad_group_asset.resource_name, ad_group_asset.ad_group,
+                   ad_group_asset.asset, ad_group_asset.field_type,
+                   ad_group_asset.status, ad_group_asset.primary_status,
+                   ad_group_asset.primary_status_reasons, ad_group_asset.source,
+                   asset.id, asset.name, asset.type
             FROM ad_group_asset
             {where}
             ORDER BY ad_group_asset.resource_name
@@ -170,7 +145,6 @@ def register(mcp, ctx: AppContext) -> None:
         status: str = "ENABLED",
         validate_only: bool = False,
     ) -> dict:
-        """Propose linking an existing Asset directly to an ad group."""
         customer = ctx.client.assert_customer_allowed(customer_id)
         ad_group = _id(ad_group_id, "ad_group_id")
         asset = _owned(ctx, customer, asset_resource_name, "asset_resource_name")
@@ -189,9 +163,7 @@ def register(mcp, ctx: AppContext) -> None:
         operation.create.status = getattr(raw.enums.AssetLinkStatusEnum, clean_status)
 
         def execute():
-            return ctx.client.mutate(
-                "AdGroupAssetService", customer, [operation], validate_only=validate_only
-            )
+            return ctx.client.mutate("AdGroupAssetService", customer, [operation], validate_only=validate_only)
 
         return ctx.safety.propose(
             tool_name="attach_asset_to_ad_group",
@@ -208,7 +180,6 @@ def register(mcp, ctx: AppContext) -> None:
         status: str,
         validate_only: bool = False,
     ) -> dict:
-        """Propose enabling, pausing or removing an ad-group asset link."""
         customer = ctx.client.assert_customer_allowed(customer_id)
         resource = _owned(ctx, customer, ad_group_asset_resource_name, "ad_group_asset_resource_name")
         clean_status = status.strip().upper()
@@ -224,9 +195,7 @@ def register(mcp, ctx: AppContext) -> None:
             operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["status"]))
 
         def execute():
-            return ctx.client.mutate(
-                "AdGroupAssetService", customer, [operation], validate_only=validate_only
-            )
+            return ctx.client.mutate("AdGroupAssetService", customer, [operation], validate_only=validate_only)
 
         return ctx.safety.propose(
             tool_name="set_ad_group_asset_status",
@@ -236,12 +205,10 @@ def register(mcp, ctx: AppContext) -> None:
             execute=execute,
         )
 
-    # ------------------------------------------------------------------
-    # CampaignBidModifierService / AdGroupBidModifierService
-    # ------------------------------------------------------------------
+    # Campaign bid modifiers ------------------------------------------
     @mcp.tool()
     def list_campaign_bid_modifiers(customer_id: str, campaign_id: str | None = None) -> dict:
-        """List dedicated campaign bid modifiers (currently interaction type / CALL)."""
+        """List campaign-level interaction bid modifiers. v25 only supports CALLS."""
         where = ""
         if campaign_id is not None:
             where = f"WHERE campaign.id = {_id(campaign_id, 'campaign_id')}"
@@ -261,51 +228,40 @@ def register(mcp, ctx: AppContext) -> None:
         return {"campaign_bid_modifiers": rows, "count": len(rows)}
 
     @mcp.tool()
-    def create_campaign_call_bid_modifier(
+    def set_campaign_call_bid_modifier(
         customer_id: str,
         campaign_id: str,
         bid_modifier: float,
         validate_only: bool = False,
     ) -> dict:
-        """Propose creating the supported campaign-level CALL interaction bid modifier."""
+        """Propose updating the existing campaign CALLS bid modifier.
+
+        In v25 the parent ``campaign`` field on CampaignBidModifier is output-only,
+        so this tool intentionally does not fabricate a create operation. It looks
+        up the existing CALLS modifier for the campaign and updates it. If Google
+        has not exposed one for the campaign, no mutation is attempted.
+        """
         customer = ctx.client.assert_customer_allowed(customer_id)
         campaign = _id(campaign_id, "campaign_id")
-        modifier = _validate_modifier(bid_modifier)
-        if modifier == 0:
-            raise ValueError("Campaign CALL bid_modifier must be between 0.1 and 10.0.")
-        raw = ctx.client.raw
-        operation = raw.get_type("CampaignBidModifierOperation")
-        item = operation.create
-        item.campaign = f"customers/{customer}/campaigns/{campaign}"
-        item.bid_modifier = modifier
-        item.interaction_type.type_ = raw.enums.InteractionTypeEnum.CALL
-
-        def execute():
-            return ctx.client.mutate(
-                "CampaignBidModifierService", customer, [operation], validate_only=validate_only
-            )
-
-        return ctx.safety.propose(
-            tool_name="create_campaign_call_bid_modifier",
-            customer_id=customer,
-            description=f"Set campaign {campaign} CALL bid modifier x{modifier}",
-            payload={"campaign_id": campaign, "interaction_type": "CALL", "bid_modifier": modifier, "validate_only": validate_only},
-            execute=execute,
+        modifier = _modifier(bid_modifier, allow_zero=False)
+        rows = ctx.client.search(
+            customer,
+            f"""
+            SELECT campaign_bid_modifier.resource_name,
+                   campaign_bid_modifier.interaction_type.type
+            FROM campaign_bid_modifier
+            WHERE campaign.id = {campaign}
+              AND campaign_bid_modifier.interaction_type.type = 'CALLS'
+            LIMIT 1
+            """,
         )
-
-    @mcp.tool()
-    def update_campaign_bid_modifier(
-        customer_id: str,
-        campaign_bid_modifier_resource_name: str,
-        bid_modifier: float,
-        validate_only: bool = False,
-    ) -> dict:
-        """Propose updating an existing campaign bid modifier."""
-        customer = ctx.client.assert_customer_allowed(customer_id)
-        resource = _owned(ctx, customer, campaign_bid_modifier_resource_name, "campaign_bid_modifier_resource_name")
-        modifier = _validate_modifier(bid_modifier)
-        if modifier == 0:
-            raise ValueError("Campaign bid_modifier must be between 0.1 and 10.0.")
+        if not rows:
+            raise GoogleAdsMcpError(
+                "No writable CALLS CampaignBidModifier is exposed for this campaign in API v25. "
+                "No mutation was attempted."
+            )
+        resource = rows[0]["campaign_bid_modifier"]["resource_name"]
+        _owned(ctx, customer, resource, "campaign_bid_modifier.resource_name")
         raw = ctx.client.raw
         operation = raw.get_type("CampaignBidModifierOperation")
         operation.update.resource_name = resource
@@ -313,15 +269,13 @@ def register(mcp, ctx: AppContext) -> None:
         operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["bid_modifier"]))
 
         def execute():
-            return ctx.client.mutate(
-                "CampaignBidModifierService", customer, [operation], validate_only=validate_only
-            )
+            return ctx.client.mutate("CampaignBidModifierService", customer, [operation], validate_only=validate_only)
 
         return ctx.safety.propose(
-            tool_name="update_campaign_bid_modifier",
+            tool_name="set_campaign_call_bid_modifier",
             customer_id=customer,
-            description=f"Update campaign bid modifier {resource} -> x{modifier}",
-            payload={"campaign_bid_modifier_resource_name": resource, "bid_modifier": modifier, "validate_only": validate_only},
+            description=f"Set campaign {campaign} CALLS bid modifier -> x{modifier}",
+            payload={"campaign_id": campaign, "resource_name": resource, "bid_modifier": modifier, "validate_only": validate_only},
             execute=execute,
         )
 
@@ -331,16 +285,13 @@ def register(mcp, ctx: AppContext) -> None:
         campaign_bid_modifier_resource_name: str,
         validate_only: bool = False,
     ) -> dict:
-        """Propose removing a campaign bid modifier."""
         customer = ctx.client.assert_customer_allowed(customer_id)
         resource = _owned(ctx, customer, campaign_bid_modifier_resource_name, "campaign_bid_modifier_resource_name")
         operation = ctx.client.raw.get_type("CampaignBidModifierOperation")
         operation.remove = resource
 
         def execute():
-            return ctx.client.mutate(
-                "CampaignBidModifierService", customer, [operation], validate_only=validate_only
-            )
+            return ctx.client.mutate("CampaignBidModifierService", customer, [operation], validate_only=validate_only)
 
         return ctx.safety.propose(
             tool_name="remove_campaign_bid_modifier",
@@ -350,9 +301,9 @@ def register(mcp, ctx: AppContext) -> None:
             execute=execute,
         )
 
+    # Ad-group bid modifiers ------------------------------------------
     @mcp.tool()
     def list_ad_group_bid_modifiers(customer_id: str, ad_group_id: str | None = None) -> dict:
-        """List dedicated ad-group bid modifiers (device and Hotel Ads criteria)."""
         where = ""
         if ad_group_id is not None:
             where = f"WHERE ad_group.id = {_id(ad_group_id, 'ad_group_id')}"
@@ -379,24 +330,20 @@ def register(mcp, ctx: AppContext) -> None:
         bid_modifier: float,
         validate_only: bool = False,
     ) -> dict:
-        """Propose creating an ad-group device bid modifier."""
         customer = ctx.client.assert_customer_allowed(customer_id)
         ad_group = _id(ad_group_id, "ad_group_id")
         clean_device = device.strip().upper()
         if clean_device not in _DEVICES:
             raise ValueError(f"device must be one of {sorted(_DEVICES)}.")
-        modifier = _validate_modifier(bid_modifier)
+        modifier = _modifier(bid_modifier, allow_zero=True)
         raw = ctx.client.raw
         operation = raw.get_type("AdGroupBidModifierOperation")
-        item = operation.create
-        item.ad_group = f"customers/{customer}/adGroups/{ad_group}"
-        item.bid_modifier = modifier
-        item.device.type_ = getattr(raw.enums.DeviceEnum, clean_device)
+        operation.create.ad_group = f"customers/{customer}/adGroups/{ad_group}"
+        operation.create.bid_modifier = modifier
+        operation.create.device.type_ = getattr(raw.enums.DeviceEnum, clean_device)
 
         def execute():
-            return ctx.client.mutate(
-                "AdGroupBidModifierService", customer, [operation], validate_only=validate_only
-            )
+            return ctx.client.mutate("AdGroupBidModifierService", customer, [operation], validate_only=validate_only)
 
         return ctx.safety.propose(
             tool_name="create_ad_group_device_bid_modifier",
@@ -413,10 +360,9 @@ def register(mcp, ctx: AppContext) -> None:
         bid_modifier: float,
         validate_only: bool = False,
     ) -> dict:
-        """Propose updating an existing ad-group bid modifier."""
         customer = ctx.client.assert_customer_allowed(customer_id)
         resource = _owned(ctx, customer, ad_group_bid_modifier_resource_name, "ad_group_bid_modifier_resource_name")
-        modifier = _validate_modifier(bid_modifier)
+        modifier = _modifier(bid_modifier, allow_zero=True)
         raw = ctx.client.raw
         operation = raw.get_type("AdGroupBidModifierOperation")
         operation.update.resource_name = resource
@@ -424,9 +370,7 @@ def register(mcp, ctx: AppContext) -> None:
         operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=["bid_modifier"]))
 
         def execute():
-            return ctx.client.mutate(
-                "AdGroupBidModifierService", customer, [operation], validate_only=validate_only
-            )
+            return ctx.client.mutate("AdGroupBidModifierService", customer, [operation], validate_only=validate_only)
 
         return ctx.safety.propose(
             tool_name="update_ad_group_bid_modifier",
@@ -442,16 +386,13 @@ def register(mcp, ctx: AppContext) -> None:
         ad_group_bid_modifier_resource_name: str,
         validate_only: bool = False,
     ) -> dict:
-        """Propose removing an ad-group bid modifier."""
         customer = ctx.client.assert_customer_allowed(customer_id)
         resource = _owned(ctx, customer, ad_group_bid_modifier_resource_name, "ad_group_bid_modifier_resource_name")
         operation = ctx.client.raw.get_type("AdGroupBidModifierOperation")
         operation.remove = resource
 
         def execute():
-            return ctx.client.mutate(
-                "AdGroupBidModifierService", customer, [operation], validate_only=validate_only
-            )
+            return ctx.client.mutate("AdGroupBidModifierService", customer, [operation], validate_only=validate_only)
 
         return ctx.safety.propose(
             tool_name="remove_ad_group_bid_modifier",
@@ -461,9 +402,7 @@ def register(mcp, ctx: AppContext) -> None:
             execute=execute,
         )
 
-    # ------------------------------------------------------------------
-    # BrandSuggestionService
-    # ------------------------------------------------------------------
+    # Brand suggestions ------------------------------------------------
     @mcp.tool()
     def suggest_brands(
         customer_id: str,
@@ -475,11 +414,11 @@ def register(mcp, ctx: AppContext) -> None:
         prefix = str(brand_prefix).strip()
         if not prefix:
             raise ValueError("brand_prefix must not be empty.")
+        selected = [str(value).strip() for value in (selected_brand_ids or []) if str(value).strip()]
         raw = ctx.client.raw
         request = raw.get_type("SuggestBrandsRequest")
         request.customer_id = customer
         request.brand_prefix = prefix
-        selected = [str(value).strip() for value in (selected_brand_ids or []) if str(value).strip()]
         request.selected_brands.extend(selected)
         from google.ads.googleads.errors import GoogleAdsException
         try:
