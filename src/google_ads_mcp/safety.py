@@ -41,6 +41,9 @@ _SENSITIVE_TOOLS = {
     "retract_conversion",
     "restate_conversion_value",
     "assign_user_list_customer_type",
+    # Local Services customer interaction / lead-quality signals.
+    "append_local_services_lead_conversation",
+    "provide_local_services_lead_feedback",
     # Account access and hierarchy.
     "accept_manager_link",
     "invite_manager_link",
@@ -50,11 +53,13 @@ _SENSITIVE_TOOLS = {
     "submit_batch_job",
     # Billing identity.
     "create_billing_setup",
-    # External product / creator connections.
+    # External product / creator / analytics connections.
     "create_product_link",
     "accept_product_link_invitation",
     "request_youtube_video_link",
     "accept_youtube_video_link",
+    "create_third_party_app_analytics_link",
+    "regenerate_third_party_app_analytics_shareable_id",
     # Persistent automated account policy.
     "set_recommendation_subscription",
     # YouTube publishing through the Ads identity.
@@ -374,6 +379,13 @@ def classify_risk(tool_name: str, payload: dict[str, Any]) -> RiskLevel:
     """Conservative central risk classification for mutating MCP tools."""
     normalized_tool = tool_name.strip().lower()
     status = str(payload.get("status", "")).upper()
+
+    # Account-link status changes are identity/integration changes. Terminal states
+    # are destructive; activation remains sensitive rather than generic spend-risk.
+    if normalized_tool == "set_third_party_app_analytics_link_status":
+        if status in {"REMOVED", "REVOKED", "REJECTED"}:
+            return RiskLevel.DESTRUCTIVE
+        return RiskLevel.SENSITIVE
 
     if normalized_tool in _SENSITIVE_TOOLS:
         return RiskLevel.SENSITIVE
