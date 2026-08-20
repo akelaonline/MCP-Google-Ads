@@ -91,6 +91,10 @@ _DESTRUCTIVE_TOOLS = {
     "revoke_youtube_video_link_request",
 }
 
+# Operations in this set can materially change live delivery, bidding inputs or
+# conversion optimization. They therefore require the separate SPEND opt-in when
+# global auto-approve is enabled. Ordinary creative/resource preparation that is
+# paused or not attached to live delivery remains STANDARD by design.
 _SPEND_TOOLS = {
     "create_campaign_budget",
     "update_campaign_budget",
@@ -107,6 +111,20 @@ _SPEND_TOOLS = {
     "create_ad_group_device_bid_modifier",
     "update_ad_group_bid_modifier",
     "add_ad_schedule",
+    "add_location_targeting",
+    "set_language_targeting",
+    "add_placement_exclusion",
+    "add_keywords",
+    "update_keyword_match_type",
+    "add_negative_keywords",
+    "bulk_add_negative_keywords_multi_scope",
+    "add_shared_negative_keywords",
+    "attach_shared_negative_keyword_list_to_campaign",
+    "attach_audience_to_ad_group",
+    "add_in_market_or_affinity_audience",
+    "add_topic_targeting",
+    "create_conversion_action",
+    "set_conversion_action_counting",
     "create_seasonality_adjustment",
     "create_data_exclusion",
     "create_account_budget",
