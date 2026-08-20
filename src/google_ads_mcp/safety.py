@@ -93,8 +93,9 @@ _DESTRUCTIVE_TOOLS = {
 
 # Operations in this set can materially change live delivery, bidding inputs or
 # conversion optimization. They therefore require the separate SPEND opt-in when
-# global auto-approve is enabled. Ordinary creative/resource preparation that is
-# paused or not attached to live delivery remains STANDARD by design.
+# global auto-approve is enabled. Resource-only preparation and ads/resources
+# explicitly created PAUSED may remain STANDARD; attaching creative to live
+# delivery or editing an existing live creative does not.
 _SPEND_TOOLS = {
     "create_campaign_budget",
     "update_campaign_budget",
@@ -149,6 +150,15 @@ _SPEND_TOOLS = {
     "attach_asset_set_to_customer",
     "attach_asset_set_to_campaign",
     "attach_asset_set_to_ad_group",
+    "create_sitelink_asset",
+    "create_call_asset",
+    "create_message_asset",
+    "create_image_asset",
+    "create_promotion_asset",
+    "create_callout_asset",
+    "create_structured_snippet_asset",
+    "create_call_ad",
+    "update_responsive_search_ad",
     "update_custom_audience",
     "update_custom_interest",
     "update_audience_metadata",
