@@ -10,6 +10,7 @@ from .client import GoogleAdsClientWrapper
 from .config import Settings, load_settings
 from .read_only import ReadOnlySafetyProxy
 from .safety import SafetyLayer
+from .scoped_client import ScopedGoogleAdsClientWrapper
 
 
 @dataclass
@@ -23,7 +24,7 @@ class AppContext:
 def build_context() -> AppContext:
     settings = load_settings()
     audit = AuditLog(settings.audit_db_path)
-    client = GoogleAdsClientWrapper(settings)
+    client = ScopedGoogleAdsClientWrapper(settings)
     base_safety = SafetyLayer(
         auto_approve=settings.auto_approve,
         ttl_minutes=settings.pending_ttl_minutes,
