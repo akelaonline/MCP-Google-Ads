@@ -110,8 +110,10 @@ def register(mcp, ctx: AppContext) -> None:
             )
             return proto.Message.to_dict(response, preserving_proto_field_name=True)
 
+        # Use the established sensitive ProductLink safety category. Invocation
+        # tracking preserves this public MCP tool name separately for durable replay.
         return ctx.safety.propose(
-            tool_name="create_product_link_invitation",
+            tool_name="create_product_link",
             customer_id=customer,
             description=f"Create ProductLinkInvitation from Google Ads customer {customer}",
             payload={
