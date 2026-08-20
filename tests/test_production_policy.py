@@ -89,10 +89,10 @@ def test_standard_write_still_respects_global_auto_approve():
     calls = []
     safety = _safety(auto_approve=True)
     result = safety.propose(
-        tool_name="create_callout_asset",
+        tool_name="update_campaign_name",
         customer_id="123",
-        description="standard write",
-        payload={},
+        description="rename campaign",
+        payload={"new_name": "New name"},
         execute=lambda: calls.append("ran") or "ok",
     )
     assert result["status"] == "executed"
@@ -171,4 +171,5 @@ def test_risk_classifier_prioritizes_sensitive_and_destructive():
         classify_risk("update_ad_group_status", {"status": "ENABLED"})
         is RiskLevel.SPEND
     )
-    assert classify_risk("create_sitelink_asset", {}) is RiskLevel.STANDARD
+    assert classify_risk("create_sitelink_asset", {}) is RiskLevel.SPEND
+    assert classify_risk("update_campaign_name", {}) is RiskLevel.STANDARD
