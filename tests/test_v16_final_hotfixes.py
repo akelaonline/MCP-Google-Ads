@@ -1,5 +1,6 @@
 """Final v0.16 regression guards for contracts found during release audit."""
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -63,3 +64,17 @@ def test_asset_group_audience_promotion_requires_customer_name():
             audience_resource_name="customers/1234567890/audiences/7",
             promote_scope_to_customer=True,
         )
+
+
+def test_no_undocumented_skadnetwork_schema_writer_is_registered_in_source():
+    tools_dir = Path(__file__).resolve().parents[1] / "src" / "google_ads_mcp" / "tools"
+    source = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(tools_dir.glob("*.py"))
+    )
+    assert "def update_customer_skad_network_conversion_value_schema(" not in source
+    assert (
+        "def update_customer_skad_network_conversion_value_schema_advanced("
+        not in source
+    )
+    assert "def list_customer_skad_network_conversion_value_schemas(" in source
+    assert "def get_customer_skad_network_schema_capability(" in source
