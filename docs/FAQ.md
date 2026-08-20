@@ -31,10 +31,12 @@ A normal write returns `pending_confirmation`. Nothing has changed yet. Execute 
 
 ## What are the risk classes?
 
-- `standard` — ordinary writes that do not directly alter live delivery, access or sensitive data.
-- `spend` — budget/bidding and other delivery-changing operations such as enabled keywords, negatives, match changes, location/language/placement targeting, audience/topic attachment and conversion-biddability changes.
+- `standard` — ordinary preparation/admin writes that do not immediately alter live delivery, access or sensitive data.
+- `spend` — budget/bidding and other delivery-changing operations such as enabled keywords, negatives, match changes, location/language/placement targeting, audience/topic attachment, conversion-biddability changes, live asset attachment and edits to an existing RSA.
 - `destructive` — remove/unlink/terminal operations.
 - `sensitive` — account access, customer data, billing/linking and other sensitive operations.
+
+The distinction is effect-based. A new ad created explicitly `PAUSED` may remain `standard`; a helper that creates a sitelink/callout/image/etc. and attaches it directly to live delivery is `spend`.
 
 Even if global auto-approve is enabled, spend/destructive/sensitive actions remain separately gated unless their own explicit opt-in is enabled.
 
@@ -71,11 +73,15 @@ GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true
 
 Reads/writes outside the configured scope are blocked and account discovery is filtered.
 
-## Can an allowed MCC leak metadata about a child account outside the allowlist?
+## Can an allowed MCC leak metadata about an account outside the allowlist?
 
-The common hierarchy surfaces are filtered centrally in v0.16. `customer_client` rows are filtered by `customer_client.id`, and `customer_client_link` rows are filtered by the linked `client_customer`.
+The Google Ads hierarchy/link surfaces are filtered centrally in v0.16:
 
-This also applies to raw `run_gaql_query()`. If a raw hierarchy query omits the ownership field required to filter each row safely, the MCP fails closed instead of returning unfilterable cross-client metadata.
+- `customer_client` by `customer_client.id`;
+- `customer_client_link` by `customer_client_link.client_customer`;
+- `customer_manager_link` by `customer_manager_link.manager_customer`.
+
+This also applies to raw `run_gaql_query()`. If a raw hierarchy/link query omits the ownership field required to filter each row safely, the MCP fails closed instead of returning unfilterable cross-client metadata.
 
 ## Can customer A accidentally reference a campaign/asset belonging to customer B?
 
@@ -156,11 +162,17 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 python scripts/smoke_test.py
-ruff check src tests
+ruff check src tests scripts
 pytest -q
 ```
 
-For production confidence, start in read-only mode, verify allowed account/reporting scope, confirm a mutation is blocked, then switch to confirmation mode and exercise propose+cancel, propose+confirm, restart replay, MCC read filtering, cross-customer mutation blocking and any manager/client link workflow you use.
+For production confidence, start in read-only mode, verify allowed account/reporting scope, confirm a mutation is blocked, then switch to confirmation mode and exercise propose+cancel, propose+confirm, restart replay, all three MCC relationship read filters, cross-customer mutation blocking, live-creative risk gating and any manager/client link workflow you use.
+
+## How is the write gate protected against future contributors bypassing it?
+
+`tests/test_v16_write_gate_guardrail.py` statically inspects public `@mcp.tool()` functions and fails if one can reach a write-looking RPC before the deferred `execute` closure supplied to `SafetyLayer.propose()`.
+
+It is an additional regression guard; the full local test suite and live E2E validation are still required before a production deployment is declared validated.
 
 ## Where should I start?
 
