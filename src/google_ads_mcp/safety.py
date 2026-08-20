@@ -1,9 +1,10 @@
 """Human-in-the-loop safety policy for every mutating tool.
 
-Pending actions are kept in memory for fast same-process confirmation and are
-also persisted (with encrypted original MCP arguments) through ``AuditLog``.
-After a process restart, confirmation safely reconstructs the original tool call
-with the same action id. Failed confirmations remain pending for retry.
+Pending actions are kept in memory for fast same-process confirmation. When the
+configured audit backend supports the durable pending-store interface (the built-
+in ``AuditLog`` does), original MCP arguments are encrypted in SQLite and the
+same action can be confirmed safely after a process restart. Older/custom audit
+backends continue to work in memory without becoming a breaking change.
 """
 
 from __future__ import annotations
@@ -32,7 +33,6 @@ class RiskLevel(str, Enum):
 
 
 _SENSITIVE_TOOLS = {
-    # First-party/customer data.
     "upload_customer_match_members",
     "upload_customer_match_members_data_manager",
     "upload_user_data_small_batch",
@@ -43,26 +43,21 @@ _SENSITIVE_TOOLS = {
     "retract_conversion",
     "restate_conversion_value",
     "assign_user_list_customer_type",
-    # Measurement / identity schema.
     "create_conversion_custom_variable",
     "update_conversion_custom_variable",
     "update_customer_skad_network_conversion_value_schema",
     "start_identity_verification",
     "update_customer_operational_settings",
-    # Local Services customer interaction / lead-quality signals.
     "append_local_services_lead_conversation",
     "provide_local_services_lead_feedback",
-    # Account access and hierarchy.
     "accept_manager_link",
     "invite_manager_link",
     "create_customer_client",
     "invite_account_user",
     "update_user_access_role",
     "submit_batch_job",
-    # Billing / incentives.
     "create_billing_setup",
     "apply_google_ads_incentive",
-    # External product / creator / analytics connections.
     "create_product_link",
     "accept_product_link_invitation",
     "request_youtube_video_link",
@@ -70,33 +65,26 @@ _SENSITIVE_TOOLS = {
     "create_third_party_app_analytics_link",
     "regenerate_third_party_app_analytics_shareable_id",
     "create_legacy_third_party_app_account_link",
-    # Persistent automated account policy.
     "set_recommendation_subscription",
-    # YouTube publishing through the Ads identity.
     "upload_youtube_video",
     "update_youtube_video_upload",
-    # One-way PMax brand migration / identity controls.
     "enable_pmax_brand_guidelines",
 }
 
 _DESTRUCTIVE_TOOLS = {
     "end_experiment",
-    # Audience data/list destruction.
     "delete_data_manager_customer_match_list",
     "remove_customer_match_members_data_manager",
     "remove_all_customer_match_members_data_manager",
-    # MCC/access destruction.
     "decline_manager_link",
     "unlink_manager",
     "cancel_manager_link_invitation",
     "move_manager_link",
     "revoke_user_access_invitation",
-    # Billing/account-budget destruction.
     "cancel_pending_billing_setup",
     "end_account_budget",
     "remove_future_account_budget",
     "cancel_pending_account_budget_proposal",
-    # Product/creator invitation destruction.
     "reject_product_link_invitation",
     "revoke_product_link_invitation",
     "reject_youtube_video_link",
@@ -104,7 +92,6 @@ _DESTRUCTIVE_TOOLS = {
 }
 
 _SPEND_TOOLS = {
-    # Budgets / bidding / delivery.
     "create_campaign_budget",
     "update_campaign_budget",
     "set_manual_cpc",
@@ -125,7 +112,6 @@ _SPEND_TOOLS = {
     "create_account_budget",
     "update_account_budget",
     "apply_recommendation",
-    # Campaign lifecycle / experiments.
     "create_smart_campaign",
     "update_smart_campaign_setting",
     "schedule_experiment",
@@ -134,11 +120,9 @@ _SPEND_TOOLS = {
     "promote_campaign_draft",
     "create_experiment_arms",
     "update_experiment_arm",
-    # Account-wide / PMax targeting and serving controls.
     "add_customer_negative_criterion",
     "add_asset_group_signal",
     "replace_asset_group_listing_filter_tree",
-    # Assets and asset sets can alter serving when attached to live scope.
     "attach_asset_to_customer",
     "set_customer_asset_status",
     "attach_asset_to_ad_group",
@@ -147,11 +131,9 @@ _SPEND_TOOLS = {
     "attach_asset_set_to_customer",
     "attach_asset_set_to_campaign",
     "attach_asset_set_to_ad_group",
-    # Existing audience resources can be referenced by active targeting.
     "update_custom_audience",
     "update_custom_interest",
     "update_audience_metadata",
-    # Conversion/lifecycle goals and value rules affect Smart Bidding.
     "set_customer_conversion_goal_biddable",
     "set_campaign_conversion_goal_biddable",
     "create_custom_conversion_goal",
@@ -177,6 +159,15 @@ _SPEND_PAYLOAD_KEYS = {
     "target_roas",
     "max_cpc_bid_ceiling",
     "spending_limit",
+}
+
+_PENDING_STORE_METHODS = {
+    "save_pending",
+    "get_pending",
+    "pending",
+    "set_pending_attempts",
+    "delete_pending",
+    "prune_pending_before",
 }
 
 
@@ -221,6 +212,9 @@ class SafetyLayer:
         self._ttl_seconds = ttl_minutes * 60
         self._audit = audit_log
         self._pending: dict[str, PendingAction] = {}
+        self._durable_store = all(
+            callable(getattr(audit_log, name, None)) for name in _PENDING_STORE_METHODS
+        )
         self._allowed_customer_ids = frozenset(
             normalize_customer_id(customer_id)
             for customer_id in (allowed_customer_ids or ())
@@ -247,11 +241,12 @@ class SafetyLayer:
         normalized_customer_id = self._assert_customer_allowed(customer_id)
         risk_level = classify_risk(tool_name, payload)
 
-        # A persisted action being replayed after restart must execute now, with
-        # exactly its original action id; creating a second pending action would
-        # break audit correlation and require another confirmation.
         replay_id = replay_action_id()
         if replay_id:
+            if not self._durable_store:
+                raise GoogleAdsMcpError(
+                    "This audit backend does not support durable pending-action replay."
+                )
             stored = self._audit.get_pending(replay_id)
             if stored is None:
                 raise GoogleAdsMcpError(
@@ -314,8 +309,8 @@ class SafetyLayer:
         )
         self._pending[action_id] = action
 
-        invocation = current_invocation()
         invocation_arguments = None
+        invocation = current_invocation()
         if invocation is not None:
             invoked_tool, arguments = invocation
             if invoked_tool == tool_name:
@@ -326,23 +321,26 @@ class SafetyLayer:
                     invoked_tool,
                     tool_name,
                 )
-        self._audit.save_pending(
-            action_id=action.action_id,
-            tool_name=action.tool_name,
-            customer_id=action.customer_id,
-            description=action.description,
-            payload=action.payload,
-            invocation_arguments=invocation_arguments,
-            risk_level=action.risk_level.value,
-            created_at=action.created_at,
-            attempts=action.attempts,
-        )
+
+        durable = self._durable_store and invocation_arguments is not None
+        if self._durable_store:
+            self._audit.save_pending(
+                action_id=action.action_id,
+                tool_name=action.tool_name,
+                customer_id=action.customer_id,
+                description=action.description,
+                payload=action.payload,
+                invocation_arguments=invocation_arguments,
+                risk_level=action.risk_level.value,
+                created_at=action.created_at,
+                attempts=action.attempts,
+            )
 
         return {
             "status": "pending_confirmation",
             "pending_action_id": action_id,
             "risk_level": risk_level.value,
-            "durable": invocation_arguments is not None,
+            "durable": durable,
             "confirmation_reason": _confirmation_reason(
                 risk_level, self._auto_approve
             ),
@@ -361,7 +359,8 @@ class SafetyLayer:
         if action is not None:
             self._assert_customer_allowed(action.customer_id)
             action.attempts += 1
-            self._audit.set_pending_attempts(action_id, action.attempts)
+            if self._durable_store:
+                self._audit.set_pending_attempts(action_id, action.attempts)
             result = self._run(
                 action.action_id,
                 action.tool_name,
@@ -370,9 +369,9 @@ class SafetyLayer:
                 action.payload,
                 action.execute,
             )
-            # Only success removes pending state. Exceptions leave both copies for retry.
             self._pending.pop(action_id, None)
-            self._audit.delete_pending(action_id)
+            if self._durable_store:
+                self._audit.delete_pending(action_id)
             return {
                 "status": "executed",
                 "risk_level": action.risk_level.value,
@@ -381,6 +380,11 @@ class SafetyLayer:
                 "result": result,
             }
 
+        if not self._durable_store:
+            raise GoogleAdsMcpError(
+                f"No pending action with id '{action_id}' (this audit backend stores "
+                "pending actions in memory only)."
+            )
         stored = self._audit.get_pending(action_id)
         if stored is None:
             raise GoogleAdsMcpError(
@@ -411,10 +415,11 @@ class SafetyLayer:
     def cancel(self, action_id: str) -> dict[str, Any]:
         self._evict_expired()
         action = self._pending.pop(action_id, None)
-        stored = self._audit.get_pending(action_id)
+        stored = self._audit.get_pending(action_id) if self._durable_store else None
         if action is None and stored is None:
             raise GoogleAdsMcpError(f"No pending action with id '{action_id}'.")
-        self._audit.delete_pending(action_id)
+        if self._durable_store:
+            self._audit.delete_pending(action_id)
         if action is not None:
             return {
                 "status": "cancelled",
@@ -433,9 +438,8 @@ class SafetyLayer:
     def list_pending(self) -> list[dict[str, Any]]:
         self._evict_expired()
         now = time.time()
-        rows = []
-        for stored in self._audit.pending():
-            rows.append(
+        if self._durable_store:
+            return [
                 {
                     "pending_action_id": stored["action_id"],
                     "tool_name": stored["tool_name"],
@@ -448,8 +452,22 @@ class SafetyLayer:
                     and not stored.get("invocation_error"),
                     "loaded_in_memory": stored["action_id"] in self._pending,
                 }
-            )
-        return rows
+                for stored in self._audit.pending()
+            ]
+        return [
+            {
+                "pending_action_id": action.action_id,
+                "tool_name": action.tool_name,
+                "customer_id": action.customer_id,
+                "risk_level": action.risk_level.value,
+                "description": action.description,
+                "age_seconds": round(now - action.created_at),
+                "attempts": action.attempts,
+                "durable": False,
+                "loaded_in_memory": True,
+            }
+            for action in self._pending.values()
+        ]
 
     def _assert_customer_allowed(self, customer_id: str) -> str:
         normalized = normalize_customer_id(customer_id)
@@ -518,7 +536,8 @@ class SafetyLayer:
         ]
         for action_id in expired_memory:
             self._pending.pop(action_id, None)
-        self._audit.prune_pending_before(cutoff)
+        if self._durable_store:
+            self._audit.prune_pending_before(cutoff)
 
 
 def classify_risk(tool_name: str, payload: dict[str, Any]) -> RiskLevel:
@@ -526,8 +545,6 @@ def classify_risk(tool_name: str, payload: dict[str, Any]) -> RiskLevel:
     normalized_tool = tool_name.strip().lower()
     status = str(payload.get("status", "")).upper()
 
-    # External links: terminal states remove/reject identity/integration access;
-    # activation/request states are sensitive even if named ENABLED.
     if normalized_tool in {
         "set_third_party_app_analytics_link_status",
         "set_account_link_status",
@@ -536,7 +553,6 @@ def classify_risk(tool_name: str, payload: dict[str, Any]) -> RiskLevel:
             return RiskLevel.DESTRUCTIVE
         return RiskLevel.SENSITIVE
 
-    # MPA approvals change authorization; rejection/revocation is destructive.
     if normalized_tool == "resolve_multi_party_auth_review":
         if status in {"REJECTED", "REVOKED"}:
             return RiskLevel.DESTRUCTIVE
