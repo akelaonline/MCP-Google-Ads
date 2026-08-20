@@ -86,10 +86,20 @@ When configured:
 - customer-scoped reads outside the list are blocked;
 - writes outside the list are blocked;
 - account discovery is filtered;
+- MCC `customer_client` / `customer_client_link` rows are filtered to allowed child accounts;
 - nested resource references in mutations are inspected for cross-customer mixing.
 
 If the MCP needs to query an MCC hierarchy, include the manager customer itself in
 the allowlist as well.
+
+### Raw GAQL against MCC hierarchy resources
+
+`run_gaql_query()` uses the same central isolation path. In an allowlisted
+deployment, raw `customer_client` queries must select `customer_client.id`, and
+raw `customer_client_link` queries must select `customer_client_link.client_customer`.
+Those fields are needed to prove which child customer owns each returned row. If
+they are omitted, the query fails closed rather than returning unfilterable
+cross-client metadata.
 
 ### MCC link operations
 
@@ -97,11 +107,33 @@ A real manager/client invite necessarily references two accounts. 0.16 permits
 that specific link creation only when the second customer also passes the
 deployment allowlist. This does not weaken normal campaign/ad/asset isolation.
 
-## 5. Write policy
+## 5. Choose a write mode
 
-Recommended live-account defaults:
+### A. Reporting-only / emergency freeze
+
+For an MCP instance that must never mutate Google Ads:
 
 ```dotenv
+GOOGLE_ADS_MCP_READ_ONLY=true
+```
+
+Reads, reports and GAQL remain available. New write proposals are blocked, and
+`confirm_pending_action()` is also blocked — including for pending actions created
+before a restart/config change. Existing pending actions may still be listed or
+cancelled.
+
+This is the strongest operational kill switch and is useful for:
+
+- reporting-only agents;
+- audits;
+- staged rollouts;
+- emergency freeze during an incident;
+- read-only credentials/workflows shared with more users.
+
+### B. Normal production writes with human confirmation — recommended
+
+```dotenv
+GOOGLE_ADS_MCP_READ_ONLY=false
 GOOGLE_ADS_MCP_AUTO_APPROVE=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_SPEND=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
@@ -112,8 +144,23 @@ GOOGLE_ADS_MCP_PENDING_TTL_MINUTES=30
 Writes return a preview and `pending_action_id`; call
 `confirm_pending_action(action_id)` to execute.
 
-Even with global auto-approve enabled, spend/destructive/sensitive classes remain
-separately gated unless explicitly opted in.
+### C. Controlled unattended automation
+
+If global auto-approve is deliberately enabled, only `standard` writes may execute
+automatically by default. Spend/destructive/sensitive classes remain separately
+gated unless explicitly opted in.
+
+```dotenv
+GOOGLE_ADS_MCP_AUTO_APPROVE=true
+GOOGLE_ADS_MCP_AUTO_APPROVE_SPEND=false
+GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
+GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
+```
+
+0.16 classifies delivery-changing actions conservatively. Adding enabled keywords,
+changing match types/negatives, location/language/placement targeting,
+audience/topic attachment and conversion-biddability changes are `spend` risk,
+not ordinary `standard` writes.
 
 ## 6. Audit DB and durable pending actions
 
@@ -131,6 +178,14 @@ GOOGLE_ADS_MCP_AUDIT_DB=/persistent/path/google-ads-mcp.db
 
 0.16 stores pending proposals in SQLite so they can survive process restart. The
 original MCP arguments required for replay are encrypted.
+
+### One process per audit/pending DB
+
+The server serializes pending list/confirm/cancel operations inside one running
+process. The SQLite pending table is **not** a distributed claim/lease system.
+Do not point multiple simultaneously running MCP processes/workers at the same
+`audit.db`; give each process its own DB unless you add an external single-writer
+or distributed claim mechanism.
 
 ### Recommended key for containers/servers
 
@@ -196,13 +251,16 @@ List my accessible Google Ads customer IDs.
 Show campaign performance for customer 123-456-7890 for the last 7 days.
 ```
 
-Then verify the safety path:
+If write mode is enabled, verify the safety path:
 
 ```text
 Propose pausing campaign 123. Do not confirm it.
 ```
 
 Confirm `pending_confirmation` is returned before testing a live confirmation.
+
+If read-only mode is enabled, the same mutation request should instead return a
+read-only policy error without creating a pending action.
 
 ## 8. HTTP transport
 
@@ -242,6 +300,15 @@ pip install -e .
 
 0.16 adds `cryptography>=42` as a runtime dependency.
 
+For a conservative first restart after upgrade, you can start with:
+
+```dotenv
+GOOGLE_ADS_MCP_READ_ONLY=true
+```
+
+verify reports/account scope, then switch to normal confirmation mode only after
+you are satisfied with the deployment.
+
 ## 10. Local validation before production
 
 ```bash
@@ -258,13 +325,14 @@ false.
 
 Recommended sequence:
 
-1. account discovery/read;
-2. proposed harmless write, then cancel;
-3. proposed harmless write, then confirm;
-4. propose a write, restart the MCP, then confirm the same pending ID;
-5. when using an MCC, deliberately try a campaign resource from another allowed
-   customer and verify it is blocked;
-6. separately test the legitimate manager/client-link flow if your deployment uses it.
+1. start read-only and verify account discovery/reporting;
+2. verify an attempted mutation is blocked in read-only mode;
+3. switch to confirmation mode and propose a harmless write, then cancel;
+4. propose a harmless write, then confirm;
+5. propose a write, restart the MCP, then confirm the same pending ID;
+6. when using an MCC, deliberately query hierarchy rows outside the allowlist and verify they are filtered;
+7. deliberately try a campaign resource from another allowed customer and verify it is blocked;
+8. separately test the legitimate manager/client-link flow if your deployment uses it.
 
 ## Troubleshooting
 
@@ -284,6 +352,24 @@ Verify credentials and, for MCC access, `GOOGLE_ADS_LOGIN_CUSTOMER_ID`.
 
 Do not widen the allowlist blindly. Confirm which account this MCP instance is
 supposed to control and add only the intended customer.
+
+### Raw MCC GAQL says an ownership field must be selected
+
+Add `customer_client.id` when querying `FROM customer_client`, or
+`customer_client_link.client_customer` when querying `FROM customer_client_link`.
+The field is required only so the MCP can enforce the configured child-account
+allowlist on every returned row.
+
+### Write says the MCP is running in read-only mode
+
+This is intentional when:
+
+```dotenv
+GOOGLE_ADS_MCP_READ_ONLY=true
+```
+
+Switch it to `false` only on an instance that is actually authorized to mutate
+Google Ads. Restart the MCP client after changing the environment.
 
 ### Pending action is not durable
 
