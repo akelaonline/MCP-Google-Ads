@@ -1,8 +1,8 @@
-# Google Ads MCP 0.16 production validation checklist
+# Google Ads MCP 0.16.1 production validation checklist
 
 Use this checklist after updating the local server from GitHub and before treating a specific deployment as production-validated.
 
-The purpose is to verify both functionality and the safety boundaries added in 0.16.
+The purpose is to verify both functionality and the safety boundaries added in the v0.16 series, including the 0.16.1 startup/isolation hotfix.
 
 ## 1. Install and static validation
 
@@ -15,6 +15,16 @@ ruff check src tests scripts
 pytest -q
 ```
 
+Also exercise the real server-construction path:
+
+```bash
+python - <<'PY'
+from google_ads_mcp.server import build_server
+server = build_server()
+print("OK build_server", server)
+PY
+```
+
 Record:
 
 ```bash
@@ -22,9 +32,9 @@ git rev-parse HEAD
 python -c "import google_ads_mcp; print(google_ads_mcp.__version__)"
 ```
 
-Expected release version: `0.16.0`.
+Expected release version: `0.16.1`.
 
-Do not continue to live mutation testing if the local suite fails.
+Do not continue to live mutation testing if the local suite, smoke test, or `build_server()` check fails.
 
 ## 2. Read-only kill switch
 
@@ -130,6 +140,8 @@ With two allowlisted child customers, deliberately construct/test a write for cu
 Expected result: the MCP rejects the operation before the Google mutate RPC.
 
 Do not use a production campaign for this test.
+
+The local unit suite must also pass the protobuf map/list isolation regressions in `tests/test_recursive_customer_isolation.py`.
 
 ## 9. Legitimate manager/client link exception
 
