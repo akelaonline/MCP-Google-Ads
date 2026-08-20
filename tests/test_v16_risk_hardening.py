@@ -22,15 +22,25 @@ from google_ads_mcp.safety import RiskLevel, classify_risk
         "add_topic_targeting",
         "create_conversion_action",
         "set_conversion_action_counting",
+        "create_sitelink_asset",
+        "create_call_asset",
+        "create_message_asset",
+        "create_image_asset",
+        "create_promotion_asset",
+        "create_callout_asset",
+        "create_structured_snippet_asset",
+        "create_call_ad",
+        "update_responsive_search_ad",
     ],
 )
 def test_delivery_or_optimization_changes_require_spend_approval(tool_name: str):
     assert classify_risk(tool_name, {}) is RiskLevel.SPEND
 
 
-def test_existing_standard_creative_policy_stays_standard():
-    assert classify_risk("create_callout_asset", {}) is RiskLevel.STANDARD
-    assert classify_risk("create_sitelink_asset", {}) is RiskLevel.STANDARD
+def test_paused_ad_preparation_can_stay_standard_without_bid_payload():
+    assert classify_risk("create_responsive_search_ad", {}) is RiskLevel.STANDARD
+    assert classify_risk("create_responsive_display_ad", {}) is RiskLevel.STANDARD
+    assert classify_risk("create_demand_gen_ad", {}) is RiskLevel.STANDARD
 
 
 def test_status_and_sensitive_precedence_still_win():
