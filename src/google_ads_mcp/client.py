@@ -103,7 +103,15 @@ class GoogleAdsClientWrapper:
         ]
 
     def search(self, customer_id: str, query: str) -> list[dict[str, Any]]:
-        """Run a GAQL query, returning a list of flattened dicts."""
+        """Run GAQL and enforce deployment scope on MCC hierarchy/link rows.
+
+        Checking only the request customer is insufficient when the request customer
+        is an MCC: ``customer_client`` and ``customer_client_link`` can describe
+        other child customers. When a deployment allowlist is configured, those
+        rows are filtered by the referenced child customer before they are returned.
+        Raw hierarchy queries that omit the ownership field required for filtering
+        fail closed rather than leaking cross-client metadata.
+        """
         from google.ads.googleads.errors import GoogleAdsException
 
         customer_id = self.assert_customer_allowed(customer_id)
@@ -114,9 +122,50 @@ class GoogleAdsClientWrapper:
             for batch in stream:
                 for row in batch.results:
                     rows.append(_row_to_dict(row))
-            return rows
+            return self._filter_allowed_hierarchy_rows(query, rows)
         except GoogleAdsException as ex:
             raise GoogleAdsMcpError(format_google_ads_exception(ex)) from ex
+
+    def _filter_allowed_hierarchy_rows(
+        self, query: str, rows: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Filter MCC child-account discovery/link rows to configured scope."""
+        if not self._allowed_customer_ids or not rows:
+            return rows
+
+        source = _gaql_from_resource(query)
+        if source == "customer_client":
+            filtered: list[dict[str, Any]] = []
+            for row in rows:
+                data = row.get("customer_client") or {}
+                raw_id = data.get("id")
+                if raw_id is None:
+                    raise GoogleAdsMcpError(
+                        "A customer_client GAQL query in an allowlisted deployment must "
+                        "select customer_client.id so cross-client rows can be filtered."
+                    )
+                child_id = normalize_customer_id(str(raw_id))
+                if child_id in self._allowed_customer_ids:
+                    filtered.append(row)
+            return filtered
+
+        if source == "customer_client_link":
+            filtered = []
+            for row in rows:
+                data = row.get("customer_client_link") or {}
+                client_resource = str(data.get("client_customer") or "").strip()
+                child_id = _customer_id_from_resource_name(client_resource)
+                if child_id is None:
+                    raise GoogleAdsMcpError(
+                        "A customer_client_link GAQL query in an allowlisted deployment "
+                        "must select customer_client_link.client_customer so linked "
+                        "customers can be filtered."
+                    )
+                if child_id in self._allowed_customer_ids:
+                    filtered.append(row)
+            return filtered
+
+        return rows
 
     def mutate(
         self,
@@ -274,6 +323,14 @@ def _customer_id_from_resource_name(resource_name: str) -> str | None:
 
     match = re.match(r"^customers/(\d+)(?:/|$)", str(resource_name).strip())
     return match.group(1) if match else None
+
+
+def _gaql_from_resource(query: str) -> str | None:
+    """Extract the top-level GAQL FROM resource name without parsing all GAQL."""
+    import re
+
+    match = re.search(r"\bFROM\s+([A-Za-z0-9_]+)\b", str(query), re.IGNORECASE)
+    return match.group(1).lower() if match else None
 
 
 def _customer_scoped_resource_names(message: Any) -> list[str]:
