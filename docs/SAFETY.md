@@ -87,21 +87,23 @@ Strict mode refuses startup when the required allowlist is empty.
 
 ### MCC read isolation
 
-An allowed manager customer can describe child customers through GAQL even when
-the child is not itself inside this deployment's scope. v0.16 therefore applies
-row-level filtering to the MCC hierarchy surfaces that can enumerate other
-customers:
+An allowed manager/client customer can expose linked account metadata through GAQL
+even when the referenced account is not itself inside this deployment's scope.
+v0.16 therefore applies row-level filtering to all three Google Ads hierarchy/link
+surfaces that can reveal another customer:
 
 - `customer_client` rows are filtered by `customer_client.id`;
-- `customer_client_link` rows are filtered by the referenced `client_customer`.
+- `customer_client_link` rows are filtered by the referenced
+  `customer_client_link.client_customer`;
+- `customer_manager_link` rows are filtered by the referenced
+  `customer_manager_link.manager_customer`.
 
-This protection is implemented inside the shared client `search()` path, so it
-also applies to `run_gaql_query()`, not only to the pre-built account helpers.
+This protection is implemented in the shared production client `search()` path, so
+it also applies to `run_gaql_query()`, not only to the pre-built account helpers.
 
-When an allowlist is configured, a raw hierarchy query that omits the ownership
-field needed to filter safely fails closed. For example, a `customer_client`
-query must select `customer_client.id`; otherwise the MCP cannot prove which
-tenant owns each row and returns an error instead of the data.
+When an allowlist is configured, a raw hierarchy/link query that omits the
+ownership field needed to filter safely fails closed. The MCP will not return an
+unfilterable row and guess which tenant owns it.
 
 ### Recursive mutation guard
 
@@ -136,18 +138,25 @@ same-customer isolation.
 
 Writes are classified centrally as:
 
-- `standard` — ordinary writes that do not directly alter spend/access/sensitive data;
+- `standard` — ordinary preparation/admin writes that do not directly alter
+  spend/access/sensitive data or immediately change live delivery;
 - `spend` — budgets, bids and changes that can materially affect live delivery or
   bidding inputs, including enabled keywords, match changes, negatives,
   location/language/placement targeting, audience/topic attachment, live goals,
-  experiment launch/splits, PMax listing/signals and recommendation application;
+  experiment launch/splits, PMax listing/signals, recommendation application,
+  attaching creative/assets to live delivery, and editing an existing RSA;
 - `destructive` — removals, terminal statuses, unlinking access, ending experiments;
 - `sensitive` — Customer Match/first-party data, conversion uploads, billing,
   identity, SKAd, account access, manager links and external product/data links.
 
-Normal creative/resource preparation such as creating callouts or sitelinks remains
-`standard` by design. The delivery-changing list is deliberately more conservative
-because a deployment may enable automatic execution for standard writes.
+The boundary is intentionally based on **effect**, not on whether a tool name starts
+with `create_`. For example:
+
+- creating an ad that is explicitly `PAUSED` can remain `standard`;
+- creating a sitelink/callout/image/promotion/WhatsApp asset **and attaching it to a
+  live campaign in the same tool** is `spend`;
+- editing an existing RSA is `spend` because it can change live delivery;
+- simply renaming a campaign remains `standard`.
 
 Global auto-approve is not a master bypass. Even with:
 
@@ -243,8 +252,8 @@ does not execute the Google Ads mutation.
 
 ### Public tool name vs safety alias
 
-Some public tools share an internal safety category. For example, specialized
-wrappers may classify under an existing risk alias.
+Some public tools share an internal safety category. Specialized wrappers may
+classify under an existing risk alias.
 
 0.16 stores the exact public MCP tool name inside encrypted replay metadata, so a
 pending action can be reconstructed after restart even when its risk/audit alias
@@ -338,6 +347,15 @@ Examples include:
 Batch Jobs are different: Google batch execution has partial-success semantics.
 The MCP documents that behavior and requires callers to inspect row results.
 
+## Static write-gate regression guard
+
+`tests/test_v16_write_gate_guardrail.py` parses public `@mcp.tool()` functions and
+fails if a tool can reach a write-looking Google/API RPC in its outer body before
+the deferred `execute` closure supplied to `ctx.safety.propose(...)`.
+
+This protects the read-only kill switch and confirmation architecture from future
+contributors accidentally introducing a direct mutation path.
+
 ## Image-fetch security
 
 Remote image tools require public HTTPS and reject:
@@ -381,11 +399,11 @@ Every new mutating tool must:
 3. use the central client wrapper for resource-specific/atomic mutations;
 4. call `ctx.safety.propose(...)` before live execution;
 5. keep the actual API call inside the supplied `execute` callable;
-6. choose a conservative risk category/payload;
+6. choose a conservative risk category/payload based on live effect, not naming;
 7. avoid raw secrets/PII in normal audit payloads;
 8. use atomic behavior when several related resources must move together;
 9. add real v25 protobuf contract/regression coverage for complex write paths;
-10. preserve MCC read isolation when adding hierarchy/link reports;
+10. preserve all MCC read-isolation surfaces when adding hierarchy/link reports;
 11. respect the central read-only policy rather than inventing tool-local bypasses;
 12. never weaken cross-customer isolation to make one special workflow easier —
     use a narrow validated exception instead.
