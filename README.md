@@ -5,7 +5,8 @@
 **Production-grade read/write Model Context Protocol server for Google Ads API v25.**
 
 Operate Google Ads from an AI client with explicit confirmation, SQLite audit,
-durable encrypted pending actions, MCC/customer isolation, and broad v25 service coverage.
+durable encrypted pending actions, MCC/customer isolation, a hard read-only mode,
+and broad v25 service coverage.
 
 Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation & AI workflows
 
@@ -38,6 +39,15 @@ propose -> preview -> confirm -> execute -> audit
 
 The default configuration does **not** silently change live spend.
 
+For deployments that must never mutate Google Ads, enable the central kill switch:
+
+```dotenv
+GOOGLE_ADS_MCP_READ_ONLY=true
+```
+
+Read-only mode keeps reporting, GAQL, audit inspection and pending cancellation available,
+but blocks both new write proposals and confirmations of older pending actions.
+
 ## 0.16.0: v25 completion + production hardening
 
 0.16.0 is the full coverage/hardening pass.
@@ -66,9 +76,15 @@ inside CREATE, UPDATE and REMOVE protobuf operations before a mutation reaches G
 A campaign operation for customer A cannot quietly carry an asset/campaign/ad-group/etc.
 resource from customer B even when both are accessible through the same manager credential.
 
-The one intentional exception is manager/client linking. A `CustomerClientLinkService`
-CREATE may reference the second customer, but that customer must still pass the configured
-deployment allowlist.
+Read isolation is also enforced for MCC hierarchy/link surfaces. When a deployment allowlist
+is configured, `customer_client` and `customer_client_link` rows outside that allowlist are
+filtered before they are returned, including through raw GAQL. If a hierarchy/link query omits
+the field needed to identify the referenced child customer safely, it fails closed instead of
+returning ambiguous cross-tenant metadata.
+
+The one intentional mutation exception is manager/client linking. A
+`CustomerClientLinkService` CREATE may reference the second customer, but that customer must
+still pass the configured deployment allowlist.
 
 ### Durable confirmations
 
@@ -87,6 +103,16 @@ SQLite DB and that key file, or provide the environment key.
 
 If replay state cannot be decrypted or reconstructed, confirmation fails closed and no Ads
 mutation is executed.
+
+### Confirmation race hardening
+
+`confirm_pending_action` and `cancel_pending_action` are serialized inside one running MCP
+process. Two simultaneous requests cannot both execute the same pending action, and a cancel
+cannot race into a confirmation that is already entering execution.
+
+One running MCP process should own one pending-action database. The SQLite schema is not a
+distributed lease/claim system, so do not point several simultaneous MCP processes/workers at
+the same `audit.db`.
 
 ## Capabilities
 
@@ -118,8 +144,10 @@ Full signatures and operational notes: [`docs/TOOLS.md`](docs/TOOLS.md).
 
 ```mermaid
 flowchart LR
-    A[AI proposes change] --> C{Customer allowed?}
-    C -- no --> X[Blocked before Google Ads]
+    A[AI proposes change] --> O{Read-only?}
+    O -- yes --> X[Blocked before mutation]
+    O -- no --> C{Customer allowed?}
+    C -- no --> X
     C -- yes --> R{Risk class}
     R -->|standard| P[Preview / policy]
     R -->|spend| P
@@ -138,6 +166,11 @@ Risk classes:
 - `destructive`
 - `sensitive`
 
+Delivery-changing operations such as keyword creation/match changes/negatives,
+location/language/placement targeting, audience/topic attachment and conversion-biddability
+changes are classified conservatively as `spend` even when their payload contains no explicit
+currency amount.
+
 Even if global auto-approve is enabled, high-risk classes need their own explicit opt-in:
 
 ```dotenv
@@ -147,7 +180,9 @@ GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
 ```
 
-For live accounts, keeping all four values `false` is the conservative default.
+For live accounts, keeping all auto-approve values `false` is the conservative default.
+Normal creative/resource preparation such as callouts and sitelinks remains `standard` by
+design.
 
 If Google/network execution fails after confirmation, the proposal remains available for
 retry and keeps the same action ID in audit history.
@@ -156,9 +191,22 @@ See [`docs/SAFETY.md`](docs/SAFETY.md).
 
 ## Production deployment
 
-For one-client or controlled multi-client deployments, use a customer allowlist:
+Choose the operating mode explicitly.
+
+### Read-only reporting / analysis
 
 ```dotenv
+GOOGLE_ADS_MCP_READ_ONLY=true
+GOOGLE_ADS_MCP_AUTO_APPROVE=false
+```
+
+This is the strongest kill switch: reads remain available, while proposals and confirmations
+are blocked centrally.
+
+### Write-capable with human confirmation — recommended
+
+```dotenv
+GOOGLE_ADS_MCP_READ_ONLY=false
 GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS=123-456-7890,987-654-3210
 GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true
 GOOGLE_ADS_MCP_AUTO_APPROVE=false
@@ -166,6 +214,11 @@ GOOGLE_ADS_MCP_AUTO_APPROVE_SPEND=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
 ```
+
+### Controlled automation
+
+Enable global auto-approve only in a controlled workflow, then opt into high-risk classes
+individually. `GOOGLE_ADS_MCP_AUTO_APPROVE=true` is not a master bypass.
 
 For durable pending confirmations in a container/VM, set a stable encryption key or persist
 the generated key next to the audit DB:
@@ -177,6 +230,9 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 ```dotenv
 GOOGLE_ADS_MCP_PENDING_ENCRYPTION_KEY=...
 ```
+
+Do not share one `GOOGLE_ADS_MCP_AUDIT_DB` between several simultaneously running MCP
+processes unless you provide an external single-writer/claim mechanism.
 
 ### HTTP warning
 
@@ -276,12 +332,13 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 python scripts/smoke_test.py
-ruff check src tests
+ruff check src tests scripts
 pytest -q
 ```
 
 For a live E2E check, use a dedicated allowlisted test customer and keep all high-risk
-auto-approve flags disabled.
+auto-approve flags disabled. Include both write isolation and MCC hierarchy read-isolation
+checks.
 
 ## Scope boundaries
 
