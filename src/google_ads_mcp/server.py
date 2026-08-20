@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import threading
 
 from fastmcp import FastMCP
 
@@ -28,6 +29,13 @@ For reporting, prefer the pre-built tools (get_campaign_performance, etc.) and
 fall back to run_gaql_query for anything custom.
 """
 
+# FastMCP may dispatch synchronous tool calls concurrently. Confirm and cancel
+# are state transitions over the same pending-action collection, so serialize
+# them within one server process. This prevents two simultaneous confirms from
+# executing the same mutation before the first call removes the pending action,
+# and prevents cancel racing an in-flight confirmation.
+_PENDING_ACTION_CONTROL_LOCK = threading.RLock()
+
 
 def build_server() -> FastMCP:
     ctx = build_context()
@@ -51,17 +59,20 @@ def _register_safety_tools(mcp: FastMCP, ctx) -> None:
     @mcp.tool()
     def list_pending_actions() -> dict:
         """List all proposed-but-not-yet-confirmed changes, across every tool."""
-        return {"pending_actions": ctx.safety.list_pending()}
+        with _PENDING_ACTION_CONTROL_LOCK:
+            return {"pending_actions": ctx.safety.list_pending()}
 
     @mcp.tool()
     def confirm_pending_action(action_id: str) -> dict:
-        """Execute a proposed change, including one recovered after server restart."""
-        return ctx.safety.confirm(action_id)
+        """Execute one pending action exactly once within this server process."""
+        with _PENDING_ACTION_CONTROL_LOCK:
+            return ctx.safety.confirm(action_id)
 
     @mcp.tool()
     def cancel_pending_action(action_id: str) -> dict:
-        """Discard a previously proposed change without executing it."""
-        return ctx.safety.cancel(action_id)
+        """Discard a pending action without racing an in-flight confirmation."""
+        with _PENDING_ACTION_CONTROL_LOCK:
+            return ctx.safety.cancel(action_id)
 
     @mcp.tool()
     def get_recent_audit_log(limit: int = 20) -> dict:
