@@ -1,227 +1,150 @@
-# FAQ — Google Ads MCP v0.12
+# FAQ — Google Ads MCP v0.16
 
 ## What does this MCP do?
 
-It gives an MCP client structured read/write access to Google Ads: reporting, campaigns, budgets, bidding, ad groups, ads, assets, keywords, audiences, targeting, conversions, Performance Max, experiments, recommendations and MCC workflows.
+It gives an MCP client structured **read/write** access to Google Ads API v25. It covers reporting, campaigns, budgets, bidding, ad groups, ads, assets, keywords, audiences, targeting, conversions/goals, Performance Max, experiments, recommendations, MCC/account access, billing/product links, Batch Jobs, Smart Bidding controls and specialist Google Ads services.
+
+For the service-by-service coverage contract, see [`V25_SERVICE_COVERAGE.md`](V25_SERVICE_COVERAGE.md).
 
 ## Is it reporting-only?
 
-No. Read tools return account data; write tools propose real Google Ads mutations through a confirmation layer.
+No. Read tools inspect accounts; write tools propose real Google Ads mutations through the shared safety layer.
 
-## Which Google Ads API version does v0.12 target?
+## Which Google Ads API version does v0.16 target?
 
-Google Ads API **v25**. The project explicitly requests `v25` and pins the Python client to the tested 31.x line instead of silently following a future default API version.
-
-## Why did v0.12 need a compatibility pass?
-
-Google Ads removes and replaces resources/fields regularly. Earlier versions contained several shapes that permissive unit-test fakes could accept even though the current generated Google client would reject them. v0.12 adds real generated-protobuf contract tests to prevent that class of regression.
+Google Ads API **v25**. The project explicitly requests `v25` and pins the Google Ads Python client to the tested 31.x line instead of floating to a future default API version.
 
 ## Does a write change the account immediately?
 
-Not by default. With:
+Not by default.
 
 ```dotenv
 GOOGLE_ADS_MCP_AUTO_APPROVE=false
 ```
 
-a write returns `pending_confirmation`. Execute it with `confirm_pending_action(action_id)`.
+A normal write returns `pending_confirmation`. Nothing has changed yet. Execute it with `confirm_pending_action(action_id)` or discard it with `cancel_pending_action(action_id)`.
+
+## What are the risk classes?
+
+- `standard` — normal non-spend writes.
+- `spend` — budget, bidding, enabling delivery and other changes that can affect spend.
+- `destructive` — remove/unlink/terminal operations.
+- `sensitive` — account access, customer data, billing/linking and other sensitive operations.
+
+Even if global auto-approve is enabled, spend/destructive/sensitive actions remain separately gated unless their own explicit opt-in is enabled.
 
 ## What happens if confirmation fails?
 
-The action remains pending and can be retried with the same ID. Failed and successful attempts are recorded under that stable action ID.
+The pending action is not deleted first. A transient Google/network failure keeps the same action available for retry and records the failed attempt under the same action ID.
 
-## Can I enable automatic writes?
+## Do pending actions survive an MCP restart?
 
-Yes:
+With the built-in SQLite audit backend, **yes** for tracked MCP calls. v0.16 stores the original public tool invocation required for replay and encrypts those arguments at rest with Fernet.
+
+For a stable production deployment, either persist the generated sibling key file with the audit database or define:
 
 ```dotenv
-GOOGLE_ADS_MCP_AUTO_APPROVE=true
+GOOGLE_ADS_MCP_PENDING_ENCRYPTION_KEY=
 ```
 
-Use it only in a controlled environment. For accounts with real spend, the safer default is explicit confirmation.
+If the persisted invocation cannot be decrypted or reconstructed, confirmation fails closed and no Google Ads mutation is executed.
+
+## Can one MCP control several Google Ads accounts?
+
+Yes. MCC credentials can expose many customer accounts. Production deployments should scope that access explicitly:
+
+```dotenv
+GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS=123-456-7890,987-654-3210
+GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true
+```
+
+Reads/writes outside the configured scope are blocked. Account discovery is filtered too.
+
+## Can customer A accidentally reference a campaign/asset belonging to customer B?
+
+v0.16 recursively checks customer-scoped resource references in mutation payloads, including nested references inside CREATE operations. Mixed-client mutations are blocked before the Google Ads RPC.
+
+The deliberate exception is real manager/client linking. That path may reference a second Google Ads customer only when the second customer also passes the deployment allowlist.
+
+## Does the MCP support Performance Max?
+
+Yes. Coverage includes campaigns, asset groups, text/image/video assets, signals, brand-guidelines migration, listing filters, Shopping dimensions, RETAIL Product Tags, WEBPAGE filters and supported preview/shareable workflows.
+
+## Does it support experiments?
+
+Yes. Experiment lifecycle and ExperimentArm lifecycle are exposed. `update_experiment_traffic_split` changes both arms atomically so Google's total=100 traffic invariant is preserved.
+
+## Does it support Customer Match?
+
+Yes where the Google account/integration is eligible. The MCP supports legacy Google Ads API flows, Data Manager support and small UserDataService uploads.
+
+Normal audit payloads do not contain raw Customer Match identifiers. Sensitive invocation arguments needed for durable replay are encrypted at rest.
+
+## Does it support Batch Jobs?
+
+Yes, through a constrained reviewed manifest. The MCP intentionally does not expose arbitrary raw protobuf mutations through Batch Jobs.
+
+Batch jobs can partially succeed. Always inspect row-level results after completion.
+
+## Can it create traditional legacy VIDEO campaigns?
+
+No. Google Ads API v25 does not provide the old programmatic VIDEO creation contract used by legacy implementations. The compatibility endpoint fails safe and performs no mutation. Use Demand Gen video workflows instead.
+
+## Can it manage Merchant Center feeds/products?
+
+No. Merchant Center catalog/feed management is a separate product/API. This MCP can operate Google Ads Shopping/PMax resources assuming the required Merchant Center linking already exists.
+
+## Can it manage Google Business Profile?
+
+No. Google Business Profile administration is outside the Google Ads API boundary.
+
+## What about Google-controlled beta/allowlisted services?
+
+The MCP exposes relevant v25 wrappers for services such as Asset Generation, Audience Insights, Benchmarks, Creator Insights, Incentives and other eligibility-controlled surfaces.
+
+The MCP does not fake access. If Google has not enabled the authenticated account for a service, the upstream Google Ads error is returned.
+
+`ReservationService` is not exposed because Google documents it as not publicly available.
+
+## Is HTTP safe to expose publicly?
+
+No. `stdio` is the recommended/default transport. Raw HTTP is blocked by default because the server includes powerful write and confirmation tools and does not bundle a remote identity provider.
+
+`GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true` only removes the startup block; it does **not** add authentication. Use it only behind your own authenticated and network-restricted boundary.
 
 ## Where is the audit log?
 
-By default:
+Default:
 
 ```text
 ~/.google_ads_mcp/audit.db
 ```
 
-Use `get_recent_audit_log()` for recent attempts and `get_audit_action(action_id)` for all attempts associated with one proposal.
+Use `get_recent_audit_log()` for recent executions and `get_audit_action(action_id)` to inspect every attempt for one action.
 
-## Does it support MCC accounts?
+## Is every Google Ads mutation reversible?
 
-Yes. Set `GOOGLE_ADS_LOGIN_CUSTOMER_ID` when the authenticated identity operates client accounts through an MCC. The MCP can list hierarchies, create client accounts and accept manager links where your Google Ads permissions allow it.
+No. The audit log is an execution trail, not a universal rollback system. Prefer pause/disable over remove where Google supports a reversible status.
 
-## Can it create Call Ads?
+## How do I validate an upgrade?
 
-Google removed the old Call Ad resource. The compatibility tool `create_call_ad` now creates the supported replacement: a **Responsive Search Ad + Call Asset + ad-group asset link**, atomically.
-
-Because the replacement is an RSA, a final URL is required.
-
-## Can it create WhatsApp/message assets?
-
-The old Message Asset shape is not used. `create_message_asset` is retained as a compatibility name and now creates a current **Business Message Asset with WhatsApp provider**.
-
-## Can it create Local Campaigns?
-
-Not through the obsolete Local Campaign API shape. v0.12 intentionally refuses that mutation and directs the workflow to Performance Max plus the relevant location/business assets.
-
-## Can it create Smart Shopping campaigns?
-
-No new legacy Smart Shopping campaigns are created. Use Performance Max. Standard Shopping remains supported.
-
-## Does it manage Merchant Center products or feeds?
-
-No. Merchant Center feed/product administration is a separate API/product. Shopping and retail PMax workflows expect the necessary Merchant Center linkage/catalog to exist.
-
-## Can it create Performance Max campaigns?
-
-Yes. v0.12 uses current PMax bidding shapes and can build a complete non-retail AssetGroup with its required text/image/brand assets in one atomic mutation.
-
-## Why does `create_asset_group` require images now?
-
-Because current non-retail PMax AssetGroup creation must satisfy required asset structure. Creating a text-only shell first and hoping to attach mandatory assets later is not a reliable v25 workflow.
-
-## Why are PMax campaign brand guidelines disabled in this flow?
-
-The current MCP workflow keeps business name and logo assets inside the AssetGroup. Disabling campaign-level brand guidelines makes that structure explicit and consistent.
-
-## Can it edit an existing RSA?
-
-Yes. v0.12 edits the underlying Ad with `AdService` / `AdOperation`, which is the current API path for RSA creative fields.
-
-## Can it change keyword match type?
-
-Yes, but Google treats match type as immutable on an existing criterion. The MCP fetches the existing keyword, creates the replacement with the new match type and removes the old criterion atomically.
-
-## Can it add negative keywords in bulk?
-
-Yes. Bulk writes default to all-or-nothing behavior instead of accepting silent partial success.
-
-## Why does website remarketing require `url_contains`?
-
-An empty flexible-rule audience is not a safe “all visitors” wildcard. v0.12 creates a real website rule such as:
-
-```text
-url__ CONTAINS example.com
-```
-
-Use the site's hostname for a typical all-pages audience.
-
-## Does it install the remarketing tag?
-
-No. The Google Ads tag must already be installed and firing.
-
-## Does Customer Match send raw email/phone values to the audit log?
-
-No. Identifiers are normalized and SHA-256 hashed locally before Google upload, and the safety/audit payload contains counts rather than raw PII.
-
-## Which conversion action should I create for GCLID offline uploads?
-
-Use:
-
-```text
-conversion_action_type="UPLOAD_CLICKS"
-```
-
-v0.12 verifies the target action type and enabled state before an offline click upload is proposed.
-
-## What happened to `include_in_conversions_metric`?
-
-Google's resource field is immutable. The public compatibility argument remains, but v0.12 maps primary/secondary behavior to the mutable `primary_for_goal` field.
-
-## Does enhanced conversion hashing normalize Gmail addresses?
-
-Yes. v0.12 normalizes Gmail/Googlemail local parts before hashing and normalizes phone numbers to E.164.
-
-## Can it target locations by name?
-
-Yes. Text names are resolved live through Google's GeoTarget suggestion service rather than a stale hard-coded location map. Ambiguous names fail safely and ask for a numeric criterion ID.
-
-## Does `set_language_targeting` really replace languages?
-
-Yes in v0.12. Existing language criteria are removed and the supplied set is created together instead of accumulating duplicates.
-
-## Does `set_device_bid_modifier` create duplicate criteria?
-
-It first looks for the existing device criterion and updates it when present; otherwise it creates it.
-
-## What device modifier values are allowed?
-
-`0` is used to opt out of the device. Otherwise v0.12 validates the supported `0.1–10.0` range.
-
-## Can it create Demand Gen campaigns?
-
-Yes. The campaign creator uses the current campaign structure. `create_ad_group(..., ad_group_type="AUTO")` detects Demand Gen and leaves the ad-group type unset as required.
-
-## Can it create Video ad groups automatically?
-
-Video can have multiple valid ad-group types. `AUTO` therefore refuses to guess and requires an explicit current `AdGroupType` enum for ambiguous channels.
-
-## Can it run experiments?
-
-Yes. The MCP can set up a system-managed experiment, create control/treatment arms, list the treatment's `in_design_campaigns`, promote, and end experiments.
-
-## Can it apply Google Ads recommendations?
-
-Yes, through the safety layer. Recommendation listing uses the current `dismissed` field; apply/dismiss use current v25 operation types.
-
-## Does it support raw GAQL?
-
-Yes via `run_gaql_query`. Prefer specialized report tools when they already cover the request because they provide a more predictable contract for an agent.
-
-## Is HTTP transport safe to expose publicly?
-
-No. The raw MCP HTTP server does not bundle a remote authentication provider. v0.12 therefore blocks HTTP startup by default.
-
-For local clients use `stdio`.
-
-If you deliberately put it behind your own authenticated and network-restricted reverse proxy, explicit opt-in is required:
-
-```dotenv
-GOOGLE_ADS_MCP_TRANSPORT=http
-GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true
-```
-
-That flag does not add authentication itself.
-
-## Why are image URLs restricted?
-
-They are model/user-controlled network inputs. v0.12 only fetches public HTTPS images and rejects private/loopback/link-local destinations, unsafe redirects, unsupported MIME types and oversized responses to reduce SSRF risk.
-
-## Why does CI use real protobuf contract tests?
-
-A generic fake that creates arbitrary nested attributes can accidentally make removed fields look valid. Contract tests instantiate Google's real generated v25 types, so an old field/enum/service path fails in CI immediately.
-
-## Which Python versions are supported?
-
-Python 3.11+; CI covers 3.11, 3.12 and 3.13.
-
-## How do I generate a refresh token?
-
-Install the optional auth dependency and run:
+In a normal networked development environment:
 
 ```bash
-pip install -e ".[auth]"
-python -m google_ads_mcp.auth --generate-refresh-token
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+python scripts/smoke_test.py
+ruff check src tests
+pytest -q
 ```
 
-## Why does the MCP work in my shell but fail inside Claude Desktop?
+For production confidence, also exercise a dedicated allowlisted test customer: reads, propose+cancel, propose+confirm, restart between propose and confirm, deliberate mixed-customer blocking and a legitimate manager/client link.
 
-Usually the MCP host is launching a different Python. Configure the MCP with the **absolute path to the virtualenv Python**, not a bare `python` command.
+## Where should I start?
 
-## What should I test first after setup?
-
-Start read-only:
-
-```text
-List my accessible Google Ads customer IDs.
-```
-
-Then pull a report. Only after those work should you propose a harmless write against a test account or a paused resource.
-
-## Is every Google advertising product covered?
-
-No. The project targets Google Ads API account operations. Merchant Center feed administration, Business Profile linking and other adjacent products remain separate boundaries.
+- [`SETUP.md`](SETUP.md) — install/OAuth/production configuration
+- [`SAFETY.md`](SAFETY.md) — confirmation, risk, audit and isolation
+- [`TOOLS.md`](TOOLS.md) — operator index
+- [`V25_SERVICE_COVERAGE.md`](V25_SERVICE_COVERAGE.md) — service coverage contract
+- [`RELEASE_0.16.0.md`](RELEASE_0.16.0.md) — current release details
