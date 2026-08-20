@@ -57,6 +57,24 @@ With an allowlist, scoped reads and writes for any other customer are rejected
 before the account is contacted. Account discovery is filtered to allowed IDs.
 Strict mode refuses startup when the required allowlist is empty.
 
+### MCC read isolation
+
+An allowed manager customer can describe child customers through GAQL even when
+the child is not itself inside this deployment's scope. v0.16 therefore applies
+row-level filtering to the MCC hierarchy surfaces that can enumerate other
+customers:
+
+- `customer_client` rows are filtered by `customer_client.id`;
+- `customer_client_link` rows are filtered by the referenced `client_customer`.
+
+This protection is implemented inside the shared client `search()` path, so it
+also applies to `run_gaql_query()`, not only to the pre-built account helpers.
+
+When an allowlist is configured, a raw hierarchy query that omits the ownership
+field needed to filter safely fails closed. For example, a `customer_client`
+query must select `customer_client.id`; otherwise the MCP cannot prove which
+tenant owns each row and returns an error instead of the data.
+
 ### Recursive mutation guard
 
 An MCC credential can access several child accounts. Validating only the request
@@ -91,11 +109,17 @@ same-customer isolation.
 Writes are classified centrally as:
 
 - `standard` — ordinary writes that do not directly alter spend/access/sensitive data;
-- `spend` — budgets, bids, live goal/targeting changes, experiment launch/splits,
-  PMax listing/signals, recommendation application and similar delivery changes;
+- `spend` — budgets, bids and changes that can materially affect live delivery or
+  bidding inputs, including enabled keywords, match changes, negatives,
+  location/language/placement targeting, audience/topic attachment, live goals,
+  experiment launch/splits, PMax listing/signals and recommendation application;
 - `destructive` — removals, terminal statuses, unlinking access, ending experiments;
 - `sensitive` — Customer Match/first-party data, conversion uploads, billing,
   identity, SKAd, account access, manager links and external product/data links.
+
+Normal creative/resource preparation such as creating callouts or sitelinks remains
+`standard` by design. The delivery-changing list is deliberately more conservative
+because a deployment may enable automatic execution for standard writes.
 
 Global auto-approve is not a master bypass. Even with:
 
@@ -136,6 +160,19 @@ cancel_pending_action("7f3a2c1e9abc")
 list_pending_actions()
 ```
 
+### Confirm/cancel serialization
+
+FastMCP may dispatch synchronous tool calls concurrently. v0.16 serializes
+`confirm_pending_action`, `cancel_pending_action`, and pending-list snapshots
+through one process-local control lock. Two simultaneous confirmations in the
+same server process therefore cannot both execute one pending action before it is
+removed, and cancel cannot race a confirmation that is entering execution.
+
+This is a **process-local** guarantee. The SQLite pending table is not a distributed
+lease/claim system. One simultaneously running MCP process should own one
+`audit.db`. Do not point multiple workers/processes at the same pending DB unless
+an external single-writer/claim mechanism is provided.
+
 ## Durable restart-safe confirmations
 
 With the built-in `AuditLog`, pending actions are persisted in the same SQLite
@@ -147,7 +184,7 @@ are stored in SQLite**.
 
 ### Encryption key
 
-Preferred for containers, VMs and replicated deployments:
+Preferred for containers and VMs where the generated sibling key may not persist:
 
 ```dotenv
 GOOGLE_ADS_MCP_PENDING_ENCRYPTION_KEY=<stable-fernet-key>
@@ -173,8 +210,8 @@ does not execute the Google Ads mutation.
 
 ### Public tool name vs safety alias
 
-Some public tools share an internal safety category. For example, several
-specialized link helpers classify under `create_product_link`.
+Some public tools share an internal safety category. For example, specialized
+wrappers may classify under an existing risk alias.
 
 0.16 stores the exact public MCP tool name inside encrypted replay metadata, so a
 pending action can be reconstructed after restart even when its risk/audit alias
@@ -315,7 +352,8 @@ Every new mutating tool must:
 7. avoid raw secrets/PII in normal audit payloads;
 8. use atomic behavior when several related resources must move together;
 9. add real v25 protobuf contract/regression coverage for complex write paths;
-10. never weaken cross-customer isolation to make one special workflow easier —
+10. preserve MCC read isolation when adding hierarchy/link reports;
+11. never weaken cross-customer isolation to make one special workflow easier —
     use a narrow validated exception instead.
 
 See also [`V25_SERVICE_COVERAGE.md`](V25_SERVICE_COVERAGE.md).
