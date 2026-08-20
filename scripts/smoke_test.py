@@ -1,88 +1,148 @@
 #!/usr/bin/env python3
-"""Smoke test: import the server and every tool module without live credentials.
+"""Offline smoke test for the installed Google Ads MCP package.
+
+This intentionally avoids live Google Ads credentials and network calls. It uses a
+temporary SQLite audit DB, forces read-only mode, imports every registered tool
+module, builds the FastMCP server, verifies currency helpers, and exercises the
+recursive MCC/customer isolation walker with protobuf Struct nesting.
 
 Run from the repo root with the virtualenv active:
     .venv/bin/python scripts/smoke_test.py
-
-Exits with 0 if the MCP server builds and every module registers cleanly.
 """
 
 from __future__ import annotations
 
+import gc
+import os
 import sys
+import tempfile
 
 
-def _build_server():
-    from google_ads_mcp.server import build_server
+def _set_temp_runtime(temp_dir: str) -> dict[str, str | None]:
+    keys = {
+        "GOOGLE_ADS_MCP_AUDIT_DB": os.path.join(temp_dir, "smoke-audit.db"),
+        "GOOGLE_ADS_MCP_READ_ONLY": "true",
+        "GOOGLE_ADS_MCP_AUTO_APPROVE": "false",
+        "GOOGLE_ADS_MCP_AUTO_APPROVE_SPEND": "false",
+        "GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE": "false",
+        "GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE": "false",
+        "GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST": "false",
+        "GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS": "",
+    }
+    previous: dict[str, str | None] = {}
+    for key, value in keys.items():
+        previous[key] = os.environ.get(key)
+        os.environ[key] = value
+    return previous
 
-    return build_server()
+
+def _restore_runtime(previous: dict[str, str | None]) -> None:
+    for key, value in previous.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
 
 
-def _check_modules():
-    from google_ads_mcp.context import AppContext
-    from google_ads_mcp.safety import SafetyLayer
+def _check_currency_helpers() -> None:
+    from google_ads_mcp.client import from_micros, micros
+
+    assert micros(25.50) == 25_500_000
+    assert from_micros(25_500_000) == 25.5
+
+
+def _check_recursive_customer_isolation() -> None:
+    from google.protobuf import struct_pb2
+
+    from google_ads_mcp.client import _assert_mutation_targets_customer
+    from google_ads_mcp.errors import GoogleAdsMcpError
+
+    same = struct_pb2.Struct()
+    same.update(
+        {
+            "create": {
+                "campaign": "customers/1234567890/campaigns/1",
+                "nested": {
+                    "asset": "customers/1234567890/assets/2",
+                    "items": ["customers/1234567890/adGroups/3"],
+                },
+            }
+        }
+    )
+    _assert_mutation_targets_customer("1234567890", [same])
+
+    cross = struct_pb2.Struct()
+    cross.update(
+        {
+            "create": {
+                "campaign": "customers/1234567890/campaigns/1",
+                "nested": {
+                    "asset": "customers/9999999999/assets/2",
+                    "items": ["customers/9999999999/adGroups/3"],
+                },
+            }
+        }
+    )
+    try:
+        _assert_mutation_targets_customer("1234567890", [cross])
+    except GoogleAdsMcpError:
+        return
+    raise AssertionError("Cross-customer nested resource was not blocked")
+
+
+def _check_tool_package_imports() -> int:
     from google_ads_mcp.tools import ALL_MODULES
 
-    class _FakeClient:
-        @property
-        def raw(self):
-            return self
+    if not ALL_MODULES:
+        raise AssertionError("ALL_MODULES is empty")
+    missing = [module.__name__ for module in ALL_MODULES if not hasattr(module, "register")]
+    if missing:
+        raise AssertionError(f"Tool modules missing register(): {missing}")
+    return len(ALL_MODULES)
 
-        def get_service(self, name: str):
-            return self
 
-        def get_type(self, name: str):
-            return self
+def _build_server_offline() -> str:
+    from google_ads_mcp.server import build_server
 
-        @property
-        def enums(self):
-            return self
-
-    class _FakeMcp:
-        def tool(self):
-            def decorator(fn):
-                return fn
-
-            return decorator
-
-    class _FakeAuditLog:
-        def record(self, *args, **kwargs):
-            pass
-
-    ctx = AppContext(
-        settings=None,
-        client=_FakeClient(),
-        safety=SafetyLayer(
-            auto_approve=False, ttl_minutes=30, audit_log=_FakeAuditLog()
-        ),
-        audit=_FakeAuditLog(),
-    )
-    mcp = _FakeMcp()
-
-    failures = []
-    for module in ALL_MODULES:
-        try:
-            module.register(mcp, ctx)
-        except Exception as exc:  # noqa: BLE001
-            failures.append(f"{module.__name__}: {exc}")
-
-    return failures
+    server = build_server()
+    rendered = repr(server)
+    del server
+    gc.collect()
+    return rendered
 
 
 def main() -> int:
-    print("Building MCP server...")
-    server = _build_server()
-    print(f"  OK: {server}")
+    from google_ads_mcp import __version__
 
-    print("Checking tool module registration...")
-    failures = _check_modules()
-    if failures:
-        print("  FAILED:")
-        for failure in failures:
-            print(f"    - {failure}")
+    print(f"Google Ads MCP version: {__version__}")
+
+    try:
+        print("Checking currency helpers...")
+        _check_currency_helpers()
+        print("  OK")
+
+        print("Checking recursive MCC/customer isolation...")
+        _check_recursive_customer_isolation()
+        print("  OK")
+
+        print("Importing registered tool modules...")
+        module_count = _check_tool_package_imports()
+        print(f"  OK: {module_count} modules")
+
+        with tempfile.TemporaryDirectory(prefix="google-ads-mcp-smoke-") as temp_dir:
+            previous = _set_temp_runtime(temp_dir)
+            try:
+                print("Building FastMCP server in isolated read-only runtime...")
+                server_repr = _build_server_offline()
+                print(f"  OK: {server_repr}")
+            finally:
+                _restore_runtime(previous)
+
+    except Exception as exc:  # noqa: BLE001
+        print(f"FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
 
-    print("  OK: all tool modules registered cleanly.")
+    print("SMOKE OK")
     return 0
 
 
