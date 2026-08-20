@@ -34,6 +34,7 @@ _SENSITIVE_TOOLS = {
     # First-party/customer data.
     "upload_customer_match_members",
     "upload_customer_match_members_data_manager",
+    "upload_customer_match_user_data_direct",
     "create_data_manager_customer_match_list",
     "update_data_manager_customer_match_list",
     "upload_enhanced_conversion",
@@ -41,9 +42,11 @@ _SENSITIVE_TOOLS = {
     "retract_conversion",
     "restate_conversion_value",
     "assign_user_list_customer_type",
-    # Conversion measurement schema.
+    # Conversion measurement / advertiser identity schema.
     "create_conversion_custom_variable",
     "update_conversion_custom_variable",
+    "update_skadnetwork_conversion_schema",
+    "start_advertiser_identity_verification",
     # Local Services customer interaction / lead-quality signals.
     "append_local_services_lead_conversation",
     "provide_local_services_lead_feedback",
@@ -54,8 +57,9 @@ _SENSITIVE_TOOLS = {
     "invite_account_user",
     "update_user_access_role",
     "submit_batch_job",
-    # Billing identity.
+    # Billing / incentive identity.
     "create_billing_setup",
+    "apply_incentive",
     # External product / creator / analytics connections.
     "create_product_link",
     "accept_product_link_invitation",
