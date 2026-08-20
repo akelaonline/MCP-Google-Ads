@@ -7,7 +7,7 @@ API version and production access policy.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from .config import Settings
@@ -335,35 +335,71 @@ def _gaql_from_resource(query: str) -> str | None:
 
 
 def _customer_scoped_resource_names(message: Any) -> list[str]:
-    """Recursively collect populated customer-scoped resource references."""
+    """Recursively collect populated customer-scoped resource references.
+
+    The walker accepts proto-plus/protobuf messages and generic containers used by
+    protobuf map/Struct fields. Map fields must recurse through their values: iterating
+    a protobuf map directly yields keys and would otherwise hide nested resource names.
+    """
+    if message is None:
+        return []
+
+    if isinstance(message, str):
+        text = message.strip()
+        return [text] if _customer_id_from_resource_name(text) is not None else []
+
+    if isinstance(message, Mapping):
+        found: list[str] = []
+        for value in message.values():
+            found.extend(_customer_scoped_resource_names(value))
+        return found
+
+    if isinstance(message, (list, tuple, set, frozenset)):
+        found = []
+        for item in message:
+            found.extend(_customer_scoped_resource_names(item))
+        return found
+
     pb = getattr(message, "_pb", message)
     list_fields = getattr(pb, "ListFields", None)
     if list_fields is None:
         return []
+
     try:
         from google.protobuf.descriptor import FieldDescriptor
     except Exception:
         return []
-    found: list[str] = []
+
     try:
         fields = list_fields()
     except Exception:
         return []
+
+    found: list[str] = []
     for descriptor, value in fields:
         if descriptor.type == FieldDescriptor.TYPE_MESSAGE:
-            if descriptor.is_repeated:
+            is_map = bool(
+                descriptor.message_type is not None
+                and descriptor.message_type.GetOptions().map_entry
+            )
+            if is_map:
+                values = value.values() if hasattr(value, "values") else value
+                for item in values:
+                    found.extend(_customer_scoped_resource_names(item))
+            elif descriptor.is_repeated:
                 for item in value:
                     found.extend(_customer_scoped_resource_names(item))
             else:
                 found.extend(_customer_scoped_resource_names(value))
             continue
+
         if descriptor.type != FieldDescriptor.TYPE_STRING:
             continue
+
         values = list(value) if descriptor.is_repeated else [value]
         for item in values:
-            text = str(item).strip()
-            if _customer_id_from_resource_name(text) is not None:
-                found.append(text)
+            found.extend(_customer_scoped_resource_names(item))
+
     return found
 
 
@@ -442,3 +478,8 @@ def _row_to_dict(row) -> dict[str, Any]:
 def micros(amount: float) -> int:
     """Convert a currency amount (e.g. 25.50) to micros (25500000)."""
     return round(amount * 1_000_000)
+
+
+def from_micros(amount_micros: int | float) -> float:
+    """Convert Google Ads micros to a base currency amount (25500000 -> 25.5)."""
+    return float(amount_micros) / 1_000_000
