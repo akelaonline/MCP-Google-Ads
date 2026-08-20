@@ -6,19 +6,24 @@ It gives an MCP client structured **read/write** access to Google Ads API v25. I
 
 For the service-by-service coverage contract, see [`V25_SERVICE_COVERAGE.md`](V25_SERVICE_COVERAGE.md).
 
-## Is it reporting-only?
+## Can I run it reporting-only?
 
-No. Read tools inspect accounts; write tools propose real Google Ads mutations through the shared safety layer.
+Yes. v0.16 has a central kill switch:
 
-## Which Google Ads API version does v0.16 target?
+```dotenv
+GOOGLE_ADS_MCP_READ_ONLY=true
+```
 
-Google Ads API **v25**. The project explicitly requests `v25` and pins the Google Ads Python client to the tested 31.x line instead of floating to a future default API version.
+Read/report/GAQL tools still work. New write proposals are blocked and existing pending actions cannot be confirmed. Pending actions may still be inspected or cancelled.
+
+This is stronger than merely keeping auto-approve off: the instance categorically refuses Google Ads mutations through the safety layer.
 
 ## Does a write change the account immediately?
 
 Not by default.
 
 ```dotenv
+GOOGLE_ADS_MCP_READ_ONLY=false
 GOOGLE_ADS_MCP_AUTO_APPROVE=false
 ```
 
@@ -26,8 +31,8 @@ A normal write returns `pending_confirmation`. Nothing has changed yet. Execute 
 
 ## What are the risk classes?
 
-- `standard` — normal non-spend writes.
-- `spend` — budget, bidding, enabling delivery and other changes that can affect spend.
+- `standard` — ordinary writes that do not directly alter live delivery, access or sensitive data.
+- `spend` — budget/bidding and other delivery-changing operations such as enabled keywords, negatives, match changes, location/language/placement targeting, audience/topic attachment and conversion-biddability changes.
 - `destructive` — remove/unlink/terminal operations.
 - `sensitive` — account access, customer data, billing/linking and other sensitive operations.
 
@@ -36,6 +41,12 @@ Even if global auto-approve is enabled, spend/destructive/sensitive actions rema
 ## What happens if confirmation fails?
 
 The pending action is not deleted first. A transient Google/network failure keeps the same action available for retry and records the failed attempt under the same action ID.
+
+## Can two confirmations execute the same pending action?
+
+Inside one running MCP process, v0.16 serializes pending list/confirm/cancel operations so simultaneous confirmation requests cannot both enter execution for the same action.
+
+This is not a distributed lock. Do not point several simultaneously running MCP processes/workers at the same `audit.db`.
 
 ## Do pending actions survive an MCP restart?
 
@@ -58,7 +69,13 @@ GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS=123-456-7890,987-654-3210
 GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true
 ```
 
-Reads/writes outside the configured scope are blocked. Account discovery is filtered too.
+Reads/writes outside the configured scope are blocked and account discovery is filtered.
+
+## Can an allowed MCC leak metadata about a child account outside the allowlist?
+
+The common hierarchy surfaces are filtered centrally in v0.16. `customer_client` rows are filtered by `customer_client.id`, and `customer_client_link` rows are filtered by the linked `client_customer`.
+
+This also applies to raw `run_gaql_query()`. If a raw hierarchy query omits the ownership field required to filter each row safely, the MCP fails closed instead of returning unfilterable cross-client metadata.
 
 ## Can customer A accidentally reference a campaign/asset belonging to customer B?
 
@@ -66,13 +83,17 @@ v0.16 recursively checks customer-scoped resource references in mutation payload
 
 The deliberate exception is real manager/client linking. That path may reference a second Google Ads customer only when the second customer also passes the deployment allowlist.
 
+## Which Google Ads API version does v0.16 target?
+
+Google Ads API **v25**. The project explicitly requests `v25` and pins the Google Ads Python client to the tested 31.x line instead of floating to a future default API version.
+
 ## Does the MCP support Performance Max?
 
 Yes. Coverage includes campaigns, asset groups, text/image/video assets, signals, brand-guidelines migration, listing filters, Shopping dimensions, RETAIL Product Tags, WEBPAGE filters and supported preview/shareable workflows.
 
 ## Does it support experiments?
 
-Yes. Experiment lifecycle and ExperimentArm lifecycle are exposed. `update_experiment_traffic_split` changes both arms atomically so Google's total=100 traffic invariant is preserved.
+Yes. Experiment lifecycle and ExperimentArm lifecycle are exposed. The preferred `update_experiment_arm_traffic_splits` tool changes both arms atomically so Google's total=100 traffic invariant is preserved. `update_experiment_traffic_split` remains as a compatibility alias.
 
 ## Does it support Customer Match?
 
@@ -139,7 +160,7 @@ ruff check src tests
 pytest -q
 ```
 
-For production confidence, also exercise a dedicated allowlisted test customer: reads, propose+cancel, propose+confirm, restart between propose and confirm, deliberate mixed-customer blocking and a legitimate manager/client link.
+For production confidence, start in read-only mode, verify allowed account/reporting scope, confirm a mutation is blocked, then switch to confirmation mode and exercise propose+cancel, propose+confirm, restart replay, MCC read filtering, cross-customer mutation blocking and any manager/client link workflow you use.
 
 ## Where should I start?
 
