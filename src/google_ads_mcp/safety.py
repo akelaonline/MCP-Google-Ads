@@ -41,6 +41,9 @@ _SENSITIVE_TOOLS = {
     "retract_conversion",
     "restate_conversion_value",
     "assign_user_list_customer_type",
+    # Conversion measurement schema.
+    "create_conversion_custom_variable",
+    "update_conversion_custom_variable",
     # Local Services customer interaction / lead-quality signals.
     "append_local_services_lead_conversation",
     "provide_local_services_lead_feedback",
@@ -108,13 +111,30 @@ _SPEND_TOOLS = {
     "schedule_experiment",
     "promote_experiment",
     "graduate_experiment",
+    "promote_campaign_draft",
     "set_device_bid_modifier",
+    "set_campaign_call_bid_modifier",
+    "create_ad_group_device_bid_modifier",
+    "update_ad_group_bid_modifier",
     "add_ad_schedule",
     "create_seasonality_adjustment",
     "create_data_exclusion",
     "create_account_budget",
     "update_account_budget",
     "create_smart_campaign",
+    # Assets and asset sets can alter serving when attached to live scope.
+    "attach_asset_to_customer",
+    "set_customer_asset_status",
+    "attach_asset_to_ad_group",
+    "set_ad_group_asset_status",
+    "attach_asset_to_asset_set",
+    "attach_asset_set_to_customer",
+    "attach_asset_set_to_campaign",
+    "attach_asset_set_to_ad_group",
+    # Existing audience resources can be referenced by active targeting.
+    "update_custom_audience",
+    "update_custom_interest",
+    "update_audience_metadata",
     # Conversion and lifecycle goals can materially change Smart Bidding behavior.
     "set_customer_conversion_goal_biddable",
     "set_campaign_conversion_goal_biddable",
@@ -123,6 +143,8 @@ _SPEND_TOOLS = {
     "set_conversion_goal_campaign_config",
     "set_lifecycle_goal",
     "attach_lifecycle_goal_to_campaign",
+    "create_conversion_value_rule_set",
+    "update_conversion_value_rule_set_rules",
 }
 
 _SPEND_PAYLOAD_KEYS = {
