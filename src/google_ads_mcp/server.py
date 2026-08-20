@@ -8,6 +8,7 @@ import os
 from fastmcp import FastMCP
 
 from .context import build_context
+from .invocation import install_tool_tracking
 from .logging_config import setup_logging
 
 MCP_INSTRUCTIONS = """
@@ -19,6 +20,10 @@ to execute it, or cancel_pending_action(action_id) to discard it. Always show
 the user the preview before confirming unless they've explicitly asked you to
 proceed without asking each time.
 
+Pending confirmations are persisted in SQLite. The original MCP arguments are
+encrypted at rest, so a pending action can still be confirmed after a normal
+server/process restart using the same pending_action_id.
+
 For reporting, prefer the pre-built tools (get_campaign_performance, etc.) and
 fall back to run_gaql_query for anything custom.
 """
@@ -27,6 +32,11 @@ fall back to run_gaql_query for anything custom.
 def build_server() -> FastMCP:
     ctx = build_context()
     mcp = FastMCP(name="google-ads-mcp", instructions=MCP_INSTRUCTIONS)
+
+    # Must be installed before any @mcp.tool() registrations. This preserves each
+    # function's public signature while capturing original validated arguments for
+    # restart-safe pending-action replay.
+    install_tool_tracking(mcp)
 
     from .tools import ALL_MODULES
 
@@ -45,7 +55,7 @@ def _register_safety_tools(mcp: FastMCP, ctx) -> None:
 
     @mcp.tool()
     def confirm_pending_action(action_id: str) -> dict:
-        """Execute a previously proposed change against the live Google Ads account."""
+        """Execute a proposed change, including one recovered after server restart."""
         return ctx.safety.confirm(action_id)
 
     @mcp.tool()
