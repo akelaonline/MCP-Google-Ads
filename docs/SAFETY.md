@@ -1,209 +1,321 @@
 # Safety model
 
-Google Ads mutations can change live spend, account access, audiences and conversion data. The MCP therefore applies central customer isolation and risk-aware approval policy in addition to per-tool validation.
+Google Ads mutations can change live spend, account access, billing, audiences and
+conversion data. Google Ads MCP therefore treats safety as a central platform
+property rather than a convention individual tools are expected to remember.
 
 ## Default write flow
 
-Every mutating tool proposes a change through the shared `SafetyLayer`.
+Every normal mutating tool goes through the shared `SafetyLayer`:
 
 ```text
-write tool
-   |
-   v
+MCP tool
+  |
+  v
+validate customer + resource ownership
+  |
+  v
 SafetyLayer.propose(...)
-   |
-   +-- customer outside allowlist --> BLOCKED
-   |
-   +-- auto-approve=false --> pending_action_id --> explicit confirmation
-   |
-   +-- auto-approve=true
-          |
-          +-- standard --> execute
-          +-- spend/destructive/sensitive --> explicit high-risk opt-in OR pending
-                                                        |
-                                                        v
-                                                  Google Ads API
-                                                        |
-                                                        v
-                                                    audit.db
+  |
+  +-- policy blocks request --> no Google RPC
+  |
+  +-- confirmation required --> durable pending_action_id
+  |                               |
+  |                               v
+  |                         confirm / cancel
+  |
+  +-- explicitly auto-approved by risk class
+                                  |
+                                  v
+                           Google Ads API
+                                  |
+                                  v
+                       SQLite audit history
 ```
 
-The safest production default remains:
+Recommended production default:
 
 ```dotenv
 GOOGLE_ADS_MCP_AUTO_APPROVE=false
-```
-
-## Customer isolation
-
-For deployments serving one client or a known group of accounts, configure an allowlist:
-
-```dotenv
-GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS=123-456-7890,987-654-3210
-```
-
-When the list is non-empty, scoped reads and writes for any other customer ID are rejected centrally. Account discovery is filtered to the allowed IDs as well.
-
-For strict deployments, make the allowlist mandatory:
-
-```dotenv
-GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true
-```
-
-With this flag enabled, the MCP refuses to start if the allowlist is empty. This is recommended for one-MCP-per-client and other multi-tenant production patterns.
-
-The allowlist is enforced twice for writes: by the Google Ads client wrapper and by the `SafetyLayer`. This provides defense in depth for tools that need to construct Google Ads resources through the raw client before executing through the shared mutation path.
-
-## Risk-aware auto-approve
-
-`GOOGLE_ADS_MCP_AUTO_APPROVE=true` no longer means every write can execute immediately.
-
-Writes are centrally classified as:
-
-- `standard` — ordinary non-spend writes such as creating a paused creative or attaching a normal asset;
-- `spend` — budgets, bidding, enabling delivery, bid modifiers, recommendation application and similar actions that can change delivery/spend;
-- `destructive` — removals, `REMOVED` status changes and ending experiments;
-- `sensitive` — Customer Match, enhanced/offline conversion uploads, manager-link acceptance and client-account creation.
-
-High-risk categories remain confirmation-gated unless separately enabled:
-
-```dotenv
-GOOGLE_ADS_MCP_AUTO_APPROVE=true
 GOOGLE_ADS_MCP_AUTO_APPROVE_SPEND=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
 ```
 
-This preserves controlled automation for standard writes while preventing one global flag from silently authorizing spend, deletion or sensitive-data/account-access operations.
+## Customer isolation
 
-If a deployment deliberately needs unattended high-risk automation, each class has its own explicit opt-in. Keep those flags false unless the surrounding system provides its own strong policy controls.
+### Deployment allowlist
+
+For a known set of customers:
+
+```dotenv
+GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS=123-456-7890,987-654-3210
+GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true
+```
+
+With an allowlist, scoped reads and writes for any other customer are rejected
+before the account is contacted. Account discovery is filtered to allowed IDs.
+Strict mode refuses startup when the required allowlist is empty.
+
+### Recursive mutation guard
+
+An MCC credential can access several child accounts. Validating only the request
+`customer_id` is therefore insufficient: a malformed or buggy CREATE operation
+for customer A could otherwise contain a nested `asset`, `campaign`, `ad_group`,
+`shared_set`, or other resource name owned by customer B.
+
+0.16 recursively inspects populated protobuf fields for customer-scoped resource
+names before resource-specific and atomic mutations. This covers references in:
+
+- CREATE operations;
+- UPDATE operations;
+- REMOVE operations;
+- nested `GoogleAdsService.MutateOperation` messages;
+- repeated resource-name fields.
+
+A mixed-customer resource reference is blocked before the Google mutate RPC.
+
+### Narrow MCC linking exception
+
+Manager/client linking legitimately needs two Google Ads customers in one
+operation. `CustomerClientLinkService` CREATE is therefore a deliberately narrow
+exception to same-customer resource ownership.
+
+The exception does **not** mean arbitrary cross-account references are accepted:
+all referenced customer IDs must still pass `GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS`
+when an allowlist is configured. Campaign/ad/asset/criterion mutations keep strict
+same-customer isolation.
+
+## Risk classes
+
+Writes are classified centrally as:
+
+- `standard` — ordinary writes that do not directly alter spend/access/sensitive data;
+- `spend` — budgets, bids, live goal/targeting changes, experiment launch/splits,
+  PMax listing/signals, recommendation application and similar delivery changes;
+- `destructive` — removals, terminal statuses, unlinking access, ending experiments;
+- `sensitive` — Customer Match/first-party data, conversion uploads, billing,
+  identity, SKAd, account access, manager links and external product/data links.
+
+Global auto-approve is not a master bypass. Even with:
+
+```dotenv
+GOOGLE_ADS_MCP_AUTO_APPROVE=true
+```
+
+high-risk classes remain gated unless separately enabled:
+
+```dotenv
+GOOGLE_ADS_MCP_AUTO_APPROVE_SPEND=false
+GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
+GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
+```
 
 ## Pending actions
 
-A proposed change returns a structure similar to:
+A write that requires confirmation returns data similar to:
 
 ```json
 {
   "status": "pending_confirmation",
   "pending_action_id": "7f3a2c1e9abc",
   "risk_level": "spend",
-  "confirmation_reason": "Spend-changing action requires separate auto-approve opt-in.",
-  "description": "Set campaign 123 budget ...",
+  "durable": true,
+  "description": "Update campaign budget ...",
   "expires_in_minutes": 30
 }
 ```
 
 Nothing has changed yet.
 
-Execute it with:
+Use:
 
 ```text
 confirm_pending_action("7f3a2c1e9abc")
-```
-
-Discard it with:
-
-```text
 cancel_pending_action("7f3a2c1e9abc")
-```
-
-Inspect all open proposals with:
-
-```text
 list_pending_actions()
 ```
 
-Pending-action listings include the risk level.
+## Durable restart-safe confirmations
 
-## Retry behavior
+With the built-in `AuditLog`, pending actions are persisted in the same SQLite
+store used for execution audit.
 
-A pending action is **not removed before execution**. If Google Ads or the network fails during confirmation:
+The original public MCP tool invocation is needed to reconstruct the proposal
+after a process restart. Those invocation arguments are **encrypted before they
+are stored in SQLite**.
 
-- the same pending action remains available;
-- its attempt count increments;
-- the failure is written to the audit log;
-- the same action ID may be retried after the problem is corrected.
+### Encryption key
 
-Only a successful confirmation removes the action from the pending set.
+Preferred for containers, VMs and replicated deployments:
 
-## Stable action IDs
+```dotenv
+GOOGLE_ADS_MCP_PENDING_ENCRYPTION_KEY=<stable-fernet-key>
+```
 
-The pending ID, confirmation ID and audit ID are the same identifier.
+Generate one once:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+If the environment variable is omitted, the MCP creates:
 
 ```text
-proposal 7f3a2c1e9abc
+<audit-db>.pending.key
+```
+
+and attempts to set owner-only permissions on supported systems.
+
+**Persist the audit DB and key together.** If the key is unavailable after a
+restart, the encrypted invocation cannot be replayed. The MCP fails closed and
+does not execute the Google Ads mutation.
+
+### Public tool name vs safety alias
+
+Some public tools share an internal safety category. For example, several
+specialized link helpers classify under `create_product_link`.
+
+0.16 stores the exact public MCP tool name inside encrypted replay metadata, so a
+pending action can be reconstructed after restart even when its risk/audit alias
+is different from the public function name.
+
+### Backward compatibility
+
+Custom audit backends that only implement `record()` remain supported. They keep
+the previous process-local pending behavior and simply report `durable=false`.
+
+## Retry behavior and stable action IDs
+
+A pending action is not deleted before execution. If Google Ads or the network
+fails during confirmation:
+
+- the proposal remains pending;
+- the attempt counter increments;
+- the error is recorded;
+- the same `action_id` can be retried.
+
+Only successful execution removes the pending record.
+
+The proposal, replay, retry and audit rows use the same ID:
+
+```text
+7f3a2c1e9abc
   -> attempt 1: error
   -> attempt 2: success
 ```
 
-Use:
+Inspect it with:
 
 ```text
 get_audit_action("7f3a2c1e9abc")
 ```
 
-to inspect all recorded attempts for an action.
-
 ## Expiration
-
-Pending actions expire after:
 
 ```dotenv
 GOOGLE_ADS_MCP_PENDING_TTL_MINUTES=30
 ```
 
-Expired proposals cannot be confirmed and must be proposed again.
+Expired pending actions are removed from process memory and the durable pending
+store. They must be proposed again.
 
 ## Audit log
 
-Confirmed and auto-approved execution attempts are written to SQLite. The default location is:
+Default location:
 
 ```text
 ~/.google_ads_mcp/audit.db
 ```
 
-Each row records the action ID, tool name, customer ID, description, proposed payload, execution result/error, status and timestamp. The audit database uses WAL mode and serialized writes for safer concurrent access and attempts to restrict the local DB file to owner-only permissions where supported.
+Execution rows contain:
 
-The audit log is an execution trail, not a universal rollback engine. Google Ads resources have different reversibility rules; for destructive changes, prefer pause/disable when the API supports it.
+- action ID;
+- safety tool/category;
+- customer ID;
+- human-readable description;
+- sanitized proposed payload;
+- result or error;
+- status;
+- timestamp.
 
-## Atomic multi-resource mutations
+The DB uses WAL mode and serialized writes. It is an execution trail, not a
+universal rollback engine.
 
-Some tools need several Google Ads resources to exist together, such as an Asset plus its CampaignAsset link, the Call Ad compatibility flow, complete Performance Max AssetGroups, and visual/Demand Gen ads whose assets should not be orphaned.
+### PII rule
 
-These flows use the Google Ads atomic mutation path where appropriate. Bulk status/negative operations also default to all-or-nothing semantics instead of silently accepting partial failures.
+Raw Customer Match identifiers and similar first-party data must not be placed in
+normal audit payloads. Customer-data tools log counts, consent and operational
+metadata instead. Where restart replay genuinely requires original MCP arguments,
+those arguments are kept in the separately encrypted pending blob and deleted
+after success/cancel/expiry.
+
+## Atomic mutations
+
+Related resources that must succeed together use `GoogleAdsService.Mutate` or
+multi-operation resource-specific calls with `partial_failure=false` where the
+API supports it.
+
+Examples include:
+
+- complete PMax AssetGroups;
+- PMax listing-filter tree replacement;
+- supported multi-resource ad creation;
+- Smart Campaign creation;
+- experiment-arm traffic split updates;
+- keyword match-type replacement.
+
+Batch Jobs are different: Google batch execution has partial-success semantics.
+The MCP documents that behavior and requires callers to inspect row results.
 
 ## Image-fetch security
 
-Image tools accept model/user-controlled URLs. The scoped fetch helper requires public HTTPS, standard port 443, no URL credentials, public DNS/IPs, safe redirects, supported image MIME types, bounded response size and non-empty image data. Loopback, private, link-local and otherwise non-global destinations are rejected to prevent SSRF into the MCP host or cloud environment.
+Remote image tools require public HTTPS and reject:
+
+- loopback/private/link-local/non-global destinations;
+- embedded URL credentials;
+- non-standard unsafe schemes/ports;
+- redirects to private networks;
+- unsupported MIME types;
+- oversized/empty responses.
+
+This prevents common SSRF paths into the MCP host or cloud metadata networks.
 
 ## HTTP transport
 
-`stdio` is the safe default for local MCP clients. Raw HTTP is blocked by default because the server exposes both mutation and confirmation tools and does not bundle a remote identity provider.
+`stdio` is the recommended transport.
+
+HTTP is blocked by default because this server exposes both write and confirmation
+tools but does not bundle a remote identity provider:
 
 ```dotenv
 GOOGLE_ADS_MCP_TRANSPORT=stdio
 GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=false
 ```
 
-If you deliberately place the server behind your own authenticated and network-restricted reverse proxy, explicit opt-in is required:
+To run HTTP behind your own authenticated/restricted proxy:
 
 ```dotenv
 GOOGLE_ADS_MCP_TRANSPORT=http
 GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true
 ```
 
-That setting **does not provide authentication**. It only removes the startup block. The external security layer remains your responsibility.
+That flag **does not add authentication**. It only removes the startup block.
 
-## Rules for contributors
+## Contributor invariants
 
-Every mutating tool must:
+Every new mutating tool must:
 
-1. build and validate its operation;
-2. call `ctx.safety.propose(...)` with the real customer ID and meaningful payload fields;
-3. put the actual API mutation inside the supplied `execute` callable;
-4. never bypass the safety layer;
-5. use the central client wrapper for scoped reads/mutations wherever possible;
-6. use atomic mutation when related resources must succeed or fail together;
-7. avoid raw secrets or raw Customer Match PII in audit payloads;
-8. add real v25 contract tests for new or changed protobuf-heavy write paths;
-9. preserve enough payload metadata (`status`, budget/bid values, etc.) for the central risk classifier to make a conservative decision.
+1. validate its input and target customer;
+2. validate direct resource names before special/custom RPCs;
+3. use the central client wrapper for resource-specific/atomic mutations;
+4. call `ctx.safety.propose(...)` before live execution;
+5. keep the actual API call inside the supplied `execute` callable;
+6. choose a conservative risk category/payload;
+7. avoid raw secrets/PII in normal audit payloads;
+8. use atomic behavior when several related resources must move together;
+9. add real v25 protobuf contract/regression coverage for complex write paths;
+10. never weaken cross-customer isolation to make one special workflow easier —
+    use a narrow validated exception instead.
+
+See also [`V25_SERVICE_COVERAGE.md`](V25_SERVICE_COVERAGE.md).
