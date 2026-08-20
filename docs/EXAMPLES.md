@@ -1,6 +1,6 @@
-# Examples — v0.12
+# Examples — Google Ads MCP v0.16
 
-These examples show the intended conversation flow. Write calls are proposals by default; confirm them explicitly before live execution.
+These examples show the intended operator flow. Normal writes are proposals by default; confirm them explicitly before live execution.
 
 ## 1. Search terms → negative keywords
 
@@ -28,280 +28,223 @@ AI:
 ```text
 User:
 Create a $50/day Search campaign called "Brand AR" with Maximize Conversions.
-It is not EU political advertising. Leave it paused.
+Leave it paused.
 
 AI:
 -> create_campaign_budget(... daily_amount=50)
 <- pending action
 
 User:
-Confirm.
+Confirm the budget.
 
 AI:
 -> confirm_pending_action(...)
-<- campaign budget resource name
+<- budget created
 
 AI:
--> create_campaign(
-     name="Brand AR",
-     campaign_budget_resource_name="customers/.../campaignBudgets/...",
-     channel_type="SEARCH",
-     bidding_strategy="MAXIMIZE_CONVERSIONS",
-     contains_eu_political_advertising="DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING"
-   )
+-> create_campaign(..., campaign_budget_resource_name=..., status=PAUSED)
 <- pending action
 ```
 
-New campaigns are created PAUSED by the MCP.
+The MCP does not silently enable the campaign.
 
-## 3. Current Call Ad replacement
-
-Google removed the old Call Ad resource. Keep the same high-intent behavior with an RSA plus a Call Asset:
+## 3. Change a live budget
 
 ```text
 User:
-Create a phone-focused Search ad in ad group 222 using +54 11 1234 5678.
-Use these headlines/descriptions and https://example.com as final URL.
+Raise campaign 123's daily budget from $50 to $65.
 
 AI:
--> create_call_ad(...)
-<- proposes one atomic RSA + Call Asset + AdGroupAsset change
+-> update_campaign_budget(...)
+<- pending_confirmation
+   risk_level: spend
 ```
 
-The public tool name is retained for compatibility, but it does not send a removed `CallAd` protobuf.
+Budget changes are spend-risk even if global standard auto-approve is enabled.
 
-## 4. WhatsApp Business Message asset
+## 4. Restart between proposal and confirmation
 
 ```text
 User:
-Add a WhatsApp message asset to campaign 333 for Argentina, phone 1112345678.
-Starter message: "Hola, quiero información".
+Propose pausing ad 456.
 
 AI:
--> create_message_asset(
-     campaign_id="333",
-     country_code="AR",
-     phone_number="1112345678",
-     business_name="Example",
-     message_text="Hola, quiero información",
-     call_to_action_text="Contactanos"
+-> update_ad_status(... status="PAUSED")
+<- pending_action_id: abc123
+   durable: true
+
+[the MCP process restarts]
+
+User:
+Confirm abc123.
+
+AI:
+-> confirm_pending_action("abc123")
+<- replayed_after_restart: true
+   executed
+```
+
+With the built-in SQLite backend, the original invocation is encrypted at rest and can be replayed after restart using the same action ID.
+
+## 5. Multi-client MCC isolation
+
+Assume the deployment allowlist contains customers `1111111111` and `2222222222`.
+
+```text
+User:
+Update customer 111's campaign, but pass a campaign resource belonging to 222.
+
+AI:
+-> mutation validation
+<- Cross-customer mutation blocked before Google Ads
+```
+
+A legitimate MCC link is different:
+
+```text
+User:
+From manager 111, invite client 222.
+
+AI:
+-> invite_manager_link(manager_customer_id="111...", client_customer_id="222...")
+<- pending_confirmation
+```
+
+That path is permitted because the cross-account reference is intentional and both customers are explicitly inside the deployment scope.
+
+## 6. Performance Max signal
+
+```text
+User:
+Add the search theme "emergency plumber" to asset group 987.
+
+AI:
+-> add_asset_group_signal(
+     customer_id=...,
+     asset_group_id="987",
+     signal_type="SEARCH_THEME",
+     value="emergency plumber"
    )
-<- proposes Business Message / WhatsApp + CampaignAsset atomically
+<- pending_confirmation
 ```
 
-`create_message_asset` is a compatibility name for the current Business Message resource.
+PMax signal/listing changes are treated conservatively because they can affect delivery.
 
-## 5. Complete Performance Max asset group
+## 7. Performance Max retail listing tree
 
 ```text
 User:
-Create a PMax campaign and a complete asset group for this landing page.
-Use these 3 headlines, long headline, 2 descriptions, business name,
-1 landscape image, 1 square image and 1 logo. Leave everything paused.
+Replace asset group 987's listing filters so it advertises only our Product Tag
+shared set plus an explicit everything-else branch.
 
 AI:
--> create_performance_max_campaign(...)
-<- pending
+-> replace_asset_group_listing_filter_tree(...)
+<- pending_confirmation
+```
+
+The v0.16 implementation supports Shopping dimensions, RETAIL Product Tags via `retail_filter_bundle`, explicit other nodes and WEBPAGE root semantics from v25.
+
+## 8. Atomic experiment traffic split
+
+```text
+User:
+Move my two experiment arms from 50/50 to 70/30.
+
+AI:
+-> update_experiment_traffic_split(
+     customer_id=...,
+     arm_splits=[
+       {"experiment_arm_resource_name":".../experimentArms/1", "traffic_split":70},
+       {"experiment_arm_resource_name":".../experimentArms/2", "traffic_split":30}
+     ]
+   )
+<- pending_confirmation
+```
+
+Both arms are updated in one request so the total=100 invariant is preserved.
+
+## 9. Customer Match without putting identifiers in the normal audit payload
+
+```text
+User:
+Upload these eligible Customer Match members to list X.
+
+AI:
+-> upload_customer_match_members(...)
+<- pending_confirmation
+   risk_level: sensitive
+```
+
+Normal audit metadata records counts and destination information, not the raw identifiers. Durable replay arguments are encrypted at rest.
+
+## 10. Batch Job
+
+```text
+User:
+Pause these 25 campaign/ad-group/ad rows after I review the manifest.
+
+AI:
+-> submit_batch_job(... reviewed manifest ...)
+<- pending_confirmation
+   risk_level: sensitive
 
 User:
 Confirm.
 
 AI:
 -> confirm_pending_action(...)
+<- submitted
 
 AI:
--> create_asset_group(
-     campaign_id="...",
-     name="Core",
-     final_urls=["https://example.com"],
-     headlines=[...],
-     long_headline="...",
-     descriptions=[...],
-     business_name="Example",
-     marketing_image_urls=["https://cdn.example.com/landscape.jpg"],
-     square_marketing_image_urls=["https://cdn.example.com/square.jpg"],
-     logo_image_urls=["https://cdn.example.com/logo.jpg"]
-   )
-<- one atomic Asset + AssetGroup + AssetGroupAsset proposal
+-> get_batch_job_results(...)
+<- row-level outcomes
 ```
 
-The image URLs must be public HTTPS and pass the MCP's SSRF/content/size checks.
+Batch Jobs can partially succeed. Always inspect results rather than assuming rollback.
 
-## 6. Offline conversion upload
-
-First create the correct immutable conversion-action type:
+## 11. Specialist Google-controlled service
 
 ```text
 User:
-Create an offline Qualified Lead conversion action called "CRM Qualified Lead".
+Generate ad image ideas using Google's Asset Generation service.
 
 AI:
--> create_conversion_action(
-     name="CRM Qualified Lead",
-     category="QUALIFIED_LEAD",
-     conversion_action_type="UPLOAD_CLICKS"
-   )
+-> generate_asset_images(...)
 ```
 
-Later:
+If the account is not enabled for the upstream closed-beta/allowlisted service, Google returns the entitlement error. The MCP does not return a fake success.
+
+## 12. Inspect one action's audit history
 
 ```text
 User:
-Upload this GCLID conversion against action 777, value USD 500,
-conversion time 2026-08-18 12:00:00-03:00.
+Show me what happened with action abc123.
 
-AI:
--> upload_offline_conversion(...)
-```
-
-Before proposing the upload, v0.12 verifies that action 777 exists, is ENABLED and has type `UPLOAD_CLICKS`.
-
-## 7. Enhanced offline conversion
-
-```text
-User:
-Same conversion, with email Jane.Doe+Lead@gmail.com and phone +54 9 11 1234-5678.
-
-AI:
--> upload_enhanced_conversion(...)
-```
-
-Email/phone normalization and SHA-256 happen locally; raw PII is not placed in the audit payload.
-
-## 8. Website remarketing
-
-```text
-User:
-Create a 30-day all-pages remarketing audience for example.com.
-
-AI:
--> create_remarketing_list(
-     name="All visitors 30d",
-     membership_days=30,
-     url_contains="example.com"
-   )
-```
-
-An empty rule is not used. v0.12 creates a real `url__ CONTAINS example.com` rule.
-
-## 9. Replace campaign language targeting
-
-```text
-User:
-Make campaign 444 target only English and Spanish.
-
-AI:
--> set_language_targeting(
-     campaign_id="444",
-     language_codes=["1000", "1003"]
-   )
-```
-
-The setter removes existing language criteria and creates exactly the supplied set in one mutation.
-
-## 10. Device modifier
-
-```text
-User:
-Exclude tablets from campaign 444.
-
-AI:
--> set_device_bid_modifier(
-     campaign_id="444",
-     device="TABLET",
-     bid_modifier=0
-   )
-```
-
-If the device criterion already exists, it is updated; otherwise it is created.
-
-## 11. Google recommendations
-
-```text
-User:
-Show active recommendations only.
-
-AI:
--> get_recommendations(customer_id="...")
-```
-
-To apply one:
-
-```text
-AI:
--> apply_recommendation(resource_name="customers/.../recommendations/...")
-<- pending_confirmation
-```
-
-To dismiss one:
-
-```text
-AI:
--> dismiss_recommendation(resource_name="customers/.../recommendations/...")
-<- pending_confirmation
-```
-
-## 12. Experiment workflow
-
-```text
-User:
-Set up a 50/50 Search experiment from campaign 555 called "tCPA test".
-
-AI:
--> create_experiment(
-     base_campaign_id="555",
-     name="tCPA test",
-     traffic_split_percent=50
-   )
-```
-
-After creation:
-
-```text
-AI:
--> list_experiments(...)
-```
-
-Use the treatment arm's `in_design_campaigns` result to identify the system-created draft and modify it before scheduling/running the test.
-
-## 13. Raw GAQL fallback
-
-Prefer specialized reporting tools where possible. For custom analysis:
-
-```text
-User:
-Run this GAQL against customer 123-456-7890:
-
-SELECT campaign.id, campaign.name, metrics.cost_micros
-FROM campaign
-WHERE segments.date DURING LAST_30_DAYS
-ORDER BY metrics.cost_micros DESC
-```
-
-```text
-AI:
--> run_gaql_query(...)
-```
-
-## 14. Retry a failed confirmation
-
-```text
-AI:
--> confirm_pending_action("abc123")
-<- transient Google/network error
-```
-
-v0.12 keeps the action pending. After fixing the underlying problem:
-
-```text
-AI:
--> confirm_pending_action("abc123")
-<- success
-```
-
-Both attempts are recorded under the same action ID:
-
-```text
 AI:
 -> get_audit_action("abc123")
+<- attempt 1: error
+   attempt 2: success
 ```
+
+The proposal ID, confirmation ID and audit correlation ID are the same identifier.
+
+## Recommended production prompt pattern
+
+When operating live accounts, prompts should make scope and intent explicit:
+
+```text
+Use only customer 123-456-7890.
+Read current state first.
+Propose the changes and show me the pending actions.
+Do not confirm or enable spend-changing actions unless I explicitly tell you to.
+```
+
+The server enforces its own safety policy regardless of prompt wording, but explicit operator intent makes the workflow easier to review.
+
+See also:
+
+- [`TOOLS.md`](TOOLS.md)
+- [`SAFETY.md`](SAFETY.md)
+- [`SETUP.md`](SETUP.md)
+- [`V25_SERVICE_COVERAGE.md`](V25_SERVICE_COVERAGE.md)
+- [`RELEASE_0.16.0.md`](RELEASE_0.16.0.md)
