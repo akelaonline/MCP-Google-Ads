@@ -2,3 +2,4 @@ google-ads>=31.2.0,<32.0.0
 fastmcp>=2.3.0
 python-dotenv>=1.0.1
 pydantic>=2.7
+cryptography>=42.0
