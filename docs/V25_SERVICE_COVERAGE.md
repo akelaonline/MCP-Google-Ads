@@ -1,0 +1,177 @@
+# Google Ads API v25 service coverage
+
+This document is the coverage contract for **Google Ads MCP 0.16.0**.
+
+The source of truth is the official Google Ads API v25 service reference. Coverage
+is counted at the Google service surface, not by trying to reproduce the Google
+Ads UI button-for-button. Standard resource reads are exposed through focused
+MCP tools and/or the GAQL fallback; resource writes use typed service operations;
+custom RPCs that cannot be represented by GAQL are exposed explicitly.
+
+## Status definitions
+
+- **Integrated** — public v25 service is available through focused MCP tools,
+  controlled generic protobuf-JSON tools, GAQL, or a combination of those.
+- **Integrated / access-controlled** — the RPC exists in this MCP, but Google
+  requires allowlisting, beta access, product eligibility, billing eligibility,
+  or another account-level capability.
+- **Not publicly callable** — Google documents the service but does not make it
+  publicly available to third-party API clients. The MCP does not fake support.
+- **Removed in v25** — legacy service intentionally does not exist in the v25 MCP.
+
+All mutating paths remain subject to customer isolation and the shared
+propose/confirm/audit safety layer.
+
+## v25 services
+
+| Google Ads API v25 service | MCP status | Primary MCP coverage |
+|---|---|---|
+| AccountBudgetProposalService | Integrated | billing/account-budget lifecycle |
+| AccountLinkService | Integrated | legacy account links and status lifecycle |
+| AdGroupAdLabelService | Integrated | ad label attach/detach |
+| AdGroupAdService | Integrated | ad lifecycle + automatic-asset removal |
+| AdGroupAssetService | Integrated | ad-group asset links |
+| AdGroupAssetSetService | Integrated | asset-set links |
+| AdGroupBidModifierService | Integrated | device modifiers + update/remove |
+| AdGroupCriterionCustomizerService | Integrated | criterion customizers |
+| AdGroupCriterionLabelService | Integrated | keyword/criterion labels |
+| AdGroupCriterionService | Integrated | keywords, audiences, bids, negatives |
+| AdGroupCustomizerService | Integrated | ad-group customizers |
+| AdGroupLabelService | Integrated | ad-group labels |
+| AdGroupService | Integrated | ad-group lifecycle |
+| AdParameterService | Integrated | `{param1}` / `{param2}` ad parameters |
+| AdService | Integrated | RSA creative edits and supported ad operations |
+| AssetGenerationService | Integrated / access-controlled | GenerateText + GenerateImages; Google closed beta |
+| AssetGroupAssetService | Integrated | Performance Max asset links |
+| AssetGroupListingGroupFilterService | Integrated | SHOPPING, RETAIL Product Tags, WEBPAGE filters |
+| AssetGroupService | Integrated | PMax asset-group lifecycle |
+| AssetGroupSignalService | Integrated | audience, search-theme, Local Services, vertical-feed signals |
+| AssetService | Integrated | image/video/media/text-capable asset operations used by supported flows |
+| AssetSetAssetService | Integrated | asset membership in AssetSets |
+| AssetSetService | Integrated | AssetSet lifecycle |
+| AudienceInsightsService | Integrated / access-controlled | all public insight RPCs; Google allowlist required |
+| AudienceService | Integrated | modern Audience lifecycle |
+| AutomaticallyCreatedAssetRemovalService | Integrated | campaign auto-created asset removal |
+| BatchJobService | Integrated | controlled manifest, run, status and row results |
+| BenchmarksService | Integrated / access-controlled | public benchmark RPCs; Google allowlist required |
+| BiddingDataExclusionService | Integrated | data exclusions |
+| BiddingSeasonalityAdjustmentService | Integrated | seasonality adjustments |
+| BiddingStrategyService | Integrated | portfolio bidding strategies |
+| BillingSetupService | Integrated / eligibility-controlled | create/cancel billing setup; monthly-invoicing rules apply |
+| BrandSuggestionService | Integrated | verified brand suggestions |
+| CampaignAssetService | Integrated | campaign asset links |
+| CampaignAssetSetService | Integrated | campaign AssetSet links |
+| CampaignBidModifierService | Integrated | CALLS interaction modifier read/update/remove |
+| CampaignBudgetService | Integrated | daily/shared budgets |
+| CampaignConversionGoalService | Integrated | campaign goal biddability |
+| CampaignCriterionService | Integrated | targeting, negatives, schedules, geo, languages |
+| CampaignCustomizerService | Integrated | campaign customizers |
+| CampaignDraftService | Integrated | create/rename/promote/errors/remove |
+| CampaignGoalConfigService | Integrated | v25 goal config |
+| CampaignGroupService | Integrated | campaign-group lifecycle |
+| CampaignLabelService | Integrated | campaign labels |
+| CampaignService | Integrated | campaign lifecycle + EnablePMaxBrandGuidelines |
+| CampaignSharedSetService | Integrated | shared negative-list attachment |
+| ContentCreatorInsightsService | Integrated / access-controlled | creator + trending insights; Google allowlist required |
+| ConversionActionService | Integrated | conversion-action lifecycle |
+| ConversionAdjustmentUploadService | Integrated | retractions/restatements |
+| ConversionCustomVariableService | Integrated | custom-variable lifecycle |
+| ConversionGoalCampaignConfigService | Integrated | conversion-goal campaign config |
+| ConversionUploadService | Integrated | offline/enhanced conversions |
+| ConversionValueRuleService | Integrated | value-rule lifecycle |
+| ConversionValueRuleSetService | Integrated | value-rule-set lifecycle |
+| CustomAudienceService | Integrated | CustomAudience lifecycle |
+| CustomConversionGoalService | Integrated | custom goal lifecycle |
+| CustomInterestService | Integrated | CustomInterest lifecycle |
+| CustomerAssetService | Integrated | account-scope asset links |
+| CustomerAssetSetService | Integrated | account-scope AssetSet links |
+| CustomerClientLinkService | Integrated | manager → client invite/unlink flow with validated cross-account exception |
+| CustomerConversionGoalService | Integrated | customer conversion goals |
+| CustomerCustomizerService | Integrated | customer customizers |
+| CustomerLabelService | Integrated | manager/customer labels |
+| CustomerManagerLinkService | Integrated | accept/decline/move/unlink manager relationships |
+| CustomerNegativeCriterionService | Integrated | account-level placement/app/content/IP/shared-list exclusions |
+| CustomerService | Integrated | accessible customers, create client, mutable operational settings |
+| CustomerSkAdNetworkConversionValueSchemaService | Integrated / eligibility-controlled | schema mutation + warnings |
+| CustomerUserAccessInvitationService | Integrated | user invitations |
+| CustomerUserAccessService | Integrated | roles/access removal |
+| CustomizerAttributeService | Integrated | customizer definitions |
+| DataLinkService | Integrated | Google Ads data-link lifecycle |
+| ExperimentArmService | Integrated | create/update/remove + atomic two-arm traffic split |
+| ExperimentService | Integrated | mutate/schedule/errors/promote/graduate/end |
+| GeoTargetConstantService | Integrated | geo lookup/resolution |
+| GoalService | Integrated | v25 unified acquisition/retention/loyalty goals |
+| GoogleAdsFieldService | Integrated | field metadata get/search |
+| GoogleAdsService | Integrated | SearchStream + typed atomic Mutate + GAQL fallback |
+| IdentityVerificationService | Integrated / eligibility-controlled | get/start identity verification |
+| IncentiveService | Integrated / access-controlled | fetch/apply incentives; Google allowlist rules apply |
+| InvoiceService | Integrated / eligibility-controlled | invoice retrieval |
+| KeywordPlanAdGroupKeywordService | Integrated | persistent plan positive/negative keywords |
+| KeywordPlanAdGroupService | Integrated | persistent plan ad groups |
+| KeywordPlanCampaignKeywordService | Integrated | persistent plan campaign negatives |
+| KeywordPlanCampaignService | Integrated | persistent plan campaigns |
+| KeywordPlanIdeaService | Integrated | ideas, historical metrics, forecast metrics |
+| KeywordPlanService | Integrated | persistent plan lifecycle |
+| KeywordThemeConstantService | Integrated | Smart Campaign theme suggestions |
+| LabelService | Integrated | label lifecycle |
+| LocalServicesLeadService | Integrated / eligibility-controlled | leads, conversations, feedback |
+| MultiPartyAuthReviewService | Integrated / beta | approve/reject/revoke review workflow |
+| OfflineUserDataJobService | Integrated / eligibility-controlled | legacy Customer Match jobs; Data Manager preferred for new integrations |
+| PaymentsAccountService | Integrated / eligibility-controlled | payments-account discovery |
+| ProductLinkInvitationService | Integrated | create/accept/reject/revoke, with Merchant Center exception respected |
+| ProductLinkService | Integrated | Merchant/Ads/Data Partner active links |
+| ReachPlanService | Integrated | all six public v25 planning RPCs; v25 targeting/frequency fields |
+| RecommendationService | Integrated | list/generate/apply/dismiss |
+| RecommendationSubscriptionService | Integrated | auto-apply subscription enable/pause |
+| RemarketingActionService | Integrated | action lifecycle + Google tag snippets |
+| ReservationService | **Not publicly callable** | Google explicitly documents this service as not publicly available |
+| ShareablePreviewService | Integrated | PMax asset-group and supported YouTube previews |
+| SharedCriterionService | Integrated | shared negative criteria |
+| SharedSetService | Integrated | shared sets/negative lists |
+| SmartCampaignSettingService | Integrated | update settings + GetSmartCampaignStatus |
+| SmartCampaignSuggestService | Integrated | keyword, budget and ad suggestions |
+| ThirdPartyAppAnalyticsLinkService | Integrated | link/status/shareable-ID lifecycle |
+| TravelAssetSuggestionService | Integrated | Travel asset suggestions |
+| UserDataService | Integrated / eligibility-controlled | small Customer Match uploads, PII kept out of audit payload |
+| UserListCustomerTypeService | Integrated | new/existing customer assignments |
+| UserListService | Integrated | remarketing and Customer Match list lifecycle |
+| YouTubeVideoUploadService | Integrated / eligibility-controlled | upload/status/update/remove |
+
+## Explicit v25 removals and migrations
+
+Google Ads API v25 removed the legacy `CustomerLifecycleGoalService` and
+`CampaignLifecycleGoalService`. This MCP does **not** emulate those deleted
+contracts. Acquisition, retention and loyalty operations use the v25 unified
+`GoalService` / campaign-goal configuration model.
+
+Smart Campaigns remain supported in v25. **Smart Shopping** is the obsolete
+workflow; supported retail automation should use Performance Max.
+
+## Coverage boundaries
+
+“Integrated” does not mean Google grants every account permission to every
+feature. Billing, Customer Match, Local Services, SKAdNetwork, Identity,
+Incentives, YouTube upload, closed-beta generation and allowlisted insights can
+still return Google authorization/eligibility errors for accounts that do not
+have that product capability.
+
+The MCP intentionally does not expose an unrestricted arbitrary protobuf mutation
+endpoint. High-impact operations use typed tools or constrained protobuf-JSON
+wrappers with strict parsing, customer ownership checks, confirmation and audit.
+This is a safety boundary, not a coverage gap.
+
+## Production invariants in 0.16.0
+
+1. Reads and writes pass the deployment customer allowlist when configured.
+2. Mutations recursively inspect customer-scoped resource references, including
+   references inside CREATE operations.
+3. Legitimate manager/client linking is a narrow exception: every referenced
+   customer still has to be explicitly allowed.
+4. Pending writes are durable across restart when using the built-in SQLite audit
+   backend; replay arguments are encrypted at rest.
+5. Sensitive data tools record counts/consent/metadata in the audit log rather
+   than raw Customer Match identifiers.
+6. Spend, destructive and sensitive operations remain separately gated even when
+   standard auto-approve is enabled.
+
+Last audited against Google Ads API v25 reference: **2026-08-20**.
