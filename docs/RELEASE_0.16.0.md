@@ -7,7 +7,8 @@
 0.16.0 is the completion pass that follows the incremental coverage releases up
 through 0.15.0. The goal of this release is not to add another handful of tools;
 it is to remove the remaining situations where an operator can read or create a
-Google Ads object but cannot complete its lifecycle from the MCP.
+Google Ads object but cannot complete its lifecycle from the MCP — while tightening
+production safety for real multi-account deployments.
 
 ## Headline changes
 
@@ -31,7 +32,7 @@ Google-controlled surfaces are exposed but accurately labeled:
 - ReservationService — documented by Google as **not publicly available**, so the
   MCP does not fake support.
 
-### Cross-customer mutation isolation is now recursive
+### Cross-customer mutation isolation is recursive
 
 MCC credentials can legitimately access many customers. Request-level
 `customer_id` validation alone does not prevent an operation constructed for
@@ -46,6 +47,19 @@ A deliberately narrow exception exists for real manager/client linking:
 customer must still pass `GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS` when the deployment
 uses an allowlist. Ordinary campaign/ad/asset/criterion operations retain strict
 same-customer isolation.
+
+### MCC hierarchy reads are isolated too
+
+The production allowlist now applies to hierarchy/link metadata returned through
+`customer_client` and `customer_client_link`, including raw `run_gaql_query()`.
+
+An allowed MCC can see children that are not intended for the current deployment.
+0.16 filters those rows centrally before returning them. If a raw hierarchy/link
+query does not select the field required to identify the referenced child customer,
+the MCP fails closed instead of returning unfilterable cross-tenant metadata.
+
+This closes a gap where write isolation could be correct while account metadata
+from another tenant was still visible through an allowed manager account.
 
 ### Durable pending confirmations across restart
 
@@ -63,10 +77,40 @@ original public MCP invocation required to reconstruct the write.
   no Google Ads mutation is attempted.
 - A replay retains the same action ID, so retry/audit history stays correlated.
 - Public MCP tool names are stored separately from internal shared risk aliases,
-  so helpers such as the different Product Link and Billing tools remain replayable.
+  so specialized helpers remain replayable even when they share a risk category.
 
 Custom/legacy audit backends that implement only `record()` remain compatible;
 they simply keep the previous in-memory pending behavior.
+
+### Read-only kill switch
+
+0.16 adds a central reporting-only/emergency-freeze mode:
+
+```dotenv
+GOOGLE_ADS_MCP_READ_ONLY=true
+```
+
+When enabled:
+
+- reads, reports and GAQL continue working;
+- audit inspection and pending listing remain available;
+- pending actions may still be cancelled;
+- new write proposals are blocked centrally;
+- `confirm_pending_action()` is also blocked, including for proposals created
+  before the process restarted with read-only enabled.
+
+This is stronger than relying on an agent instruction such as “do not confirm.”
+
+### Confirm/cancel race hardening
+
+Within one running MCP process, pending control operations are serialized. Two
+simultaneous confirmations cannot both enter execution for the same pending action,
+and a cancellation cannot race a confirmation that is already entering execution.
+
+This guarantee is process-local. The SQLite pending table is not a distributed
+claim/lease system. One running MCP process should own one `audit.db`; several
+simultaneous workers should not share the same pending database unless an external
+single-writer/claim mechanism is added.
 
 ## Coverage added or completed
 
@@ -106,8 +150,12 @@ they simply keep the previous in-memory pending behavior.
 
 - Full Experiment lifecycle: mutate, schedule, async errors, promote, graduate, end.
 - ExperimentArm list/create/update/remove.
-- Atomic two-arm traffic-split update so both values can be changed in one
-  `MutateExperimentArms` request while preserving Google's total=100 invariant.
+- Preferred `update_experiment_arm_traffic_splits` helper for atomic two-arm
+  traffic-split changes.
+- Compatibility alias `update_experiment_traffic_split` retained for callers using
+  the shorter name.
+- The split helper validates Google's total=100 invariant before the RPC and
+  mutates both arms in one request.
 
 ### Keywords and planning
 
@@ -171,17 +219,26 @@ Risk classes remain:
 `GOOGLE_ADS_MCP_AUTO_APPROVE=true` does not implicitly enable the three high-risk
 classes. Each requires its own explicit opt-in.
 
-New 0.16.0 writes were classified conservatively: experiment launch/splits,
-PMax listing/signal changes, bid modifiers, conversion goals/rules and live asset
-links are spend-risk; customer data, identity, billing/access/linking and SKAd
-changes are sensitive; removals/unlinks/terminal actions are destructive.
+0.16 also tightens classification for delivery-changing operations that previously
+could look harmless simply because no explicit currency amount appeared in the
+payload. Enabled keyword creation, keyword match changes/negatives,
+location/language/placement targeting, audience/topic attachment and conversion
+biddability changes are now conservatively classified as `spend`.
+
+Normal creative/resource preparation such as creating callouts or sitelinks remains
+`standard` by design.
+
+Customer data, identity, billing/access/linking and SKAd changes are `sensitive`;
+removals/unlinks/terminal actions are `destructive`.
 
 ## Compatibility
 
 - Existing MCP tool names remain available unless they represented a Google API
   contract that v25 itself removed or no longer permits.
+- `update_experiment_traffic_split` remains available as a compatibility alias.
 - Existing safety environment variables remain valid.
-- `cryptography>=42` is a new runtime dependency for encrypted pending replay.
+- `GOOGLE_ADS_MCP_READ_ONLY` is additive and defaults to `false`.
+- `cryptography>=42` is a runtime dependency for encrypted pending replay.
 - Existing custom audit backends do not need to implement the durable pending API;
   they fall back to process-local pending actions.
 - HTTP remains disabled by default because this project intentionally does not ship
@@ -190,44 +247,51 @@ changes are sensitive; removals/unlinks/terminal actions are destructive.
 
 ## Validation status
 
-The repository contains real-v25 protobuf contract tests and new regressions for:
+The repository contains real-v25 protobuf contract tests and regressions for:
 
 - cross-customer create/update/remove isolation;
 - legitimate allowlisted MCC manager/client linking;
+- MCC hierarchy/link read filtering, including raw GAQL fail-closed behavior;
 - durable pending restart replay;
 - encrypted invocation arguments;
 - public-tool/safety-alias replay;
-- high-risk classification;
+- high-risk delivery classification;
+- read-only blocking for proposal and confirmation paths;
+- confirm/cancel process-local serialization;
 - ExperimentArm contracts and atomic split behavior;
+- AssetGeneration registration/contracts;
 - the major protobuf-heavy v25 write surfaces.
 
 The ChatGPT execution environment used for this completion pass did **not** have
-the `google-ads` Python package installed and could not install/clone dependencies,
-so it did not execute the complete pytest suite or a live-account end-to-end run.
-The code was reviewed against the official v25 reference and regression tests were
-added to the repository. Run the local validation commands below in a normal
-networked development environment before deploying over an existing production
-installation:
+the `google-ads` Python package/FastMCP/Ruff stack installed and could not install
+or clone dependencies, so it did not execute the complete pytest/Ruff/smoke suite
+or a live-account end-to-end run. The code was reviewed against the official v25
+reference and regression tests were added to the repository. Run the local
+validation commands below in a normal networked development environment before
+deploying over an existing production installation:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 python scripts/smoke_test.py
-ruff check src tests
+ruff check src tests scripts
 pytest -q
 ```
 
 A live account test should use a dedicated allowlisted test customer with
 high-risk auto-approve disabled and exercise:
 
-1. read/account discovery;
-2. harmless proposed write + cancel;
-3. proposed write + confirm;
-4. restart between propose and confirm;
-5. MCC access to two allowlisted customers and a deliberately mixed-client
-   operation that must be blocked;
-6. a legitimate manager/client link between two explicitly allowlisted accounts.
+1. account discovery/read;
+2. read-only mode: reads succeed, proposal and confirmation fail closed;
+3. harmless proposed write + cancel;
+4. proposed write + confirm;
+5. restart between propose and confirm;
+6. MCC access to multiple customers and verification that non-allowlisted
+   `customer_client`/`customer_client_link` rows are not returned;
+7. deliberate mixed-client mutation that must be blocked;
+8. a legitimate manager/client link between two explicitly allowlisted accounts;
+9. two concurrent confirms for one pending action, verifying only one execution.
 
 ## Upgrade
 
@@ -238,7 +302,8 @@ pip install -e .
 ```
 
 If you use containers, make sure the audit DB and pending-action encryption key are
-persistent before upgrading.
+persistent before upgrading. Do not share the same pending DB between simultaneous
+MCP worker processes.
 
 See:
 
