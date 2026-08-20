@@ -2,6 +2,7 @@
 
 from . import (
     account_access,
+    account_exclusions_identity,
     accounts,
     ad_groups,
     ads,
@@ -35,6 +36,7 @@ from . import (
     performance_max,
     platform_services,
     pmax_admin,
+    pmax_signals_listing,
     product_links,
     recommendations,
     remarketing_actions,
@@ -49,6 +51,7 @@ from . import (
 ALL_MODULES = [
     accounts,
     account_access,
+    account_exclusions_identity,
     product_links,
     data_links,
     platform_services,
@@ -89,5 +92,6 @@ ALL_MODULES = [
     experiments,
     performance_max,
     pmax_admin,
+    pmax_signals_listing,
     recommendations,
 ]
