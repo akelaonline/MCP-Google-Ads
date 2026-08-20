@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from google.ads.googleads.client import GoogleAdsClient
 from google.oauth2.credentials import Credentials
 
 from google_ads_mcp.client import (
     GoogleAdsClientWrapper,
+    _all_operations_are_creates,
     _assert_mutation_targets_customer,
 )
 from google_ads_mcp.config import Settings
@@ -96,6 +99,61 @@ def test_same_customer_targets_are_allowed():
     operation.campaign_operation.update.status = raw.enums.CampaignStatusEnum.PAUSED
 
     _assert_mutation_targets_customer("1111111111", [operation])
+
+
+def test_customer_client_link_create_is_the_narrow_cross_customer_exception():
+    raw = _raw_client()
+    operation = raw.get_type("CustomerClientLinkOperation")
+    operation.create.client_customer = "customers/2222222222"
+    operation.create.status = raw.enums.ManagerLinkStatusEnum.PENDING
+    assert _all_operations_are_creates([operation]) is True
+
+    wrapper = GoogleAdsClientWrapper(_settings())
+    wrapper._client = raw
+
+    class FakeCustomerClientLinkService:
+        def mutate_customer_client_link(
+            self,
+            customer_id,
+            operation,
+            partial_failure=False,
+            validate_only=False,
+        ):
+            assert customer_id == "1111111111"
+            assert operation.create.client_customer == "customers/2222222222"
+            return SimpleNamespace(
+                result=SimpleNamespace(
+                    resource_name="customers/1111111111/customerClientLinks/7"
+                )
+            )
+
+    wrapper.service = lambda name: FakeCustomerClientLinkService()
+    response = wrapper.mutate(
+        "CustomerClientLinkService",
+        "1111111111",
+        [operation],
+        operations_field="operation",
+    )
+    assert response.result.resource_name.endswith("/customerClientLinks/7")
+
+
+def test_customer_client_link_create_still_requires_target_allowlist():
+    raw = _raw_client()
+    operation = raw.get_type("CustomerClientLinkOperation")
+    operation.create.client_customer = "customers/3333333333"
+    operation.create.status = raw.enums.ManagerLinkStatusEnum.PENDING
+
+    wrapper = GoogleAdsClientWrapper(_settings())
+    wrapper._client = raw
+    wrapper.service = lambda name: SimpleNamespace(mutate_customer_client_link=lambda **_: None)
+
+    with pytest.raises(GoogleAdsMcpError, match="outside GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS"):
+        wrapper.mutate(
+            "CustomerClientLinkService",
+            "1111111111",
+            [operation],
+            operations_field="operation",
+        )
 
 
 def test_v25_experiment_lifecycle_contracts_exist():
