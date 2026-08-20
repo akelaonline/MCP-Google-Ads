@@ -2,19 +2,19 @@
 
 # Google Ads MCP
 
-**Read/write Model Context Protocol server for operating Google Ads accounts from an AI client — with explicit confirmation, audit logging, customer isolation, and Google Ads API v25 contracts.**
+**Production-grade read/write Model Context Protocol server for Google Ads API v25.**
+
+Operate Google Ads from an AI client with explicit confirmation, SQLite audit,
+durable encrypted pending actions, MCC/customer isolation, and broad v25 service coverage.
 
 Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation & AI workflows
 
-[![Email](https://img.shields.io/badge/email-adjose%40gmail.com-blue.svg)](mailto:adjose@gmail.com)
-[![Instagram](https://img.shields.io/badge/instagram-%40akelaonline-E4405F?logo=instagram&logoColor=white)](https://www.instagram.com/akelaonline/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Google Ads API v25](https://img.shields.io/badge/Google%20Ads%20API-v25-4285F4.svg)](https://developers.google.com/google-ads/api)
-[![CI](https://github.com/akelaonline/MCP-Google-Ads/actions/workflows/tests.yml/badge.svg)](https://github.com/akelaonline/MCP-Google-Ads/actions/workflows/tests.yml)
-[![Version](https://img.shields.io/badge/version-0.15.0-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.16.0-informational.svg)](docs/RELEASE_0.16.0.md)
 
-[Quick start](#quick-start) · [Capabilities](#capabilities) · [Safety](#safety-by-default) · [v0.15 batch & Smart Bidding](#v015-batch--smart-bidding-operations) · [Documentation](#documentation)
+[Quick start](#quick-start) · [Capabilities](#capabilities) · [Safety](#safety-by-default) · [Production](#production-deployment) · [Coverage](docs/V25_SERVICE_COVERAGE.md) · [Docs](#documentation)
 
 </div>
 
@@ -22,55 +22,144 @@ Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation &
 
 ## What this is
 
-Most Google Ads MCP servers stop at reporting and raw GAQL. This project is designed to **operate** accounts: inspect performance, create and edit campaigns, change budgets and bidding, manage keywords and negatives, work with assets and audiences, upload offline conversions, build Performance Max structures, run experiments, and apply or dismiss recommendations.
+Google Ads MCP is designed to **operate** Google Ads accounts, not only report on them.
 
-Every normal write follows a **propose → preview → confirm → execute → audit** flow. The default configuration does not silently change live spend.
+It can inspect performance, create and edit campaigns, change budgets and bidding,
+manage ads/keywords/assets/audiences, administer MCC relationships and user access,
+work with conversions and goals, operate Performance Max and Smart Campaigns,
+manage experiments, upload Customer Match/conversion data, work with billing/product
+links, and call specialist planning/insight services exposed by Google Ads API v25.
 
-## v0.15 batch & Smart Bidding operations
+Every normal write follows:
 
-v0.15 adds controlled agency-scale asynchronous writes and Smart Bidding event controls without weakening the v0.13/v0.14 production policy.
+```text
+propose -> preview -> confirm -> execute -> audit
+```
 
-- **Batch Jobs:** submit a reviewed manifest of campaign/ad-group/ad/keyword status changes, budget changes, keyword bids and campaign negatives; then inspect asynchronous row-level results.
-- Batch manifests are validated and confirmation-gated **before** Google creates or runs a job. Arbitrary raw protobuf mutations are intentionally not exposed.
-- **Seasonality Adjustments:** create/list/remove short expected conversion-rate events for SEARCH, DISPLAY and SHOPPING.
-- **Data Exclusions:** create/list/remove short measurement-incident windows that Smart Bidding should ignore.
-- Smart Bidding event creation is spend-risk; removal is destructive. Batch submission is sensitive.
-- **Recommendation generation:** generate fresh Search keyword recommendations from seed keywords and an optional URL without applying them.
-- Real Google Ads API v25 contract tests cover all new protobuf-heavy paths.
+The default configuration does **not** silently change live spend.
 
-Batch Jobs can partially succeed: successful rows are not rolled back when another row fails. Always inspect `get_batch_job_results` before treating a batch as completely successful.
+## 0.16.0: v25 completion + production hardening
 
-See [`docs/BATCH_SMART_BIDDING.md`](docs/BATCH_SMART_BIDDING.md) and [`docs/RELEASE_0.15.0.md`](docs/RELEASE_0.15.0.md).
+0.16.0 is the full coverage/hardening pass.
 
-## v0.14 agency coverage
+### Service coverage
 
-v0.14 expands the MCP into common agency administration workflows while keeping the v0.13 customer-isolation and risk policy underneath every operation.
+The repository is audited against the official Google Ads API v25 service list.
+Every publicly callable v25 service is represented through focused MCP tools,
+constrained protobuf-JSON wrappers, GAQL/resource helpers, or a combination of them.
 
-- Native customer labels plus campaign/ad-group label relationships.
-- Native shared negative keyword lists (`SharedSet` + `SharedCriterion` + `CampaignSharedSet`).
-- Account users and invitations: list, invite, change roles, remove access, revoke invitations.
-- Read-only billing setup and invoice retrieval.
-- Conversion retractions and value restatements with explicit partial-failure parsing.
-- Real Google Ads API v25 contract tests for every new protobuf-heavy write path.
+Google-controlled surfaces are exposed but accurately labeled:
 
-See [`docs/AGENCY_TOOLS.md`](docs/AGENCY_TOOLS.md) for signatures and operational notes.
+- **AssetGenerationService** — closed beta.
+- **AudienceInsightsService / BenchmarksService / ContentCreatorInsightsService** — allowlisted.
+- **Incentives / Local Services / Identity / SKAd / billing / YouTube upload** — account/product eligibility applies.
+- **ReservationService** — Google explicitly marks it as not publicly available; this MCP does not fake support.
 
-## v0.13 production policy
+See the audited matrix: [`docs/V25_SERVICE_COVERAGE.md`](docs/V25_SERVICE_COVERAGE.md).
 
-v0.13 hardens the MCP for agencies and other deployments operating multiple live Google Ads customers.
+### MCC isolation
 
-- Optional `GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS` scopes the deployment to known customer IDs across reads and writes.
-- `GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true` makes that scope mandatory and refuses startup when it is empty.
-- Account discovery is filtered to the deployment scope.
-- Mutations are centrally classified as `standard`, `spend`, `destructive`, or `sensitive`.
-- `GOOGLE_ADS_MCP_AUTO_APPROVE=true` auto-executes only standard-risk writes by default in the production context.
-- Spend, destructive, and sensitive/account-access actions each have a separate explicit auto-approve opt-in and remain confirmation-gated by default.
-- Customer scope is enforced in both the Google Ads client wrapper and the safety layer for defense in depth.
+MCC credentials can access multiple customers, so checking only the request customer ID
+is not enough. The client wrapper recursively inspects customer-scoped resource references
+inside CREATE, UPDATE and REMOVE protobuf operations before a mutation reaches Google.
 
-For a customer-specific production instance, start from:
+A campaign operation for customer A cannot quietly carry an asset/campaign/ad-group/etc.
+resource from customer B even when both are accessible through the same manager credential.
+
+The one intentional exception is manager/client linking. A `CustomerClientLinkService`
+CREATE may reference the second customer, but that customer must still pass the configured
+deployment allowlist.
+
+### Durable confirmations
+
+With the built-in SQLite audit backend, unconfirmed writes survive process/container restart.
+The original MCP invocation needed for replay is encrypted with Fernet and stored beside the
+pending metadata.
+
+You can provide a stable key:
 
 ```dotenv
-GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS=123-456-7890
+GOOGLE_ADS_MCP_PENDING_ENCRYPTION_KEY=<fernet-key>
+```
+
+If omitted, the MCP creates `<audit-db>.pending.key`. In containers, persist **both** the
+SQLite DB and that key file, or provide the environment key.
+
+If replay state cannot be decrypted or reconstructed, confirmation fails closed and no Ads
+mutation is executed.
+
+## Capabilities
+
+| Domain | Coverage |
+|---|---|
+| **Accounts & MCC** | customer discovery/hierarchy, create clients, manager invite/accept/decline/cancel/unlink/move, users/roles/invitations, customer settings |
+| **Reporting** | campaign/ad-group/ad/keyword/search-term/device/geo/asset/audience/shopping/change history plus raw GAQL fallback |
+| **Campaigns** | Search, Standard Shopping, Performance Max, Demand Gen, Smart Campaigns and supported generic campaign operations |
+| **Budgets & bidding** | budgets, Manual CPC, Max Clicks, Max Conversions/Value, Target CPA/ROAS/Impression Share, portfolio bidding, bid modifiers |
+| **Ads** | RSA, Responsive Display, Demand Gen image/video, supported creative edits and asset-based replacements for legacy formats |
+| **Assets** | images, video, calls, sitelinks, callouts, snippets, promotions, Business Message/WhatsApp, customer/campaign/ad-group/asset-set links |
+| **Keywords** | lifecycle, bids, match changes, negatives, shared negative lists, account-level exclusions, bulk operations |
+| **Keyword Planner** | ideas, historical metrics, forecast metrics, persistent plans/campaigns/ad-groups/positive+negative keywords |
+| **Audiences** | remarketing, UserList, Customer Match, Audience, CustomAudience, CustomInterest, customer-type assignments |
+| **Conversions & goals** | actions, offline/enhanced uploads, adjustments, custom variables, value rules/sets, v25 unified acquisition/retention/loyalty goals |
+| **Performance Max** | campaign/asset groups/assets, signals, SHOPPING/RETAIL/WEBPAGE listing filters, brand guidelines, shareable previews |
+| **Experiments** | experiment lifecycle, arms, schedule/errors/promote/graduate/end, atomic two-arm traffic split updates |
+| **Smart Campaigns** | keyword/budget/ad suggestions, complete atomic creation, status and mutable settings |
+| **Batch & Smart Bidding controls** | controlled Batch Jobs, seasonality adjustments, data exclusions |
+| **Billing** | payments accounts, billing setup, account budget proposals/budgets, invoices |
+| **Product/data links** | modern ProductLink/Invitation, legacy AccountLink, DataLink, app analytics and YouTube linking |
+| **Planning** | Reach Planner public RPCs, Keyword Planner, Travel suggestions, brand suggestions |
+| **Specialist services** | Identity Verification, Local Services leads, SKAdNetwork, Incentives, MPA, field introspection, YouTube upload |
+| **Allowlisted services** | Audience Insights, Benchmarks, Creator Insights, Asset Generation closed beta |
+
+Full signatures and operational notes: [`docs/TOOLS.md`](docs/TOOLS.md).
+
+## Safety by default
+
+```mermaid
+flowchart LR
+    A[AI proposes change] --> C{Customer allowed?}
+    C -- no --> X[Blocked before Google Ads]
+    C -- yes --> R{Risk class}
+    R -->|standard| P[Preview / policy]
+    R -->|spend| P
+    R -->|destructive| P
+    R -->|sensitive| P
+    P --> D[pending_action_id]
+    D --> F[confirm_pending_action]
+    F --> G[Google Ads API]
+    G --> L[(SQLite audit log)]
+```
+
+Risk classes:
+
+- `standard`
+- `spend`
+- `destructive`
+- `sensitive`
+
+Even if global auto-approve is enabled, high-risk classes need their own explicit opt-in:
+
+```dotenv
+GOOGLE_ADS_MCP_AUTO_APPROVE=true
+GOOGLE_ADS_MCP_AUTO_APPROVE_SPEND=false
+GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
+GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
+```
+
+For live accounts, keeping all four values `false` is the conservative default.
+
+If Google/network execution fails after confirmation, the proposal remains available for
+retry and keeps the same action ID in audit history.
+
+See [`docs/SAFETY.md`](docs/SAFETY.md).
+
+## Production deployment
+
+For one-client or controlled multi-client deployments, use a customer allowlist:
+
+```dotenv
+GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS=123-456-7890,987-654-3210
 GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true
 GOOGLE_ADS_MCP_AUTO_APPROVE=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_SPEND=false
@@ -78,89 +167,31 @@ GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
 ```
 
-See [`docs/SETUP.md`](docs/SETUP.md) and [`docs/SAFETY.md`](docs/SAFETY.md) for the production deployment model.
+For durable pending confirmations in a container/VM, set a stable encryption key or persist
+the generated key next to the audit DB:
 
-## v0.12.1 video hotfix
-
-Google Ads API v25 exposes legacy `VIDEO` campaigns for fetching/reporting only. `create_video_ad` is retained as a compatibility endpoint but now returns `status=unsupported` and performs **no mutation**. Use `create_demand_gen_video_ad` for supported programmatic video creation. The Demand Gen video flow creates YouTube video assets, logo assets and the PAUSED `DemandGenVideoResponsiveAd` atomically.
-
-## v0.12 compatibility & hardening
-
-v0.12 is a compatibility and reliability release, not a feature-expansion release. It moves the server onto the current **Google Ads API v25** contract and removes legacy API assumptions that could previously pass unit tests but fail against the real Google client.
-
-Key changes:
-
-- Google Ads Python client pinned to the tested 31.x line and API version fixed to `v25`.
-- Campaign creation uses v25 date-time fields and the required EU political-advertising declaration.
-- Removed legacy Call Ad usage. `create_call_ad` is retained as a compatibility tool and now builds **RSA + Call Asset** atomically.
-- Removed legacy Message Asset usage. `create_message_asset` now creates a **Business Message / WhatsApp** asset.
-- RSA creative edits use `AdService` / `AdOperation`.
-- Performance Max campaign bidding and AssetGroup creation follow the v25 structure; complete non-retail asset groups are created atomically with their required assets.
-- Legacy Local and Smart Shopping creation paths are refused explicitly instead of sending obsolete mutations. Use Performance Max for those modern workflows.
-- Multi-resource create/link flows use `GoogleAdsService.Mutate` where atomic behavior matters, preventing orphan assets after partial failures.
-- Website remarketing creates a real URL rule instead of treating an empty rule as “all visitors”.
-- Offline click uploads verify that the conversion action is `UPLOAD_CLICKS` and enabled before submission.
-- Enhanced-conversion identifiers are normalized and hashed locally before upload.
-- Conversion primary/secondary behavior uses mutable `primary_for_goal`, not the immutable legacy counting field.
-- Language/device targeting setters are idempotent rather than blindly creating duplicate criteria.
-- Bulk write tools are all-or-nothing by default instead of silently succeeding after partial failures.
-- Remote image fetches reject private/loopback/link-local destinations, unsafe schemes, redirects to private networks, unsupported MIME types, and oversized files.
-- Unauthenticated HTTP transport is blocked by default. `stdio` remains the recommended local transport.
-- Pending actions survive transient execution failures and keep the same action ID through retry and audit history.
-- CI now includes **real generated v25 protobuf contract tests**, not only permissive fakes.
-
-## Capabilities
-
-| Domain | Capabilities |
-|---|---|
-| **Accounts & MCC** | Accessible customers, account hierarchy, summaries, create client accounts, manager-link acceptance, users, roles and invitations |
-| **Reporting** | Campaign, ad group, keyword, ad, search term, device, geography, asset, audience, quality score, disapproval, shopping and change-history reports; raw GAQL fallback |
-| **Campaigns** | Create, rename, pause/enable/remove; Search and other supported generic channels; Standard Shopping; Performance Max; Demand Gen; experiments |
-| **Budgets** | Create and update daily/shared budgets |
-| **Bidding** | Manual CPC, Maximize Clicks, Maximize Conversions, Maximize Conversion Value, Target CPA/ROAS, Target Impression Share, portfolio strategies |
-| **Ad groups** | Campaign-aware creation, status changes, CPC updates |
-| **Ads** | Responsive Search, Responsive Display, Demand Gen image/video creatives; RSA edits; legacy Call Ad compatibility via RSA + Call Asset; legacy VIDEO writes blocked safely |
-| **Assets** | Sitelinks, calls, images, promotions, callouts, structured snippets, Business Message / WhatsApp; attach/detach |
-| **Keywords** | Add, bid updates, match-type recreation, pause/enable/remove, campaign/ad-group negatives, native shared negative lists, bulk operations |
-| **Keyword research** | Keyword ideas and historical metrics through Keyword Planner |
-| **Audiences** | Website remarketing rules, Customer Match, affinity/in-market, topics, attach/detach |
-| **Targeting** | Live geo resolution, languages, schedules, device modifiers, placement exclusions |
-| **Conversions** | List/create actions, offline click uploads, enhanced conversions, retractions/restatements, primary/secondary behavior, value rules |
-| **Recommendations** | List active/dismissed recommendations; generate Search keyword recommendations; apply/dismiss through safety policy |
-| **Batch operations** | Controlled asynchronous Batch Jobs with reviewed manifests, status/result inspection and row-level outcomes |
-| **Smart Bidding controls** | Seasonality adjustments and conversion-data exclusions with channel/campaign/device scoping |
-| **Performance Max** | Campaigns, complete asset groups, text/image/video assets, listing filters, audience/search-theme signals |
-| **Experiments** | System-managed experiment setup, arm inspection, promotion and ending |
-| **Labels** | Create/update/remove labels; attach/detach on campaigns and ad groups |
-| **Billing** | Billing setup visibility and invoice retrieval by month/year |
-
-Full signatures and operational notes live in [`docs/TOOLS.md`](docs/TOOLS.md).
-
-## Safety by default
-
-```mermaid
-flowchart LR
-    A[AI proposes change] --> S{Customer allowed?}
-    S -- no --> X[Blocked before account mutation]
-    S -- yes --> B{Auto-approve?}
-    B -- no, default --> C[Preview + pending_action_id]
-    B -- yes --> R{Risk class}
-    R -- standard --> E[Google Ads API]
-    R -- spend / destructive / sensitive --> H{Separate opt-in?}
-    H -- no --> C
-    H -- yes --> E
-    C --> D[confirm_pending_action]
-    D --> E
-    E --> F[(SQLite audit log)]
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-With the recommended production defaults, writes are proposed first and require confirmation. If global auto-approve is deliberately enabled, high-risk spend, destructive, and sensitive actions remain gated unless their own policy flag is also enabled.
+```dotenv
+GOOGLE_ADS_MCP_PENDING_ENCRYPTION_KEY=...
+```
 
-If Google or the network fails during confirmation, the action **stays pending** and can be retried with the same ID. The audit log records failed and successful attempts under that same action ID.
+### HTTP warning
 
-For customer-specific deployments, configure a customer allowlist in addition to keeping high-risk auto-approve flags disabled.
+`stdio` is the default and recommended transport.
 
-See [`docs/SAFETY.md`](docs/SAFETY.md).
+HTTP is intentionally blocked by default because this project does not bundle a remote
+identity provider. If you deliberately place it behind your own authenticated/restricted
+reverse proxy:
+
+```dotenv
+GOOGLE_ADS_MCP_TRANSPORT=http
+GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true
+```
+
+Do **not** expose an unauthenticated write-capable MCP to the public Internet.
 
 ## Quick start
 
@@ -173,7 +204,7 @@ pip install -e .
 cp .env.example .env
 ```
 
-Fill in:
+Fill in Google Ads credentials:
 
 ```dotenv
 GOOGLE_ADS_DEVELOPER_TOKEN=
@@ -183,20 +214,20 @@ GOOGLE_ADS_REFRESH_TOKEN=
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=
 ```
 
-Generate a refresh token if needed:
+If you need to generate a refresh token:
 
 ```bash
 pip install -e ".[auth]"
 python -m google_ads_mcp.auth --generate-refresh-token
 ```
 
-Verify the install:
+Verify the package:
 
 ```bash
 .venv/bin/python -c "import google_ads_mcp; print('OK', google_ads_mcp.__version__, google_ads_mcp.__file__)"
 ```
 
-Register the MCP with Claude Desktop / Claude Code. Point to the virtualenv Python by absolute path:
+### MCP client example
 
 ```json
 {
@@ -212,96 +243,90 @@ Register the MCP with Claude Desktop / Claude Code. Point to the virtualenv Pyth
 }
 ```
 
-Restart the MCP client and try:
+Restart your MCP client and ask:
 
 > List my accessible Google Ads customer IDs.
 
-Detailed credential and OAuth setup: [`docs/SETUP.md`](docs/SETUP.md).
+Then try a safe write flow:
 
-## Example: report → proposed action → confirmation
+> Propose pausing campaign 123. Do not confirm it yet.
 
-```text
-User: Pull search terms for the last 7 days. Anything expensive with zero
-      conversions, propose campaign negatives.
+The MCP should return a `pending_action_id` without changing the account.
 
-AI -> get_search_terms_report(...)
-AI -> add_negative_keywords(...)
-   <- pending_confirmation
-      pending_action_id: 7f3a2c1e...
-      nothing changed yet
-
-User: confirm
-
-AI -> confirm_pending_action("7f3a2c1e...")
-   <- executed and recorded in the audit log
-```
-
-## HTTP transport
-
-`stdio` is the default and recommended transport for local MCP clients.
-
-The project intentionally **blocks HTTP startup by default** because write and confirmation tools are powerful and the server does not bundle a remote identity provider. If you deliberately deploy behind your own authenticated/restricted reverse proxy, you must explicitly opt in:
-
-```dotenv
-GOOGLE_ADS_MCP_TRANSPORT=http
-GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true
-```
-
-Do not expose an unauthenticated instance to the public Internet.
-
-## Important scope boundaries
-
-This MCP wraps the **Google Ads API**, not every adjacent Google advertising product.
-
-- Merchant Center product/feed management remains outside this server. Shopping/PMax retail campaigns expect an already linked Merchant Center setup.
-- Google Business Profile linking is separate from campaign operations.
-- Legacy Local Campaign and Smart Shopping creation are intentionally not emulated on obsolete API shapes; use Performance Max workflows.
-- Old Call Ads are represented by the supported RSA + Call Asset replacement.
-- Traditional legacy `VIDEO` campaign creation/update is not emulated; use the supported Demand Gen video workflow.
-
-## Tests
-
-CI runs on Python **3.11, 3.12 and 3.13** and includes:
-
-- installation smoke test;
-- unit tests for MCP behavior and safety;
-- production-policy tests for customer isolation and risk-aware approvals;
-- source guardrails preventing removed API patterns from returning;
-- real `google-ads` **v25 generated protobuf contract tests** for critical write paths.
-
-Run locally:
+## Upgrade to 0.16.0
 
 ```bash
-pip install -e ".[dev]"
-pytest tests/ -v
-ruff check src tests scripts
+git pull origin main
+source .venv/bin/activate
+pip install -e .
 ```
+
+0.16.0 adds `cryptography` as a runtime dependency for durable encrypted pending actions.
+
+Before upgrading a containerized production deployment, make sure the audit DB and pending
+encryption key are persistent.
+
+## Local validation
+
+This repository does not require GitHub Actions to develop or publish changes.
+Run validation locally before deploying a new checkout over a live installation:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+python scripts/smoke_test.py
+ruff check src tests
+pytest -q
+```
+
+For a live E2E check, use a dedicated allowlisted test customer and keep all high-risk
+auto-approve flags disabled.
+
+## Scope boundaries
+
+This MCP wraps **Google Ads API**, not every adjacent Google advertising product.
+
+- Merchant Center catalog/feed editing belongs to Merchant API; Google Ads linking and
+  Shopping/PMax campaign operations are covered here.
+- Google Business Profile resource administration is separate; Google Ads-side references
+  and Smart Campaign settings are covered where the Ads API exposes them.
+- Legacy Smart Shopping should use Performance Max.
+- Legacy VIDEO writes that Google no longer supports are not emulated; supported video
+  creation/upload paths are used instead.
+- Google-controlled beta/allowlisted features still require eligibility from Google.
+- `ReservationService` is not publicly available according to Google and is therefore not
+  exposed as a fake MCP capability.
 
 ## Documentation
 
-| Doc | Purpose |
-|---|---|
-| [`CHANGELOG.md`](CHANGELOG.md) | Release history and migration notes |
-| [`docs/SETUP.md`](docs/SETUP.md) | Google Cloud, OAuth, Developer Token, MCP config, troubleshooting |
-| [`docs/TOOLS.md`](docs/TOOLS.md) | Tool signatures and operational notes |
-| [`docs/SAFETY.md`](docs/SAFETY.md) | Customer isolation, risk-aware confirmation, retries, audit and HTTP safety |
-| [`docs/EXAMPLES.md`](docs/EXAMPLES.md) | Example workflows and GAQL patterns |
-| [`docs/FAQ.md`](docs/FAQ.md) | Common questions |
+- [0.16.0 release notes](docs/RELEASE_0.16.0.md)
+- [Google Ads API v25 service coverage](docs/V25_SERVICE_COVERAGE.md)
+- [Setup](docs/SETUP.md)
+- [Safety model](docs/SAFETY.md)
+- [Tool reference](docs/TOOLS.md)
+- [Agency tools](docs/AGENCY_TOOLS.md)
+- [Batch jobs & Smart Bidding](docs/BATCH_SMART_BIDDING.md)
+- [Examples](docs/EXAMPLES.md)
+- [FAQ](docs/FAQ.md)
+- [Changelog](CHANGELOG.md)
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). The non-negotiable rule for write tools is: **they must go through the safety layer**. Multi-resource operations that must succeed together should use the atomic mutation path.
+Issues and pull requests are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-## About Akela
+When reporting a Google Ads API issue, include:
 
-I help agencies and consultants automate Google Ads workflows with AI — from MCC reporting to campaign builds, optimization, experiments, and custom MCP integrations.
+- MCP version;
+- Google Ads API version/client version;
+- tool name;
+- request ID / Google error code where available;
+- whether the operation was read, proposed, confirmed, or auto-approved;
+- sanitized customer/resource IDs if needed to reproduce.
 
-- **Email:** [adjose@gmail.com](mailto:adjose@gmail.com)
-- **Instagram:** [@akelaonline](https://www.instagram.com/akelaonline/)
-- **GitHub:** [akelaonline](https://github.com/akelaonline)
-
-If this saves you time, a ⭐ on the repo is appreciated.
+Never post developer tokens, refresh tokens, OAuth client secrets, Customer Match PII,
+or pending-action encryption keys in an issue.
 
 ## License
 
-MIT © 2026 [Akela](https://github.com/akelaonline). See [LICENSE](LICENSE).
+MIT — see [`LICENSE`](LICENSE).
