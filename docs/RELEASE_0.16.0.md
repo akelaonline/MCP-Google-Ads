@@ -51,15 +51,19 @@ same-customer isolation.
 ### MCC hierarchy reads are isolated too
 
 The production allowlist now applies to hierarchy/link metadata returned through
-`customer_client` and `customer_client_link`, including raw `run_gaql_query()`.
+all three linked-customer GAQL surfaces:
 
-An allowed MCC can see children that are not intended for the current deployment.
-0.16 filters those rows centrally before returning them. If a raw hierarchy/link
-query does not select the field required to identify the referenced child customer,
-the MCP fails closed instead of returning unfilterable cross-tenant metadata.
+- `customer_client` → filtered by `customer_client.id`;
+- `customer_client_link` → filtered by `customer_client_link.client_customer`;
+- `customer_manager_link` → filtered by `customer_manager_link.manager_customer`.
+
+This filtering also applies to raw `run_gaql_query()` through the production client.
+If a hierarchy/link query does not select the field required to identify the
+referenced customer, the MCP fails closed instead of returning unfilterable
+cross-tenant metadata.
 
 This closes a gap where write isolation could be correct while account metadata
-from another tenant was still visible through an allowed manager account.
+from another tenant was still visible through an allowed manager/client account.
 
 ### Durable pending confirmations across restart
 
@@ -111,6 +115,25 @@ This guarantee is process-local. The SQLite pending table is not a distributed
 claim/lease system. One running MCP process should own one `audit.db`; several
 simultaneous workers should not share the same pending database unless an external
 single-writer/claim mechanism is added.
+
+### Live-delivery risk classification is effect-based
+
+0.16 closes a policy inconsistency where generic `attach_asset_*` tools were
+`spend`, but convenience helpers that created **and attached** the same kind of
+asset could still be classified `standard`.
+
+The classifier now follows actual effect:
+
+- ads/resources explicitly created `PAUSED` may remain `standard`;
+- renames and other non-delivery administration may remain `standard`;
+- sitelink/call/image/promotion/callout/snippet/Business Message helpers that
+  create and attach directly to live delivery are `spend`;
+- Call Ad compatibility (`PAUSED` RSA + live Call Asset attachment) is `spend`;
+- editing an existing Responsive Search Ad is `spend`;
+- targeting, keyword, audience and biddability changes remain `spend`.
+
+This matters only to deployments that deliberately use auto-approve; the default
+confirmation-first flow is unchanged.
 
 ## Coverage added or completed
 
@@ -219,17 +242,13 @@ Risk classes remain:
 `GOOGLE_ADS_MCP_AUTO_APPROVE=true` does not implicitly enable the three high-risk
 classes. Each requires its own explicit opt-in.
 
-0.16 also tightens classification for delivery-changing operations that previously
-could look harmless simply because no explicit currency amount appeared in the
-payload. Enabled keyword creation, keyword match changes/negatives,
-location/language/placement targeting, audience/topic attachment and conversion
-biddability changes are now conservatively classified as `spend`.
-
-Normal creative/resource preparation such as creating callouts or sitelinks remains
-`standard` by design.
-
 Customer data, identity, billing/access/linking and SKAd changes are `sensitive`;
 removals/unlinks/terminal actions are `destructive`.
+
+A static AST regression (`tests/test_v16_write_gate_guardrail.py`) now fails when
+a public `@mcp.tool()` can reach a write-looking RPC before the deferred
+`execute` closure supplied to `SafetyLayer.propose()`. This protects read-only and
+confirmation semantics against future direct-write bypasses.
 
 ## Compatibility
 
@@ -238,6 +257,8 @@ removals/unlinks/terminal actions are `destructive`.
 - `update_experiment_traffic_split` remains available as a compatibility alias.
 - Existing safety environment variables remain valid.
 - `GOOGLE_ADS_MCP_READ_ONLY` is additive and defaults to `false`.
+- Some convenience creative helpers move from `standard` to `spend`; this only
+  affects unattended deployments that explicitly enabled standard auto-approve.
 - `cryptography>=42` is a runtime dependency for encrypted pending replay.
 - Existing custom audit backends do not need to implement the durable pending API;
   they fall back to process-local pending actions.
@@ -251,13 +272,15 @@ The repository contains real-v25 protobuf contract tests and regressions for:
 
 - cross-customer create/update/remove isolation;
 - legitimate allowlisted MCC manager/client linking;
-- MCC hierarchy/link read filtering, including raw GAQL fail-closed behavior;
+- `customer_client`, `customer_client_link`, and `customer_manager_link` read
+  filtering, including raw GAQL fail-closed behavior;
 - durable pending restart replay;
 - encrypted invocation arguments;
 - public-tool/safety-alias replay;
-- high-risk delivery classification;
+- high-risk delivery classification including live creative attach/edit helpers;
 - read-only blocking for proposal and confirmation paths;
 - confirm/cancel process-local serialization;
+- direct-write safety-gate guardrails;
 - ExperimentArm contracts and atomic split behavior;
 - AssetGeneration registration/contracts;
 - the major protobuf-heavy v25 write surfaces.
@@ -288,10 +311,13 @@ high-risk auto-approve disabled and exercise:
 4. proposed write + confirm;
 5. restart between propose and confirm;
 6. MCC access to multiple customers and verification that non-allowlisted
-   `customer_client`/`customer_client_link` rows are not returned;
+   `customer_client` / `customer_client_link` / `customer_manager_link` rows are
+   not returned;
 7. deliberate mixed-client mutation that must be blocked;
 8. a legitimate manager/client link between two explicitly allowlisted accounts;
-9. two concurrent confirms for one pending action, verifying only one execution.
+9. two concurrent confirms for one pending action, verifying only one execution;
+10. with standard auto-approve enabled but spend auto-approve disabled, verify that
+    a PAUSED ad can auto-approve while a live asset attach/RSA edit remains pending.
 
 ## Upgrade
 
