@@ -15,25 +15,26 @@ Google Ads MCP follows Semantic Versioning. Detailed release notes for productio
 - Expanded Performance Max signal/listing support, including RETAIL Product Tags and WEBPAGE root filters.
 - ProductLink / ProductLinkInvitation completion and stricter referenced-customer isolation.
 - AssetGenerationService wrappers for Google closed-beta/allowlisted text and image generation.
+- Static write-gate regression guard that detects public MCP tools reaching write-looking RPCs before `SafetyLayer.propose()`.
 - Additional v25 specialist/platform surfaces documented in the coverage matrix.
 
 ### Fixed
 - Recursive customer isolation now inspects nested customer-scoped references in CREATE, UPDATE and REMOVE operations.
-- MCC hierarchy/link reads now honor the deployment allowlist at row level for `customer_client` and `customer_client_link`, including raw GAQL; unfilterable hierarchy queries fail closed.
+- MCC hierarchy/link reads now honor the deployment allowlist at row level for `customer_client`, `customer_client_link`, and `customer_manager_link`, including raw GAQL; unfilterable hierarchy queries fail closed.
 - Legitimate `CustomerClientLinkService` CREATE no longer gets incorrectly blocked by the recursive guard when both accounts are in scope.
 - Durable replay now stores/replays the **public MCP tool name** separately from internal safety aliases, fixing restart confirmation for shared risk helpers.
 - ProductLinkInvitation no longer permits an indirectly referenced Google Ads customer to bypass the deployment allowlist.
 - Performance Max listing-filter validation now supports `retail_filter_bundle`, explicit “everything else” nodes and multiple WEBPAGE roots where v25 permits them.
 - v25 compatibility cleanup for Reach Planner, Creator Insights, unified goal services, SKAdNetwork warnings and current generated enums/contracts.
-- Delivery-changing tools that could previously fall through as `standard` are now conservatively classified as `spend`, including keyword creation/match changes/negatives, location/language/placement targeting, audience/topic attachment and conversion-biddability changes.
+- Delivery-changing tools that could previously fall through as `standard` are now conservatively classified as `spend`, including keyword creation/match changes/negatives, location/language/placement targeting, audience/topic attachment, conversion-biddability changes, live asset create+attach helpers, Call Ad compatibility attachment, and edits to existing RSAs.
 - Pending `confirm`/`cancel` MCP operations are serialized within one server process so simultaneous requests cannot double-confirm the same action or cancel while confirmation is entering execution.
 
 ### Safety
 - Existing `standard`, `spend`, `destructive` and `sensitive` risk classes remain in force.
 - High-risk classes remain confirmation-gated unless separately opted into auto-approve.
 - `GOOGLE_ADS_MCP_READ_ONLY=true` is a central fail-closed kill switch and also blocks confirmation of pending actions created before read-only was enabled.
+- The delivery-risk classification is effect-based: resources/ads explicitly prepared `PAUSED` may remain `standard`, while helpers that create **and attach** creative to live delivery are `spend`.
 - The new delivery-risk classifications only change unattended behavior for deployments that explicitly enabled global standard auto-approve; `GOOGLE_ADS_MCP_AUTO_APPROVE=false` behavior is unchanged.
-- Normal creative/resource preparation such as callouts and sitelinks remains `standard` by design.
 - Pending invocation arguments required for restart replay are encrypted at rest.
 - Missing/corrupt pending encryption state fails closed: no Google Ads mutation is attempted.
 - MCC/account-link exceptions are deliberately per-call and remain constrained by the deployment allowlist.
@@ -45,7 +46,7 @@ Google Ads MCP follows Semantic Versioning. Detailed release notes for productio
 - GitHub Actions workflow remains removed; validation is intentionally local/manual for this repository.
 
 ### Validation note
-- Source and contracts were reviewed against Google Ads API v25 and regression tests were added for customer isolation, MCC read filtering, durable alias replay, read-only blocking, confirm/cancel serialization, atomic experiment splitting, Asset Generation registration/contracts and delivery-risk classification.
+- Source and contracts were reviewed against Google Ads API v25 and regression tests were added for customer isolation, all MCC link-read surfaces, durable alias replay, read-only blocking, confirm/cancel serialization, direct-write safety gating, atomic experiment splitting, Asset Generation registration/contracts and delivery-risk classification.
 - The completion environment did not have a runnable Google Ads Python/FastMCP/Ruff dependency stack or live Google Ads credentials, so the full local `pytest`/Ruff/smoke suite and live-account E2E are still required before declaring a specific deployment validated.
 
 See `docs/RELEASE_0.16.0.md`.
