@@ -59,6 +59,7 @@ class Settings:
     auto_approve_sensitive: bool = False
     data_manager_project_id: str | None = None
     data_manager_refresh_token: str | None = None
+    read_only: bool = False
 
     @property
     def google_ads_yaml_dict(self) -> dict:
@@ -129,4 +130,5 @@ def load_settings() -> Settings:
         auto_approve_sensitive=_bool("GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE", False),
         data_manager_project_id=data_manager_project_id,
         data_manager_refresh_token=data_manager_refresh_token,
+        read_only=_bool("GOOGLE_ADS_MCP_READ_ONLY", False),
     )
