@@ -134,8 +134,17 @@ class GoogleAdsClientWrapper:
         operations_field: str = "operations",
         partial_failure: bool = False,
         validate_only: bool = False,
+        allow_cross_customer_references: bool = False,
     ):
-        """Execute a resource-specific mutate call."""
+        """Execute a resource-specific mutate call.
+
+        Cross-customer resource references are blocked by default even when the
+        credential can access both customers. A very small number of Google Ads
+        account-linking mutations legitimately need to reference a second account.
+        Those callers must validate that second customer explicitly and opt in with
+        ``allow_cross_customer_references=True``. This switch is intentionally per
+        invocation rather than service-wide so ordinary mutations remain isolated.
+        """
         import inspect
 
         from google.ads.googleads.errors import GoogleAdsException
@@ -147,7 +156,8 @@ class GoogleAdsClientWrapper:
             for operation in operation_list:
                 _normalize_campaign_create(self.raw, operation)
 
-        _assert_mutation_targets_customer(customer_id, operation_list)
+        if not allow_cross_customer_references:
+            _assert_mutation_targets_customer(customer_id, operation_list)
 
         method_name = _mutate_method_name(service_name)
         method = getattr(service, method_name, None)
