@@ -4,7 +4,7 @@
 **Google Ads API:** v25  
 **Release type:** production hotfix for 0.16.0
 
-0.16.1 is a corrective patch release. It does not add new Google Ads surface area; it fixes two regressions discovered when 0.16.0 was installed in a normal local Python environment and the full test suite was collected.
+0.16.1 is a corrective patch release. It does not add new Google Ads surface area; it fixes regressions discovered when 0.16.0 was installed in a normal local Python environment and the full test suite was collected.
 
 ## Why 0.16.1 exists
 
@@ -28,7 +28,7 @@ micros(25.50) -> 25_500_000
 from_micros(25_500_000) -> 25.5
 ```
 
-`tests/test_client_helpers.py` already asserts this round trip. Restoring the helper removes the import failure that prevented `google_ads_mcp.tools` from loading cleanly.
+`tests/test_client_helpers.py` and `tests/test_tool_package_imports.py` assert the helper/import path so a future rename cannot silently break `build_server()` collection again.
 
 ### Recursive MCC/customer isolation
 
@@ -53,19 +53,45 @@ nested resource:   customers/9999999999/assets/2
 
 before a Google Ads mutate RPC can execute.
 
+### Isolated smoke validation
+
+`scripts/smoke_test.py` is now an offline startup/safety smoke rather than a loose registration check. It:
+
+- uses a temporary SQLite audit database;
+- forces `GOOGLE_ADS_MCP_READ_ONLY=true`;
+- does not send Google Ads requests;
+- imports every module in `ALL_MODULES`;
+- verifies `micros` / `from_micros`;
+- exercises same-customer and cross-customer nested protobuf `Struct` references;
+- builds the real FastMCP server path.
+
+The smoke does not write to the production installation's configured audit/pending database.
+
+### One-command local validation
+
+`scripts/validate_local.py` is the preferred non-E2E gate. It prints the exact Git SHA and dependency versions, then runs:
+
+1. isolated smoke;
+2. Ruff over `src`, `tests`, `scripts`;
+3. the complete pytest suite.
+
+A successful run ends with `LOCAL VALIDATION GREEN` plus the validated SHA and MCP version.
+
 ## Regression coverage
 
 0.16.1 includes or relies on tests for:
 
-- micros -> currency round trip;
+- complete tool-package importability;
+- `micros` -> currency round trip;
 - same-customer nested create references;
 - cross-customer resource inside a protobuf map/Struct;
 - cross-customer resource inside a protobuf list;
 - root `customers/<id>` references.
 
-These are in:
+Primary regression files:
 
 - `tests/test_client_helpers.py`
+- `tests/test_tool_package_imports.py`
 - `tests/test_recursive_customer_isolation.py`
 
 ## Upgrade target
@@ -91,35 +117,26 @@ Do not overwrite the existing `.env`, audit DB, or pending-action encryption key
 
 ## Required validation before production replacement
 
-Run against the exact checked-out commit:
+Preferred gate:
 
 ```bash
-python scripts/smoke_test.py
-ruff check src tests scripts
-pytest -q
+.venv/bin/python scripts/validate_local.py
 ```
 
-Also verify the real server build path:
+Equivalent diagnostic commands:
 
 ```bash
-python - <<'PY'
-from google_ads_mcp.server import build_server
-server = build_server()
-print("OK build_server", server)
-PY
+.venv/bin/python scripts/smoke_test.py
+.venv/bin/python -m ruff check src tests scripts
+.venv/bin/python -m pytest -q
 ```
 
-If the full suite reveals additional failures, keep the currently running production MCP in place and fix forward from 0.16.1 rather than downgrading safety protections.
+Do not replace the currently running MCP if this gate exits non-zero.
 
 After the local suite is green, continue with `docs/VALIDATION_CHECKLIST.md` for read-only, MCC isolation, propose/confirm, durable restart replay, cross-customer blocking, and live E2E validation.
 
 ## Compatibility
 
-0.16.1 is intended to be API-compatible with 0.16.0. The changes are limited to:
-
-- restoring a missing public internal helper used by reporting;
-- correcting recursive resource-name inspection;
-- adding regression coverage;
-- patch-version/documentation updates.
+0.16.1 is intended to remain tool/API-compatible with the v0.16 line. The changes are limited to startup/safety bug fixes, validation hardening, regression coverage, and patch-version/documentation updates.
 
 No Google Ads tool is intentionally removed by this patch.
