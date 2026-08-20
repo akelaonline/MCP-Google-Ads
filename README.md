@@ -13,7 +13,7 @@ Built by [**Akela**](https://github.com/akelaonline) — Google Ads automation &
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Google Ads API v25](https://img.shields.io/badge/Google%20Ads%20API-v25-4285F4.svg)](https://developers.google.com/google-ads/api)
-[![Version](https://img.shields.io/badge/version-0.16.0-informational.svg)](docs/RELEASE_0.16.0.md)
+[![Version](https://img.shields.io/badge/version-0.16.1-informational.svg)](docs/RELEASE_0.16.1.md)
 
 [Quick start](#quick-start) · [Capabilities](#capabilities) · [Safety](#safety-by-default) · [Production](#production-deployment) · [Coverage](docs/V25_SERVICE_COVERAGE.md) · [Docs](#documentation)
 
@@ -48,9 +48,18 @@ GOOGLE_ADS_MCP_READ_ONLY=true
 Read-only mode keeps reporting, GAQL, audit inspection and pending cancellation available,
 but blocks both new write proposals and confirmations of older pending actions.
 
-## 0.16.0: v25 completion + production hardening
+## Current release: 0.16.1
 
-0.16.0 is the full coverage/hardening pass.
+**0.16.1 is the deployment target. Do not deploy 0.16.0.**
+
+0.16.1 is a patch release over the v25 completion/hardening work in 0.16.0. A real local dependency environment found two regressions in 0.16.0 before production replacement:
+
+- `reporting.py` imported a missing `from_micros()` helper, which could prevent `build_server()` / tool registration from starting;
+- recursive cross-customer resource inspection did not traverse protobuf map/`Struct` values correctly.
+
+0.16.1 restores `from_micros()` and fixes the recursive walker so map/list nested customer-scoped resources are inspected correctly. See [`docs/RELEASE_0.16.1.md`](docs/RELEASE_0.16.1.md).
+
+The broader 0.16 service-coverage and safety changes remain unchanged.
 
 ### Service coverage
 
@@ -309,18 +318,26 @@ Then try a safe write flow:
 
 The MCP should return a `pending_action_id` without changing the account.
 
-## Upgrade to 0.16.0
+## Upgrade to 0.16.1
 
 ```bash
-git pull origin main
+git fetch origin
+git pull --ff-only origin main
 source .venv/bin/activate
-pip install -e .
+python -m pip install -e ".[dev]"
 ```
 
-0.16.0 adds `cryptography` as a runtime dependency for durable encrypted pending actions.
+Verify both checkout and installed package before restarting the production MCP:
 
-Before upgrading a containerized production deployment, make sure the audit DB and pending
-encryption key are persistent.
+```bash
+git rev-parse HEAD
+python -c "import google_ads_mcp; print(google_ads_mcp.__version__)"
+python scripts/smoke_test.py
+ruff check src tests scripts
+pytest -q
+```
+
+Do not overwrite the existing `.env`, audit DB, or pending encryption key during an upgrade.
 
 ## Local validation
 
@@ -357,11 +374,15 @@ This MCP wraps **Google Ads API**, not every adjacent Google advertising product
 
 ## Documentation
 
-- [0.16.0 release notes](docs/RELEASE_0.16.0.md)
+- [0.16.1 hotfix release notes](docs/RELEASE_0.16.1.md)
+- [0.16.0 coverage/hardening notes](docs/RELEASE_0.16.0.md)
 - [Google Ads API v25 service coverage](docs/V25_SERVICE_COVERAGE.md)
 - [Setup](docs/SETUP.md)
 - [Safety model](docs/SAFETY.md)
 - [Tool reference](docs/TOOLS.md)
+- [Safe local update procedure](docs/LOCAL_UPDATE.md)
+- [MCP client connection modes](docs/MCP_CLIENTS.md)
+- [Production validation checklist](docs/VALIDATION_CHECKLIST.md)
 - [Agency tools](docs/AGENCY_TOOLS.md)
 - [Batch jobs & Smart Bidding](docs/BATCH_SMART_BIDDING.md)
 - [Examples](docs/EXAMPLES.md)
