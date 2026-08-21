@@ -302,6 +302,11 @@ _IRREGULAR_MUTATE_METHODS: dict[str, str] = {
     "CustomerUserAccessInvitationService": "mutate_customer_user_access_invitation",
     "CustomerUserAccessService": "mutate_customer_user_access",
     "CustomerSkAdNetworkConversionValueSchemaService": "mutate_customer_sk_ad_network_conversion_value_schema",
+    # v25 stubs use the singular mutate_customer / the -ies plural form; the
+    # generic snake+s pluralizer would generate mutate_customers /
+    # mutate_bidding_strategys, which do not exist on the real stubs.
+    "CustomerService": "mutate_customer",
+    "BiddingStrategyService": "mutate_bidding_strategies",
 }
 
 
