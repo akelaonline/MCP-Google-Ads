@@ -255,9 +255,40 @@ def register(mcp, ctx: AppContext) -> None:
         return {"date_range": date_range, "audience_performance": rows}
 
     @mcp.tool()
-    def get_change_history(customer_id: str, days: int = 7) -> dict:
-        """What changed in this account recently (native change_event resource, max 30 days back)."""
+    def get_change_history(
+        customer_id: str,
+        days: int = 7,
+        resource_type: str | None = None,
+        operation: str | None = None,
+        user_email: str | None = None,
+    ) -> dict:
+        """What changed in this account recently (native change_event resource, max 30 days back).
+
+        Optional filters: ``resource_type`` (for example CAMPAIGN, AD_GROUP,
+        KEYWORD, BUDGET), ``operation`` (ADD, SET, REMOVE) and ``user_email``
+        (the actor, e.g. an MCC user or "system").
+        """
         days = min(days, 30)
+        filters = [f"change_event.change_date_time DURING LAST_{days}_DAYS"]
+        if resource_type:
+            resource_type = resource_type.strip().upper()
+            if not resource_type.isidentifier():
+                raise ValueError("resource_type must be a change-event resource enum name.")
+            filters.append(
+                f"change_event.change_resource_type = {resource_type}"
+            )
+        if operation:
+            operation = operation.strip().upper()
+            if operation not in {"ADD", "SET", "REMOVE"}:
+                raise ValueError("operation must be ADD, SET, or REMOVE.")
+            filters.append(
+                f"change_event.resource_change_operation = {operation}"
+            )
+        if user_email:
+            email = user_email.strip()
+            if not email or " " in email or "'" in email:
+                raise ValueError("user_email must be a single email address.")
+            filters.append(f"change_event.user_email = '{email}'")
         query = f"""
             SELECT
                 change_event.change_date_time,
@@ -267,12 +298,20 @@ def register(mcp, ctx: AppContext) -> None:
                 change_event.resource_change_operation,
                 change_event.changed_fields
             FROM change_event
-            WHERE change_event.change_date_time DURING LAST_{days}_DAYS
+            WHERE {' AND '.join(filters)}
             ORDER BY change_event.change_date_time DESC
             LIMIT 200
         """
         rows = ctx.client.search(customer_id, query)
-        return {"days": days, "changes": rows}
+        return {
+            "days": days,
+            "filters": {
+                "resource_type": resource_type,
+                "operation": operation,
+                "user_email": user_email,
+            },
+            "changes": rows,
+        }
 
     @mcp.tool()
     def get_quality_score_report(

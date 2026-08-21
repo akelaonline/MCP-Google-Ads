@@ -2,6 +2,19 @@
 
 Google Ads MCP follows Semantic Versioning. Detailed release notes for production releases live in `docs/RELEASE_X.Y.Z.md`.
 
+## 0.16.7 — 2026-08-21
+
+### Added
+- `set_campaign_excluded_asset_field_types` — control which account-level extensions a campaign inherits (v25 `excluded_parent_asset_field_types`; empty list re-enables inheritance).
+- `update_campaign_dates` — change a campaign's `start_date`/`end_date` (mapped to v25 `start_date_time`/`end_date_time`).
+- `get_change_history` filters — optional `resource_type`, `operation` (ADD/SET/REMOVE) and `user_email` (with injection-safe validation).
+- `set_target_cpa` and `set_target_roas` now accept optional `cpc_bid_ceiling` / `cpc_bid_floor` (with floor ≤ ceiling validation), matching the v25 `TargetCpa`/`TargetRoas` fields.
+
+### Validation
+- `python scripts/validate_local.py` green end-to-end: isolated smoke (55 tool modules, zero duplicate-tool warnings), Ruff clean, pytest **341/341 passed** (11 new v25 contract tests).
+
+See `docs/RELEASE_0.16.7.md`.
+
 ## 0.16.6 — 2026-08-21
 
 ### Added

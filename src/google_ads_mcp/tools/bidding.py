@@ -113,15 +113,31 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
-    def set_target_cpa(customer_id: str, campaign_id: str, target_cpa: float) -> dict:
-        """Propose switching a campaign to Target CPA bidding."""
+    def set_target_cpa(
+        customer_id: str,
+        campaign_id: str,
+        target_cpa: float,
+        cpc_bid_ceiling: float | None = None,
+        cpc_bid_floor: float | None = None,
+    ) -> dict:
+        """Propose switching a campaign to Target CPA bidding.
+
+        ``cpc_bid_ceiling`` and ``cpc_bid_floor`` bound the max/effective CPC
+        in the target currency.
+        """
         if target_cpa <= 0:
             raise ValueError("target_cpa must be greater than 0.")
+        _validate_ceiling_floor(cpc_bid_ceiling, cpc_bid_floor)
         _, operation = _campaign_operation(ctx, customer_id, campaign_id)
         operation.update.target_cpa.target_cpa_micros = micros(target_cpa)
-        operation.update_mask.CopyFrom(
-            field_mask_pb2.FieldMask(paths=["target_cpa.target_cpa_micros"])
-        )
+        paths = ["target_cpa.target_cpa_micros"]
+        if cpc_bid_ceiling is not None:
+            operation.update.target_cpa.cpc_bid_ceiling_micros = micros(cpc_bid_ceiling)
+            paths.append("target_cpa.cpc_bid_ceiling_micros")
+        if cpc_bid_floor is not None:
+            operation.update.target_cpa.cpc_bid_floor_micros = micros(cpc_bid_floor)
+            paths.append("target_cpa.cpc_bid_floor_micros")
+        operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=paths))
         description = (
             f"Set campaign {campaign_id} bidding -> Target CPA ${target_cpa:,.2f}"
         )
@@ -138,15 +154,31 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
-    def set_target_roas(customer_id: str, campaign_id: str, target_roas: float) -> dict:
-        """Propose switching a campaign to Target ROAS bidding."""
+    def set_target_roas(
+        customer_id: str,
+        campaign_id: str,
+        target_roas: float,
+        cpc_bid_ceiling: float | None = None,
+        cpc_bid_floor: float | None = None,
+    ) -> dict:
+        """Propose switching a campaign to Target ROAS bidding.
+
+        ``cpc_bid_ceiling`` and ``cpc_bid_floor`` bound the max/effective CPC
+        in the target currency.
+        """
         if target_roas <= 0:
             raise ValueError("target_roas must be greater than 0.")
+        _validate_ceiling_floor(cpc_bid_ceiling, cpc_bid_floor)
         _, operation = _campaign_operation(ctx, customer_id, campaign_id)
         operation.update.target_roas.target_roas = target_roas
-        operation.update_mask.CopyFrom(
-            field_mask_pb2.FieldMask(paths=["target_roas.target_roas"])
-        )
+        paths = ["target_roas.target_roas"]
+        if cpc_bid_ceiling is not None:
+            operation.update.target_roas.cpc_bid_ceiling_micros = micros(cpc_bid_ceiling)
+            paths.append("target_roas.cpc_bid_ceiling_micros")
+        if cpc_bid_floor is not None:
+            operation.update.target_roas.cpc_bid_floor_micros = micros(cpc_bid_floor)
+            paths.append("target_roas.cpc_bid_floor_micros")
+        operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=paths))
         description = (
             f"Set campaign {campaign_id} bidding -> Target ROAS {target_roas:.2f}"
         )
@@ -343,3 +375,19 @@ def register(mcp, ctx: AppContext) -> None:
         """
         rows = ctx.client.search(customer_id, query)
         return {"bidding_strategies": rows, "count": len(rows)}
+
+
+def _validate_ceiling_floor(
+    cpc_bid_ceiling: float | None,
+    cpc_bid_floor: float | None,
+) -> None:
+    if cpc_bid_ceiling is not None and cpc_bid_ceiling <= 0:
+        raise ValueError("cpc_bid_ceiling must be greater than 0.")
+    if cpc_bid_floor is not None and cpc_bid_floor <= 0:
+        raise ValueError("cpc_bid_floor must be greater than 0.")
+    if (
+        cpc_bid_ceiling is not None
+        and cpc_bid_floor is not None
+        and cpc_bid_floor > cpc_bid_ceiling
+    ):
+        raise ValueError("cpc_bid_floor cannot exceed cpc_bid_ceiling.")
