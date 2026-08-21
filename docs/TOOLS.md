@@ -137,6 +137,10 @@ The MCP covers common assets and the broader v25 asset-link graph:
 - promotion
 - callout
 - structured snippet
+- lead form
+- price
+- location (account-level)
+- mobile app / app deep link
 - Business Message / WhatsApp compatibility path
 - customer assets
 - campaign assets
@@ -180,7 +184,8 @@ Audience/targeting workflows include:
 - user-list attachment/detachment
 - affinity/in-market segments
 - topic targeting
-- location/language/placement targeting and exclusions
+- location/language/placement targeting and exclusions (including positive placements for Display/YouTube)
+- audience exclusions at ad-group and campaign level
 - Audience / CustomAudience / CustomInterest resources
 - UserListCustomerType
 - RemarketingAction + tag/event snippets
