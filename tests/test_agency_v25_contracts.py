@@ -56,7 +56,20 @@ class _CaptureClient:
         return FakeMutateResult(f"customers/{customer_id}/{service_name}/1")
 
     def assert_customer_allowed(self, customer_id):
-        return customer_id.replace("-", "")
+        value = str(customer_id).replace("-", "").strip()
+        if not value.isdigit():
+            raise ValueError("customer_id must be numeric")
+        return value
+
+    def assert_resource_name_customer(
+        self, customer_id, resource_name, *, field_name="resource_name"
+    ):
+        customer = self.assert_customer_allowed(customer_id)
+        value = str(resource_name).strip()
+        root = f"customers/{customer}"
+        if value != root and not value.startswith(root + "/"):
+            raise ValueError(f"{field_name} belongs to another customer")
+        return value
 
     def service(self, name):
         if name == "InvoiceService":
