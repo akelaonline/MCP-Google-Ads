@@ -28,6 +28,22 @@ def _raw_client() -> GoogleAdsClient:
     )
 
 
+def _normalize_customer(customer_id: str) -> str:
+    value = str(customer_id).replace("-", "").strip()
+    if not value.isdigit():
+        raise ValueError("customer_id must be numeric")
+    return value
+
+
+def _assert_owned(customer_id: str, resource_name: str, **kwargs) -> str:
+    customer = _normalize_customer(customer_id)
+    value = str(resource_name).strip()
+    root = f"customers/{customer}"
+    if value != root and not value.startswith(root + "/"):
+        raise ValueError("resource belongs to another customer")
+    return value
+
+
 def _ctx():
     captured = []
     raw = _raw_client()
@@ -46,6 +62,8 @@ def _ctx():
         raw=raw,
         mutate=mutate,
         mutate_atomic=mutate_atomic,
+        assert_customer_allowed=_normalize_customer,
+        assert_resource_name_customer=_assert_owned,
     )
     audit = FakeAuditLog()
     safety = SafetyLayer(auto_approve=True, ttl_minutes=30, audit_log=audit)
