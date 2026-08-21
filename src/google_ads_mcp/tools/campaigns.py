@@ -275,6 +275,114 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
+    def set_campaign_excluded_asset_field_types(
+        customer_id: str,
+        campaign_id: str,
+        field_types: list[str],
+    ) -> dict:
+        """Propose controlling which account-level extensions a campaign inherits.
+
+        ``field_types`` lists the AssetFieldType values the campaign should
+        NOT inherit from account level (SITELINK, CALLOUT, CALL, PROMOTION,
+        PRICE, LEAD_FORM, MOBILE_APP, STRUCTURED_SNIPPET, ...). Pass an empty
+        list to re-enable inheritance of everything.
+        """
+        if field_types is None:
+            raise ValueError("field_types must be a list (possibly empty).")
+        client = ctx.client.raw
+        enum_cls = client.enums.AssetFieldTypeEnum
+        valid = {name for name in dir(enum_cls) if name.isupper()}
+        normalized = []
+        for value in field_types:
+            name = str(value).strip().upper()
+            if name not in valid:
+                raise ValueError(f"Unknown AssetFieldType {name!r}.")
+            normalized.append(name)
+        normalized = list(dict.fromkeys(normalized))
+
+        operation = client.get_type("CampaignOperation")
+        operation.update.resource_name = client.get_service("CampaignService").campaign_path(
+            customer_id.replace("-", ""), campaign_id
+        )
+        for name in normalized:
+            operation.update.excluded_parent_asset_field_types.append(
+                enum_cls[name].value
+            )
+        operation.update_mask.CopyFrom(
+            field_mask_pb2.FieldMask(paths=["excluded_parent_asset_field_types"])
+        )
+        description = (
+            f"Set campaign {campaign_id} to exclude {len(normalized)} asset "
+            "field type(s) from account inheritance"
+            if normalized
+            else f"Clear asset field type exclusions on campaign {campaign_id}"
+        )
+
+        def execute():
+            return ctx.client.mutate("CampaignService", customer_id, [operation])
+
+        return ctx.safety.propose(
+            tool_name="set_campaign_excluded_asset_field_types",
+            customer_id=customer_id,
+            description=description,
+            payload={"campaign_id": campaign_id, "field_types": normalized},
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def update_campaign_dates(
+        customer_id: str,
+        campaign_id: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict:
+        """Propose changing a campaign's start and/or end date (YYYY-MM-DD)."""
+        if start_date is None and end_date is None:
+            raise ValueError("Provide at least one of start_date or end_date.")
+        client = ctx.client.raw
+        operation = client.get_type("CampaignOperation")
+        operation.update.resource_name = client.get_service("CampaignService").campaign_path(
+            customer_id.replace("-", ""), campaign_id
+        )
+        apply_campaign_dates(
+            operation.update,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        paths = []
+        if start_date is not None:
+            paths.append("start_date_time")
+        if end_date is not None:
+            paths.append("end_date_time")
+        operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=paths))
+        description = (
+            f"Update campaign {campaign_id} dates: "
+            + ", ".join(
+                part
+                for part in (
+                    f"start={start_date}" if start_date else None,
+                    f"end={end_date}" if end_date else None,
+                )
+                if part
+            )
+        )
+
+        def execute():
+            return ctx.client.mutate("CampaignService", customer_id, [operation])
+
+        return ctx.safety.propose(
+            tool_name="update_campaign_dates",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "campaign_id": campaign_id,
+                "start_date": start_date,
+                "end_date": end_date,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
     def set_campaign_ad_rotation(
         customer_id: str, campaign_id: str, rotation: str
     ) -> dict:
