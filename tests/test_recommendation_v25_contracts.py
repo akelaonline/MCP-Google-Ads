@@ -47,11 +47,29 @@ class _Raw:
         return self.client.get_service(name)
 
 
+def _normalize_customer(customer_id: str) -> str:
+    value = str(customer_id).replace("-", "").strip()
+    if not value.isdigit():
+        raise ValueError("customer_id must be numeric")
+    return value
+
+
+def _assert_owned(customer_id: str, resource_name: str, **kwargs) -> str:
+    customer = _normalize_customer(customer_id)
+    value = str(resource_name).strip()
+    root = f"customers/{customer}"
+    if value != root and not value.startswith(root + "/"):
+        raise ValueError("resource belongs to another customer")
+    return value
+
+
 def _context(search_rows=None):
     raw = _Raw()
     client = SimpleNamespace(
         raw=raw,
         search=lambda customer_id, query: search_rows or [],
+        assert_customer_allowed=_normalize_customer,
+        assert_resource_name_customer=_assert_owned,
     )
     audit = FakeAuditLog()
     safety = SafetyLayer(auto_approve=True, ttl_minutes=30, audit_log=audit)
@@ -96,6 +114,8 @@ def test_recommendation_query_uses_dismissed_not_removed_status_field():
     client = SimpleNamespace(
         raw=raw,
         search=lambda customer_id, query: queries.append(query) or [],
+        assert_customer_allowed=_normalize_customer,
+        assert_resource_name_customer=_assert_owned,
     )
     audit = FakeAuditLog()
     ctx = AppContext(
