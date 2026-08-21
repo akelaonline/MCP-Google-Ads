@@ -3,8 +3,9 @@
 
 This intentionally avoids live Google Ads credentials and network calls. It uses a
 temporary SQLite audit DB, forces read-only mode, imports every registered tool
-module, builds the FastMCP server, verifies currency helpers, and exercises the
-recursive MCC/customer isolation walker with protobuf Struct nesting.
+module, builds the FastMCP server, verifies currency helpers, exercises recursive
+MCC/customer isolation with protobuf Struct nesting, and verifies canonical public
+tool ownership so legacy duplicate implementations cannot win by import order.
 
 Run from the repo root with the virtualenv active:
     .venv/bin/python scripts/smoke_test.py
@@ -101,10 +102,31 @@ def _check_tool_package_imports() -> int:
     return len(ALL_MODULES)
 
 
+def _check_canonical_tool_owners() -> None:
+    from google_ads_mcp.invocation import (
+        canonical_tool_modules,
+        registered_tool_owners,
+    )
+
+    owners = registered_tool_owners()
+    expected = canonical_tool_modules()
+    missing = sorted(name for name in expected if name not in owners)
+    wrong = {
+        name: {"expected": module, "actual": owners.get(name)}
+        for name, module in expected.items()
+        if owners.get(name) != module
+    }
+    if missing:
+        raise AssertionError(f"Canonical tools were not registered: {missing}")
+    if wrong:
+        raise AssertionError(f"Canonical tool owner mismatch: {wrong}")
+
+
 def _build_server_offline() -> str:
     from google_ads_mcp.server import build_server
 
     server = build_server()
+    _check_canonical_tool_owners()
     rendered = repr(server)
     del server
     gc.collect()
@@ -135,6 +157,7 @@ def main() -> int:
                 print("Building FastMCP server in isolated read-only runtime...")
                 server_repr = _build_server_offline()
                 print(f"  OK: {server_repr}")
+                print("  OK: canonical tool owners verified")
             finally:
                 _restore_runtime(previous)
 
