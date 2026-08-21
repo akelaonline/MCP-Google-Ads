@@ -1,4 +1,4 @@
-"""Tests for tools/reecommendations.py — apply and dismiss recommendations."""
+"""Tests for tools/recommendations.py — apply and dismiss recommendations."""
 
 from __future__ import annotations
 
@@ -25,7 +25,11 @@ class _FakeRecommendationService:
             )
         )
         return SimpleNamespace(
-            results=[SimpleNamespace(resource_name="customers/123/recommendations/456")]
+            results=[
+                SimpleNamespace(
+                    resource_name="customers/1234567890/recommendations/456"
+                )
+            ]
         )
 
     def dismiss_recommendation(
@@ -40,7 +44,11 @@ class _FakeRecommendationService:
             )
         )
         return SimpleNamespace(
-            results=[SimpleNamespace(resource_name="customers/123/recommendations/456")]
+            results=[
+                SimpleNamespace(
+                    resource_name="customers/1234567890/recommendations/456"
+                )
+            ]
         )
 
 
@@ -54,12 +62,17 @@ def test_apply_recommendation_executes_when_auto_approved():
 
     result = tool_fns["apply_recommendation"](
         customer_id="123-456-7890",
-        resource_name="customers/123/recommendations/456",
+        resource_name="customers/1234567890/recommendations/456",
     )
 
     assert result["status"] == "executed"
     assert fake_service.calls == [
-        ("apply", "1234567890", ["customers/123/recommendations/456"], False)
+        (
+            "apply",
+            "1234567890",
+            ["customers/1234567890/recommendations/456"],
+            False,
+        )
     ]
 
 
@@ -73,10 +86,15 @@ def test_dismiss_recommendation_executes_when_auto_approved():
 
     result = tool_fns["dismiss_recommendation"](
         customer_id="123-456-7890",
-        resource_name="customers/123/recommendations/456",
+        resource_name="customers/1234567890/recommendations/456",
     )
 
     assert result["status"] == "executed"
     assert fake_service.calls == [
-        ("dismiss", "1234567890", ["customers/123/recommendations/456"], False)
+        (
+            "dismiss",
+            "1234567890",
+            ["customers/1234567890/recommendations/456"],
+            False,
+        )
     ]
