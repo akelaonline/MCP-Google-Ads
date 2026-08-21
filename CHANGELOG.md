@@ -2,6 +2,23 @@
 
 Google Ads MCP follows Semantic Versioning. Detailed release notes for production releases live in `docs/RELEASE_X.Y.Z.md`.
 
+## 0.16.2 — 2026-08-20
+
+### Fixed
+- Synchronized shared and real-protobuf test clients with the hardened production client contract by adding `assert_customer_allowed()` and `assert_resource_name_customer()` behavior instead of weakening production isolation to satisfy stale mocks.
+- Corrected recommendation test fixtures that mixed customer `1234567890` with `customers/123/...` resource names.
+- Removed runtime ambiguity from five duplicate public MCP tool names. PMax signal/listing tools now have `pmax_signals_listing.py` as their explicit canonical runtime owner; ConversionValueRule create/list tools now have `remaining_core_services.py` as their explicit canonical runtime owner.
+- Unexpected future duplicate public tool registrations now fail server construction instead of relying on FastMCP overwrite order.
+- Reset the replay/ownership registry for each new FastMCP server instance so repeated `build_server()` calls in one Python process do not create false duplicate errors.
+
+### Validation
+- The isolated smoke test now verifies canonical public tool ownership after server construction in addition to imports, currency helpers, recursive MCC isolation and temp/read-only server construction.
+- Added regression coverage locking the canonical owners for the five known legacy duplicate definitions.
+- 0.16.2 is the re-test target after a real clean local 0.16.1 run successfully collected 231 tests but reported 13 stale-fixture failures plus duplicate-registration warnings.
+- This changelog does **not** claim the full suite is green yet. Run `python scripts/validate_local.py` against the exact 0.16.2 checkout before replacing a running MCP.
+
+See `docs/RELEASE_0.16.2.md`.
+
 ## 0.16.1 — 2026-08-20
 
 ### Fixed
@@ -13,7 +30,7 @@ Google Ads MCP follows Semantic Versioning. Detailed release notes for productio
 - `tests/test_client_helpers.py` already exercises the `micros()` / `from_micros()` round trip and now has its missing implementation restored.
 - `tests/test_recursive_customer_isolation.py` covers same-customer nested creates, cross-customer protobuf-map values, protobuf-list values, and root customer resource references.
 - 0.16.1 exists specifically because 0.16.0 was observed in a real local dependency environment to fail test collection/startup. Do not treat the 0.16.0 package/version as the deployment target.
-- Full pytest/Ruff/smoke and live-account E2E should be run against the exact 0.16.1 commit before replacing an existing production installation.
+- A subsequent clean local run successfully started the server and collected 231 tests, then exposed stale test doubles and duplicate public tool registration warnings. Those are addressed by 0.16.2.
 
 See `docs/RELEASE_0.16.1.md`.
 
