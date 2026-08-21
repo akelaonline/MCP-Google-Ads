@@ -117,10 +117,18 @@ def install_tool_tracking(mcp) -> None:
     The wrapper supports both ``@mcp.tool()`` and ``mcp.tool(function, ...)`` forms.
     ``functools.wraps`` keeps the original signature visible to ``inspect.signature``
     (and therefore to FastMCP/Pydantic), despite the runtime wrapper using *args/**kwargs.
+
+    The replay registry is process-global because confirmations need to find tools
+    after registration. Building a *new* FastMCP instance in the same process is a
+    fresh registration pass, so the registry/owner map are reset here before that
+    pass starts. Calling install twice on the same FastMCP remains a no-op.
     """
     original_tool = mcp.tool
     if getattr(original_tool, "_google_ads_mcp_tracking_installed", False):
         return
+
+    _TOOL_REGISTRY.clear()
+    _TOOL_OWNERS.clear()
 
     def tracked_tool(function=None, *decorator_args, **decorator_kwargs):
         if function is None:
