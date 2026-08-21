@@ -1,8 +1,8 @@
 # Setup
 
-This guide configures Google Ads MCP **0.16.1** for Google Ads API v25.
+This guide configures Google Ads MCP **0.16.2** for Google Ads API v25.
 
-> **Deployment target:** use `0.16.1`. Do not deploy `0.16.0`; see `RELEASE_0.16.1.md` for the startup/isolation hotfix.
+> **Validation target:** use `0.16.2`. Do not replace a working production MCP with `0.16.0` or `0.16.1`. Run the local validation gate first; see `RELEASE_0.16.2.md`.
 
 ## Requirements
 
@@ -12,8 +12,7 @@ This guide configures Google Ads MCP **0.16.1** for Google Ads API v25.
 - OAuth refresh token with the `adwords` scope
 - Optional MCC login customer ID when operating child accounts through a manager
 
-Some Google services additionally require Google allowlisting/product eligibility.
-See `V25_SERVICE_COVERAGE.md`.
+Some Google services additionally require Google allowlisting/product eligibility. See `V25_SERVICE_COVERAGE.md`.
 
 ## 1. Install
 
@@ -23,7 +22,7 @@ cd MCP-Google-Ads
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -e .
+pip install -e ".[dev]"
 cp .env.example .env
 ```
 
@@ -33,10 +32,10 @@ Verify:
 .venv/bin/python -c "import google_ads_mcp; print('OK', google_ads_mcp.__version__, google_ads_mcp.__file__)"
 ```
 
-Expected version for this release:
+Expected version:
 
 ```text
-0.16.1
+0.16.2
 ```
 
 ## 2. Google Ads credentials
@@ -51,32 +50,20 @@ GOOGLE_ADS_REFRESH_TOKEN=
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=
 ```
 
-`GOOGLE_ADS_LOGIN_CUSTOMER_ID` is normally the MCC customer ID when the OAuth
-identity reaches client accounts through a manager.
+`GOOGLE_ADS_LOGIN_CUSTOMER_ID` is normally the MCC customer ID when the OAuth identity reaches client accounts through a manager. Customer IDs may be copied in dashed display form; the MCP normalizes them.
 
-Customer IDs may be copied in dashed display form; the MCP normalizes them before
-Google Ads API requests.
-
-## 3. Generate a refresh token
+To generate a refresh token:
 
 ```bash
 pip install -e ".[auth]"
 python -m google_ads_mcp.auth --generate-refresh-token
 ```
 
-Complete the browser flow and place the returned token in:
+Never commit `.env`.
 
-```dotenv
-GOOGLE_ADS_REFRESH_TOKEN=...
-```
+## 3. Production customer isolation
 
-Treat the refresh token, OAuth secret and developer token as secrets. Never commit
-`.env`.
-
-## 4. Production customer isolation
-
-A manager credential can usually access more accounts than one MCP instance should
-control. Restrict the deployment explicitly:
+A manager credential can usually access more accounts than one MCP instance should control. Restrict each deployment explicitly:
 
 ```dotenv
 GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS=123-456-7890,987-654-3210
@@ -85,62 +72,38 @@ GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true
 
 When configured:
 
-- customer-scoped reads outside the list are blocked;
-- writes outside the list are blocked;
+- customer-scoped reads and writes outside the list are blocked;
 - account discovery is filtered;
-- MCC `customer_client`, `customer_client_link`, and `customer_manager_link` rows
-  are filtered to allowed referenced accounts;
-- nested resource references in mutations are inspected for cross-customer mixing,
-  including protobuf map/Struct and repeated/list values.
+- MCC `customer_client`, `customer_client_link`, and `customer_manager_link` rows are filtered to allowed referenced accounts;
+- mutation payloads are recursively inspected for cross-customer resource references, including protobuf maps/Structs and repeated/list values.
 
-If the MCP needs to query an MCC hierarchy, include the manager customer itself in
-the allowlist as well.
+If the MCP queries an MCC hierarchy, include the manager customer itself in the allowlist.
 
 ### Raw GAQL against MCC hierarchy resources
 
-`run_gaql_query()` uses the same central isolation path. In an allowlisted
-deployment:
+In an allowlisted deployment:
 
-- `FROM customer_client` queries must select `customer_client.id`;
-- `FROM customer_client_link` queries must select
-  `customer_client_link.client_customer`;
-- `FROM customer_manager_link` queries must select
-  `customer_manager_link.manager_customer`.
+- `FROM customer_client` must select `customer_client.id`;
+- `FROM customer_client_link` must select `customer_client_link.client_customer`;
+- `FROM customer_manager_link` must select `customer_manager_link.manager_customer`.
 
-Those fields are needed to prove which referenced Google Ads customer owns each
-returned relationship row. If they are omitted, the query fails closed rather
-than returning unfilterable cross-client metadata.
+The MCP needs those fields to prove ownership of each relationship row. Queries that omit them fail closed rather than returning ambiguous cross-client metadata.
 
 ### MCC link operations
 
-A real manager/client invite necessarily references two accounts. 0.16 permits
-that specific link creation only when the second customer also passes the
-deployment allowlist. This does not weaken normal campaign/ad/asset isolation.
+A legitimate manager/client invite references two accounts. That narrow operation is permitted only when both customers are inside the deployment allowlist. Normal campaign/ad/asset operations remain same-customer only.
 
-## 5. Choose a write mode
+## 4. Choose a write mode
 
-### A. Reporting-only / emergency freeze
-
-For an MCP instance that must never mutate Google Ads:
+### Reporting-only / emergency freeze
 
 ```dotenv
 GOOGLE_ADS_MCP_READ_ONLY=true
 ```
 
-Reads, reports and GAQL remain available. New write proposals are blocked, and
-`confirm_pending_action()` is also blocked — including for pending actions created
-before a restart/config change. Existing pending actions may still be listed or
-cancelled.
+Reads, reports and GAQL remain available. New write proposals and confirmation of existing pending actions are blocked. Pending actions may still be inspected/cancelled.
 
-This is the strongest operational kill switch and is useful for:
-
-- reporting-only agents;
-- audits;
-- staged rollouts;
-- emergency freeze during an incident;
-- read-only credentials/workflows shared with more users.
-
-### B. Normal production writes with human confirmation — recommended
+### Normal production writes with human confirmation — recommended
 
 ```dotenv
 GOOGLE_ADS_MCP_READ_ONLY=false
@@ -151,14 +114,9 @@ GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
 GOOGLE_ADS_MCP_PENDING_TTL_MINUTES=30
 ```
 
-Writes return a preview and `pending_action_id`; call
-`confirm_pending_action(action_id)` to execute.
+Writes return a preview and `pending_action_id`; `confirm_pending_action(action_id)` performs the mutation.
 
-### C. Controlled unattended automation
-
-If global auto-approve is deliberately enabled, only `standard` writes may execute
-automatically by default. Spend/destructive/sensitive classes remain separately
-gated unless explicitly opted in.
+### Controlled unattended automation
 
 ```dotenv
 GOOGLE_ADS_MCP_AUTO_APPROVE=true
@@ -167,75 +125,41 @@ GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
 ```
 
-0.16 classifies delivery-changing actions conservatively. Adding enabled keywords,
-changing match types/negatives, location/language/placement targeting,
-audience/topic attachment, conversion-biddability changes, attaching newly created
-campaign assets, and editing an existing RSA are `spend` risk rather than ordinary
-`standard` writes. Ads explicitly created `PAUSED` and harmless administration such
-as renaming a campaign can remain `standard`.
+Only `standard` writes auto-execute by default. Delivery-changing actions such as enabled keyword changes, targeting, conversion-biddability, live asset attachment and editing an existing RSA are classified as `spend`. Ads explicitly prepared `PAUSED` may remain `standard`.
 
-## 6. Audit DB and durable pending actions
+## 5. Audit DB and durable pending actions
 
-Default audit database:
+Default:
 
 ```text
 ~/.google_ads_mcp/audit.db
 ```
 
-Override it with:
+Override:
 
 ```dotenv
 GOOGLE_ADS_MCP_AUDIT_DB=/persistent/path/google-ads-mcp.db
 ```
 
-0.16 stores pending proposals in SQLite so they can survive process restart. The
-original MCP arguments required for replay are encrypted.
-
-### One process per audit/pending DB
-
-The server serializes pending list/confirm/cancel operations inside one running
-process. The SQLite pending table is **not** a distributed claim/lease system.
-Do not point multiple simultaneously running MCP processes/workers at the same
-`audit.db`; give each process its own DB unless you add an external single-writer
-or distributed claim mechanism.
-
-### Recommended key for containers/servers
-
-Generate once:
+Pending proposals are persisted in SQLite and replay arguments are encrypted. Generate a stable Fernet key for containers/servers:
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-Set:
-
 ```dotenv
 GOOGLE_ADS_MCP_PENDING_ENCRYPTION_KEY=<generated-key>
 ```
 
-Keep that value stable across restarts.
+If omitted, the MCP creates `<audit-db>.pending.key`. Persist both DB and key. If the key is unavailable/corrupt, confirmation fails closed.
 
-### Automatic local key
+One running MCP process should own one `audit.db`; the pending lock is process-local, not a distributed claim mechanism.
 
-If the environment variable is omitted, the MCP creates:
+## 6. Claude / any MCP client
 
-```text
-<audit-db>.pending.key
-```
+The server is client-agnostic. Claude, IDE agents, or any compatible MCP client can operate the same server.
 
-Persist **both** files:
-
-```text
-/path/audit.db
-/path/audit.db.pending.key
-```
-
-If the DB survives but the encryption key does not, old pending actions cannot be
-replayed. Confirmation fails closed; it does not execute an unverified mutation.
-
-## 7. Claude Desktop / Claude Code / any MCP client
-
-Use the virtualenv Python by absolute path for a local stdio client:
+Recommended local transport is stdio using the virtualenv Python by absolute path:
 
 ```json
 {
@@ -251,32 +175,19 @@ Use the virtualenv Python by absolute path for a local stdio client:
 }
 ```
 
-The MCP server is client-agnostic: Claude, ChatGPT-compatible MCP tooling, IDE agents, or any other compatible MCP client can operate the same local server. See `CLIENTS.md` for connection patterns.
-
-Restart the MCP client after configuration changes.
+Restart the MCP client after code/config changes.
 
 Initial checks:
 
 ```text
 List my accessible Google Ads customer IDs.
-```
-
-```text
 Show campaign performance for customer 123-456-7890 for the last 7 days.
-```
-
-If write mode is enabled, verify the safety path:
-
-```text
 Propose pausing campaign 123. Do not confirm it.
 ```
 
-Confirm `pending_confirmation` is returned before testing a live confirmation.
+See `CLIENTS.md` for connection patterns.
 
-If read-only mode is enabled, the same mutation request should instead return a
-read-only policy error without creating a pending action.
-
-## 8. HTTP transport
+## 7. HTTP transport
 
 Recommended:
 
@@ -285,10 +196,9 @@ GOOGLE_ADS_MCP_TRANSPORT=stdio
 GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=false
 ```
 
-HTTP startup is blocked by default because the server exposes read, write and
-confirmation tools and does not ship a remote identity provider.
+HTTP startup is blocked by default because the server exposes read/write/confirmation tools and does not ship a remote identity provider.
 
-Only behind your own authenticated/restricted proxy:
+Only behind your own authenticated/restricted boundary:
 
 ```dotenv
 GOOGLE_ADS_MCP_TRANSPORT=http
@@ -296,80 +206,68 @@ GOOGLE_ADS_MCP_HTTP_PORT=8080
 GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true
 ```
 
-`ALLOW_INSECURE_HTTP=true` does not add authentication.
+`ALLOW_INSECURE_HTTP=true` is only a startup opt-in. It does not add authentication.
 
-## 9. Upgrade an existing install to 0.16.1
+## 8. Upgrade an existing installation to the 0.16.2 test candidate
 
-Before upgrading a production container, verify that the audit DB and pending key
-are persisted.
-
-Then:
+Preserve `.env`, the audit DB and the pending encryption key.
 
 ```bash
 cd MCP-Google-Ads
 git fetch origin
 git pull --ff-only origin main
 source .venv/bin/activate
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
+python scripts/validate_local.py
 ```
 
-Verify:
+The validator runs isolated smoke + Ruff + full pytest. **Do not replace the running production MCP unless it ends with `LOCAL VALIDATION GREEN` and reports version `0.16.2`.**
 
-```bash
-git rev-parse HEAD
-python -c "import google_ads_mcp; print(google_ads_mcp.__version__)"
-python scripts/smoke_test.py
-ruff check src tests scripts
-pytest -q
-```
+The smoke stage also verifies that these formerly duplicated public names have one canonical runtime owner and produce no FastMCP duplicate-registration warning:
 
-Also verify the real build path:
+- `list_asset_group_signals`
+- `add_asset_group_signal`
+- `list_asset_group_listing_filters`
+- `list_conversion_value_rules`
+- `create_conversion_value_rule`
 
-```bash
-python - <<'PY'
-from google_ads_mcp.server import build_server
-server = build_server()
-print("OK build_server", server)
-PY
-```
+See `UPDATE_LOCAL.md` for the full safe-update procedure.
 
-Do not replace the currently running production MCP until these checks pass on the machine that will run it.
+## 9. Live validation after the local gate is green
 
-For a conservative first restart after upgrade, start with:
+Start the candidate with:
 
 ```dotenv
 GOOGLE_ADS_MCP_READ_ONLY=true
 ```
 
-verify reports/account scope, then switch to normal confirmation mode only after
-you are satisfied with the deployment.
+Then follow `VALIDATION_CHECKLIST.md` in order:
 
-## 10. Local/live validation before production
-
-See [`VALIDATION_CHECKLIST.md`](VALIDATION_CHECKLIST.md) for the complete sequence.
-
-Recommended high-level order:
-
-1. local smoke/Ruff/pytest and `build_server()`;
-2. start read-only and verify account discovery/reporting;
-3. verify an attempted mutation is blocked in read-only mode;
-4. switch to confirmation mode and propose a harmless write, then cancel;
-5. propose a harmless write, then confirm;
-6. propose a write, restart the MCP, then confirm the same pending ID;
-7. test MCC hierarchy/link read isolation;
-8. deliberately try a campaign/resource from another customer and verify it is blocked;
-9. separately test the legitimate manager/client-link flow if used;
-10. verify auto-approve risk boundaries and double-confirm protection.
+1. account discovery/reporting/GAQL;
+2. read-only write rejection;
+3. MCC hierarchy read isolation;
+4. propose/cancel;
+5. propose/confirm;
+6. restart/durable replay;
+7. cross-customer mutation blocking;
+8. legitimate manager/client link exception;
+9. PMax/conversion canonical tool checks;
+10. auto-approve risk boundaries;
+11. double-confirm protection.
 
 ## Troubleshooting
 
 ### `ImportError: cannot import name 'from_micros'`
 
-That was a 0.16.0 regression. Update to 0.16.1 or newer, reinstall the editable package, and verify `google_ads_mcp.__version__` before restarting the server.
+That was a 0.16.0 regression. Update to 0.16.2, reinstall the editable package, and verify `google_ads_mcp.__version__`.
+
+### FastMCP prints `Component already exists`
+
+0.16.2 should not emit duplicate public-tool warnings for the known PMax/ConversionValueRule names. If it does, stop validation and report the exact warning plus Git SHA; do not proceed to live writes.
 
 ### `ModuleNotFoundError: google_ads_mcp`
 
-The MCP host is usually launching the wrong Python. Check:
+The MCP host is usually launching the wrong Python:
 
 ```bash
 /absolute/path/to/.venv/bin/python -c "import google_ads_mcp; print(google_ads_mcp.__file__)"
@@ -381,67 +279,24 @@ Verify credentials and, for MCC access, `GOOGLE_ADS_LOGIN_CUSTOMER_ID`.
 
 ### `outside GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS`
 
-Do not widen the allowlist blindly. Confirm which account this MCP instance is
-supposed to control and add only the intended customer.
-
-### Raw MCC GAQL says an ownership field must be selected
-
-Select the relevant relationship owner:
-
-- `customer_client.id` for `FROM customer_client`;
-- `customer_client_link.client_customer` for `FROM customer_client_link`;
-- `customer_manager_link.manager_customer` for `FROM customer_manager_link`.
-
-The field is required only so the MCP can enforce the configured account allowlist
-on every returned row.
-
-### Write says the MCP is running in read-only mode
-
-This is intentional when:
-
-```dotenv
-GOOGLE_ADS_MCP_READ_ONLY=true
-```
-
-Switch it to `false` only on an instance that is actually authorized to mutate
-Google Ads. Restart the MCP client after changing the environment.
-
-### Pending action is not durable
-
-`list_pending_actions()` reports `durable`. The built-in SQLite `AuditLog` supports
-durability. A custom minimal audit backend falls back to in-memory pending actions.
+Do not widen the allowlist blindly. Add only accounts this MCP instance is intended to control.
 
 ### Pending action cannot decrypt after restart
 
-Restore the same `GOOGLE_ADS_MCP_PENDING_ENCRYPTION_KEY` or the generated
-`<audit-db>.pending.key`. If the original key is lost, re-propose the action; the MCP
-will not guess/decrypt with a replacement key.
+Restore the same `GOOGLE_ADS_MCP_PENDING_ENCRYPTION_KEY` or generated `<audit-db>.pending.key`. If the original key is lost, re-propose the action; the MCP will not guess.
 
-### A beta/insight tool returns NOT_ALLOWLISTED
+### Beta/insight tool returns `NOT_ALLOWLISTED`
 
-That is an account/API eligibility result from Google, not an indication that the
-MCP tool is missing. See `V25_SERVICE_COVERAGE.md`.
+That is Google-side eligibility, not a missing MCP tool. See `V25_SERVICE_COVERAGE.md`.
 
-### Remote image URL rejected
+## API version policy
 
-Only public HTTPS images are accepted. Private/loopback/link-local networks,
-unsafe redirects, unsupported MIME types and oversized responses are intentionally
-blocked.
-
-### HTTP startup blocked
-
-Use stdio, or explicitly opt into HTTP only when an external authenticated
-security boundary already exists.
-
-## Google Ads API version policy
-
-The code explicitly requests Google Ads API `v25` instead of silently following a
-future client-library default. Major Google Ads API upgrades require a contract
-review because fields, enums and services can be removed or reshaped.
+The code explicitly requests Google Ads API `v25`. Major API upgrades require contract review because fields, enums and services can be removed or reshaped.
 
 See:
 
-- `RELEASE_0.16.1.md`
-- `RELEASE_0.16.0.md`
+- `RELEASE_0.16.2.md`
+- `UPDATE_LOCAL.md`
+- `VALIDATION_CHECKLIST.md`
 - `V25_SERVICE_COVERAGE.md`
 - `SAFETY.md`
