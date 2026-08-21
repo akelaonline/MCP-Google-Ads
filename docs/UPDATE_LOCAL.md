@@ -2,7 +2,7 @@
 
 This repository is designed so an existing local server can be updated directly from GitHub without replacing its credentials or local runtime state.
 
-**Current deployment target: `0.16.1`. Do not deploy `0.16.0`.**
+**Current validation target: `0.16.2`. Do not deploy `0.16.0` or `0.16.1` over a working production MCP until `0.16.2` passes the local validation gate.**
 
 ## Before updating
 
@@ -46,10 +46,10 @@ git rev-parse HEAD
 git status --short
 ```
 
-For the current release the package version must report:
+For the current validation target the package version must report:
 
 ```text
-0.16.1
+0.16.2
 ```
 
 `git status --short` should normally be empty except for intentional local untracked files.
@@ -70,15 +70,15 @@ This runs, with the same Python interpreter used by the MCP:
 2. Ruff over `src`, `tests`, and `scripts`;
 3. the complete pytest suite.
 
-It prints the Git SHA, MCP version, Python version, Google Ads client version, FastMCP version, Ruff version, and pytest version. A successful run ends with:
+It prints the Git SHA, MCP version, Python version, Google Ads client version, FastMCP version, Ruff version, and pytest version. A successful run must end with:
 
 ```text
 LOCAL VALIDATION GREEN
 validated commit: <sha>
-validated version: 0.16.1
+validated version: 0.16.2
 ```
 
-The smoke stage uses a temporary SQLite audit DB and forces read-only mode. It does not send Google Ads requests and does not write to the installation's production audit/pending database.
+The smoke stage uses a temporary SQLite audit DB, forces read-only mode, validates nested MCC isolation, imports the full tool package, constructs FastMCP and verifies that legacy duplicate definitions do not override their canonical v25 tool owners. It does not send Google Ads requests and does not write to the installation's production audit/pending database.
 
 Equivalent individual commands, useful when diagnosing a failure:
 
@@ -90,11 +90,11 @@ Equivalent individual commands, useful when diagnosing a failure:
 
 Do not replace the currently running production MCP if the validator exits non-zero.
 
-See [`RELEASE_0.16.1.md`](RELEASE_0.16.1.md) for the startup/isolation hotfix and [`VALIDATION_CHECKLIST.md`](VALIDATION_CHECKLIST.md) for the live-account validation sequence.
+See [`RELEASE_0.16.2.md`](RELEASE_0.16.2.md) for the fixture/duplicate-registration cleanup and [`VALIDATION_CHECKLIST.md`](VALIDATION_CHECKLIST.md) for the live-account validation sequence.
 
 ## Conservative first restart
 
-For an existing production installation, the safest first boot after an upgrade is read-only:
+Only after the local validator is green, the safest first boot of the candidate build is read-only:
 
 ```dotenv
 GOOGLE_ADS_MCP_READ_ONLY=true
