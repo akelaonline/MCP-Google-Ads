@@ -182,6 +182,99 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
+    def set_campaign_frequency_caps(
+        customer_id: str,
+        campaign_id: str,
+        caps: list[dict],
+    ) -> dict:
+        """Propose setting frequency caps on a campaign (video/Demand Gen).
+
+        ``caps`` is a list of dicts, each with ``level`` (AD_GROUP_AD,
+        AD_GROUP, CAMPAIGN), ``event_type`` (IMPRESSION, VIDEO_VIEW),
+        ``time_unit`` (DAY, WEEK, MONTH), ``time_length`` (>= 1) and ``cap``
+        (>= 0). For example::
+
+            [
+                {"level": "CAMPAIGN", "event_type": "IMPRESSION",
+                 "time_unit": "DAY", "time_length": 1, "cap": 4},
+                {"level": "AD_GROUP_AD", "event_type": "VIDEO_VIEW",
+                 "time_unit": "WEEK", "time_length": 1, "cap": 10},
+            ]
+
+        Pass ``caps=[]`` to clear all caps.
+        """
+        if caps is None:
+            raise ValueError("caps must be a list (possibly empty).")
+        valid_levels = {"AD_GROUP_AD", "AD_GROUP", "CAMPAIGN"}
+        valid_events = {"IMPRESSION", "VIDEO_VIEW"}
+        valid_units = {"DAY", "WEEK", "MONTH"}
+        for item in caps:
+            level = str(item.get("level", "")).strip()
+            event = str(item.get("event_type", "")).strip()
+            unit = str(item.get("time_unit", "")).strip()
+            time_length = item.get("time_length")
+            cap = item.get("cap")
+            if level not in valid_levels:
+                raise ValueError(
+                    f"cap.level must be one of {sorted(valid_levels)}, got {level!r}."
+                )
+            if event not in valid_events:
+                raise ValueError(
+                    f"cap.event_type must be one of {sorted(valid_events)}, got {event!r}."
+                )
+            if unit not in valid_units:
+                raise ValueError(
+                    f"cap.time_unit must be one of {sorted(valid_units)}, got {unit!r}."
+                )
+            if not isinstance(time_length, int) or time_length < 1:
+                raise ValueError("cap.time_length must be an integer >= 1.")
+            if not isinstance(cap, int) or cap < 0:
+                raise ValueError("cap.cap must be an integer >= 0.")
+
+        client = ctx.client.raw
+        operation = client.get_type("CampaignOperation")
+        operation.update.resource_name = client.get_service("CampaignService").campaign_path(
+            customer_id.replace("-", ""), campaign_id
+        )
+        for item in caps:
+            operation.update.frequency_caps.append(
+                {
+                    "key": {
+                        "level": client.enums.FrequencyCapLevelEnum[
+                            str(item["level"]).strip()
+                        ].value,
+                        "event_type": client.enums.FrequencyCapEventTypeEnum[
+                            str(item["event_type"]).strip()
+                        ].value,
+                        "time_unit": client.enums.FrequencyCapTimeUnitEnum[
+                            str(item["time_unit"]).strip()
+                        ].value,
+                        "time_length": item["time_length"],
+                    },
+                    "cap": item["cap"],
+                }
+            )
+        operation.update_mask.CopyFrom(
+            field_mask_pb2.FieldMask(paths=["frequency_caps"])
+        )
+        description = (
+            f"Set {len(caps)} frequency cap(s) on campaign {campaign_id}"
+            if caps
+            else f"Clear all frequency caps on campaign {campaign_id}"
+        )
+
+        def execute():
+            return ctx.client.mutate("CampaignService", customer_id, [operation])
+
+        return ctx.safety.propose(
+            tool_name="set_campaign_frequency_caps",
+            customer_id=customer_id,
+            description=description,
+            payload={"campaign_id": campaign_id, "caps": caps},
+            execute=execute,
+        )
+
+    @mcp.tool()
     def set_campaign_ad_rotation(
         customer_id: str, campaign_id: str, rotation: str
     ) -> dict:

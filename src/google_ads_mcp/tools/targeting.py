@@ -458,6 +458,192 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
+    def add_placement_target(
+        customer_id: str,
+        campaign_id: str,
+        placement_url: str,
+        placement_type: str = "WEBSITE",
+        bid_modifier: float | None = None,
+    ) -> dict:
+        """Propose targeting a Display/YouTube/app placement positively.
+
+        ``placement_type``: WEBSITE, YOUTUBE_CHANNEL, YOUTUBE_VIDEO, or
+        MOBILE_APPLICATION. For YouTube videos the value is the 11-character
+        video ID. Use ``add_placement_exclusion`` for the negative form.
+        """
+        if not placement_url.strip():
+            raise ValueError("placement_url must not be empty.")
+        valid_types = {
+            "WEBSITE", "YOUTUBE_CHANNEL", "YOUTUBE_VIDEO", "MOBILE_APPLICATION"
+        }
+        if placement_type not in valid_types:
+            raise ValueError(
+                "placement_type must be WEBSITE, YOUTUBE_CHANNEL, YOUTUBE_VIDEO, "
+                "or MOBILE_APPLICATION."
+            )
+        if placement_type == "YOUTUBE_VIDEO" and len(placement_url.strip()) != 11:
+            raise ValueError("YOUTUBE_VIDEO placement must be an 11-character video ID.")
+        if bid_modifier is not None and not (0.0 <= bid_modifier <= 10.0):
+            raise ValueError("bid_modifier must be between 0 and 10.")
+
+        client = ctx.client.raw
+        operation = client.get_type("CampaignCriterionOperation")
+        criterion = operation.create
+        criterion.campaign = client.get_service("CampaignService").campaign_path(
+            customer_id.replace("-", ""), campaign_id
+        )
+        value = placement_url.strip()
+        if placement_type == "WEBSITE":
+            criterion.placement.url = value
+        elif placement_type == "YOUTUBE_CHANNEL":
+            criterion.youtube_channel.channel_id = value
+        elif placement_type == "YOUTUBE_VIDEO":
+            criterion.youtube_video.video_id = value
+        else:
+            criterion.mobile_application.app_id = value
+        if bid_modifier is not None:
+            criterion.bid_modifier = bid_modifier
+
+        description = (
+            f"Target {placement_type} placement '{value}' on campaign {campaign_id}"
+            + (f" (bid modifier x{bid_modifier})" if bid_modifier is not None else "")
+        )
+
+        def execute():
+            return ctx.client.mutate(
+                "CampaignCriterionService", customer_id, [operation]
+            )
+
+        return ctx.safety.propose(
+            tool_name="add_placement_target",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "campaign_id": campaign_id,
+                "placement_url": value,
+                "placement_type": placement_type,
+                "bid_modifier": bid_modifier,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def exclude_audience_from_ad_group(
+        customer_id: str,
+        ad_group_id: str,
+        audience_resource_name: str,
+    ) -> dict:
+        """Propose excluding an audience segment from an ad group.
+
+        ``audience_resource_name`` can be a modern Audience
+        (``customers/{id}/audiences/{id}``), a UserList
+        (``customers/{id}/userLists/{id}``), a CustomAudience or a
+        CustomInterest. The matching criterion kind is selected automatically.
+        """
+        kind = _audience_kind(audience_resource_name)
+        if kind is None:
+            raise ValueError(
+                "audience_resource_name must reference an Audience, UserList, "
+                "CustomAudience, or CustomInterest."
+            )
+        client = ctx.client.raw
+        operation = client.get_type("AdGroupCriterionOperation")
+        criterion = operation.create
+        criterion.ad_group = client.get_service("AdGroupService").ad_group_path(
+            customer_id.replace("-", ""), ad_group_id
+        )
+        criterion.negative = True
+        if kind == "audience":
+            criterion.audience.audience = audience_resource_name
+        elif kind == "user_list":
+            criterion.user_list.user_list = audience_resource_name
+        elif kind == "custom_audience":
+            criterion.custom_audience.custom_audience = audience_resource_name
+        else:
+            criterion.user_interest.user_interest = audience_resource_name
+
+        description = (
+            f"Exclude audience {audience_resource_name} from ad group {ad_group_id}"
+        )
+
+        def execute():
+            return ctx.client.mutate(
+                "AdGroupCriterionService", customer_id, [operation]
+            )
+
+        return ctx.safety.propose(
+            tool_name="exclude_audience_from_ad_group",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "ad_group_id": ad_group_id,
+                "audience_resource_name": audience_resource_name,
+                "criterion_kind": kind,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def exclude_audience_from_campaign(
+        customer_id: str,
+        campaign_id: str,
+        audience_resource_name: str,
+    ) -> dict:
+        """Propose excluding an audience segment from a campaign.
+
+        v25 CampaignCriterion has no modern ``audience`` field, so campaign
+        exclusions use the legacy criterion kinds: UserList, CustomAudience,
+        or CustomInterest. Modern Audience resources are excluded at ad-group
+        level instead (see ``exclude_audience_from_ad_group``).
+        """
+        kind = _audience_kind(audience_resource_name)
+        if kind is None:
+            raise ValueError(
+                "audience_resource_name must reference an Audience, UserList, "
+                "CustomAudience, or CustomInterest."
+            )
+        if kind == "audience":
+            raise ValueError(
+                "Modern Audience resources cannot be excluded at campaign level "
+                "in v25; exclude at ad-group level or use a UserList / "
+                "CustomAudience / CustomInterest resource."
+            )
+        client = ctx.client.raw
+        operation = client.get_type("CampaignCriterionOperation")
+        criterion = operation.create
+        criterion.campaign = client.get_service("CampaignService").campaign_path(
+            customer_id.replace("-", ""), campaign_id
+        )
+        criterion.negative = True
+        if kind == "user_list":
+            criterion.user_list.user_list = audience_resource_name
+        elif kind == "custom_audience":
+            criterion.custom_audience.custom_audience = audience_resource_name
+        else:
+            criterion.user_interest.user_interest = audience_resource_name
+
+        description = (
+            f"Exclude audience {audience_resource_name} from campaign {campaign_id}"
+        )
+
+        def execute():
+            return ctx.client.mutate(
+                "CampaignCriterionService", customer_id, [operation]
+            )
+
+        return ctx.safety.propose(
+            tool_name="exclude_audience_from_campaign",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "campaign_id": campaign_id,
+                "audience_resource_name": audience_resource_name,
+                "criterion_kind": kind,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
     def list_campaign_criteria(customer_id: str, campaign_id: str) -> dict:
         """List targeting criteria on a campaign."""
         query = f"""
@@ -475,6 +661,19 @@ def register(mcp, ctx: AppContext) -> None:
         """
         rows = ctx.client.search(customer_id, query)
         return {"campaign_id": campaign_id, "criteria": rows, "count": len(rows)}
+
+
+def _audience_kind(resource_name: str) -> str | None:
+    value = str(resource_name).strip()
+    for segment, kind in (
+        ("/audiences/", "audience"),
+        ("/userLists/", "user_list"),
+        ("/customAudiences/", "custom_audience"),
+        ("/userInterests/", "user_interest"),
+    ):
+        if segment in value:
+            return kind
+    return None
 
 
 def _resolve_location_resource_names(

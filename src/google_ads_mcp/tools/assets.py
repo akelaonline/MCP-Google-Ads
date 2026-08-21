@@ -198,12 +198,14 @@ def register(mcp, ctx: AppContext) -> None:
             asset_operation = client.get_type("AssetOperation")
             asset_operation.create.name = name
             asset_operation.create.image_asset.data = image_bytes
+            # v25 AssetFieldType has no "IMAGE" value; marketing images are
+            # linked with MARKETING_IMAGE.
             return _create_asset_and_attach_to_campaign(
                 ctx,
                 customer_id,
                 campaign_id,
                 asset_operation,
-                "IMAGE",
+                "MARKETING_IMAGE",
             )
 
         return ctx.safety.propose(

@@ -52,7 +52,7 @@ propose/confirm/audit safety layer.
 | AssetGroupListingGroupFilterService | Integrated | SHOPPING, RETAIL Product Tags, WEBPAGE filters |
 | AssetGroupService | Integrated | PMax asset-group lifecycle |
 | AssetGroupSignalService | Integrated | audience, search-theme, Local Services, vertical-feed signals |
-| AssetService | Integrated | image/video/media/text-capable asset operations used by supported flows |
+| AssetService | Integrated | image/video/media/text/lead-form/price/location/mobile-app/deep-link asset operations used by supported flows |
 | AssetSetAssetService | Integrated | asset membership in AssetSets |
 | AssetSetService | Integrated | AssetSet lifecycle |
 | AudienceInsightsService | Integrated / access-controlled | public insight RPCs; Google allowlist required |
@@ -70,7 +70,7 @@ propose/confirm/audit safety layer.
 | CampaignBidModifierService | Integrated | CALLS interaction modifier read/update/remove |
 | CampaignBudgetService | Integrated | daily/shared budgets |
 | CampaignConversionGoalService | Integrated | campaign goal biddability |
-| CampaignCriterionService | Integrated | targeting, negatives, schedules (add/update/remove), geo, languages, webpage (DSA) targets |
+| CampaignCriterionService | Integrated | targeting (incl. positive placements), negatives, audience exclusions, schedules (add/update/remove), geo, languages, webpage (DSA) targets, frequency caps on Campaign |
 | CampaignCustomizerService | Integrated | campaign customizers |
 | CampaignDraftService | Integrated | create/rename/promote/errors/remove |
 | CampaignGoalConfigService | Integrated | v25 goal config |

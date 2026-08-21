@@ -110,6 +110,7 @@ def register(mcp, ctx: AppContext) -> None:
         conversion_value: float | None = None,
         currency_code: str = "USD",
         consent: str | None = None,
+        custom_variables: list[dict] | None = None,
     ) -> dict:
         """Propose uploading an enhanced offline click conversion.
 
@@ -118,12 +119,13 @@ def register(mcp, ctx: AppContext) -> None:
         rules and SHA-256 hashed locally; raw identifiers are never included in
         the audit payload. ``consent`` (``GRANTED``/``DENIED``) applies to both
         ad-data and ad-personalization for EEA conversions where consent is
-        required.
+        required. ``custom_variables`` attaches conversion custom variables.
         """
         if not email and not phone_number:
             raise ValueError("Provide at least one of email or phone_number.")
         _validate_click_upload_inputs(gclid, conversion_date_time, conversion_value)
         _validate_consent(consent)
+        normalized_vars = _validate_custom_variables(custom_variables)
         _ensure_upload_click_action(ctx, customer_id, conversion_action_id)
 
         normalized_phone = _normalize_e164(phone_number) if phone_number else None
@@ -141,6 +143,7 @@ def register(mcp, ctx: AppContext) -> None:
             conversion_value,
             currency_code,
             consent=consent,
+            custom_variables=normalized_vars,
         )
 
         if hashed_email:
@@ -184,6 +187,9 @@ def register(mcp, ctx: AppContext) -> None:
                 "has_phone": bool(phone_number),
                 "conversion_value": conversion_value,
                 "currency_code": currency_code.upper(),
+                "custom_variable_names": [
+                    str(item[0]) for item in normalized_vars
+                ],
             },
             execute=execute,
         )
@@ -278,15 +284,19 @@ def register(mcp, ctx: AppContext) -> None:
         conversion_value: float,
         currency_code: str = "USD",
         consent: str | None = None,
+        custom_variables: list[dict] | None = None,
     ) -> dict:
         """Propose uploading an offline click conversion.
 
         The target conversion action must be ENABLED and type ``UPLOAD_CLICKS``.
         ``consent`` (``GRANTED``/``DENIED``) applies to both ad-data and
         ad-personalization for EEA conversions where consent is required.
+        ``custom_variables`` attaches conversion custom variables, e.g.
+        ``[{"name": "customer_id", "value": "1234"}]``.
         """
         _validate_click_upload_inputs(gclid, conversion_date_time, conversion_value)
         _validate_consent(consent)
+        normalized_vars = _validate_custom_variables(custom_variables)
         _ensure_upload_click_action(ctx, customer_id, conversion_action_id)
 
         client = ctx.client.raw
@@ -300,6 +310,7 @@ def register(mcp, ctx: AppContext) -> None:
             conversion_value,
             currency_code,
             consent=consent,
+            custom_variables=normalized_vars,
         )
         description = (
             f"Upload offline conversion: action {conversion_action_id}, "
@@ -324,6 +335,9 @@ def register(mcp, ctx: AppContext) -> None:
                 "conversion_value": conversion_value,
                 "currency_code": currency_code.upper(),
                 "consent": consent,
+                "custom_variable_names": [
+                    str(item[0]) for item in normalized_vars
+                ],
             },
             execute=execute,
         )
@@ -338,6 +352,7 @@ def register(mcp, ctx: AppContext) -> None:
         conversion_value: float | None = None,
         currency_code: str = "USD",
         consent: str | None = None,
+        custom_variables: list[dict] | None = None,
     ) -> dict:
         """Propose uploading a call conversion (conversion from a phone call).
 
@@ -347,6 +362,7 @@ def register(mcp, ctx: AppContext) -> None:
         ``call_start_date_time`` and ``conversion_date_time`` must be in
         ``yyyy-MM-dd HH:mm:ss+00:00`` format. ``consent`` (``GRANTED``/``DENIED``)
         is required for conversions from EEA users where consent applies.
+        ``custom_variables`` attaches conversion custom variables.
         """
         _validate_call_conversion_inputs(
             caller_id,
@@ -356,6 +372,7 @@ def register(mcp, ctx: AppContext) -> None:
             currency_code,
             consent,
         )
+        normalized_vars = _validate_custom_variables(custom_variables)
         _ensure_upload_call_action(ctx, customer_id, conversion_action_id)
 
         client = ctx.client.raw
@@ -370,6 +387,7 @@ def register(mcp, ctx: AppContext) -> None:
             conversion_value,
             currency_code,
             consent,
+            custom_variables=normalized_vars,
         )
         description = (
             f"Upload call conversion: action {conversion_action_id}, "
@@ -396,6 +414,9 @@ def register(mcp, ctx: AppContext) -> None:
                 "conversion_value": conversion_value,
                 "currency_code": currency_code.upper(),
                 "consent": consent,
+                "custom_variable_names": [
+                    str(item[0]) for item in normalized_vars
+                ],
             },
             execute=execute,
         )
@@ -546,6 +567,7 @@ def _build_click_conversion(
     currency_code: str,
     *,
     consent: str | None = None,
+    custom_variables: list[tuple[str, str]] | None = None,
 ):
     click_conversion = client.get_type("ClickConversion")
     click_conversion.conversion_action = client.get_service(
@@ -565,12 +587,37 @@ def _build_click_conversion(
         click_conversion.consent.ad_personalization = client.enums.ConsentStatusEnum[
             consent
         ].value
+    _attach_custom_variables(click_conversion, custom_variables)
     return click_conversion
 
 
 def _validate_consent(consent: str | None) -> None:
     if consent is not None and consent not in {"GRANTED", "DENIED"}:
         raise ValueError("consent must be GRANTED or DENIED.")
+
+
+def _validate_custom_variables(
+    custom_variables: list[dict] | None,
+) -> list[tuple[str, str]]:
+    if not custom_variables:
+        return []
+    normalized: list[tuple[str, str]] = []
+    for item in custom_variables:
+        name = str(item.get("name", "")).strip()
+        value = str(item.get("value", ""))
+        if not name:
+            raise ValueError("Every custom_variable needs a 'name'.")
+        normalized.append((name, value))
+    return normalized
+
+
+def _attach_custom_variables(target, custom_variables: list[tuple[str, str]] | None) -> None:
+    if not custom_variables:
+        return
+    for name, value in custom_variables:
+        target.custom_variables.append(
+            {"conversion_custom_variable": name, "value": value}
+        )
 
 
 def _validate_click_upload_inputs(
@@ -675,6 +722,8 @@ def _build_call_conversion(
     conversion_value: float | None,
     currency_code: str,
     consent: str | None,
+    *,
+    custom_variables: list[tuple[str, str]] | None = None,
 ):
     call_conversion = client.get_type("CallConversion")
     call_conversion.conversion_action = client.get_service(
@@ -695,6 +744,7 @@ def _build_call_conversion(
         call_conversion.consent.ad_personalization = client.enums.ConsentStatusEnum[
             consent
         ].value
+    _attach_custom_variables(call_conversion, custom_variables)
     return call_conversion
 
 

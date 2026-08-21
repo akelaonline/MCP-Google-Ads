@@ -2,6 +2,24 @@
 
 Google Ads MCP follows Semantic Versioning. Detailed release notes for production releases live in `docs/RELEASE_X.Y.Z.md`.
 
+## 0.16.6 — 2026-08-21
+
+### Added
+- **Extended asset creators** (new `assets_extended` module): `create_lead_form_asset` (headline, description, business name, call-to-action, fields with single-choice answers, webhook delivery, desired intent), `create_price_asset` (PriceExtensionType, qualifier, offerings with Money prices in a currency), `create_location_asset` (Google Place ID, account-level — v25 has no LOCATION AssetFieldType so there is no campaign link), `create_mobile_app_asset` (app id, store, link text) and `create_app_deep_link_asset` (account-level, no APP_DEEP_LINK AssetFieldType).
+- **Positive placement targeting**: `add_placement_target` (WEBSITE / YOUTUBE_CHANNEL / YOUTUBE_VIDEO / MOBILE_APPLICATION with optional bid modifier) — complements `add_placement_exclusion`.
+- **Frequency caps**: `set_campaign_frequency_caps` (level AD_GROUP_AD/AD_GROUP/CAMPAIGN, event IMPRESSION/VIDEO_VIEW, time unit DAY/WEEK/MONTH, time length, cap; empty list clears).
+- **Audience exclusions**: `exclude_audience_from_ad_group` (modern Audience + legacy UserList/CustomAudience/CustomInterest) and `exclude_audience_from_campaign` (legacy kinds only; v25 CampaignCriterion has no modern audience field).
+- **Conversion custom variables on uploads**: `upload_offline_conversion`, `upload_enhanced_conversion` and `upload_call_conversion` accept `custom_variables` (`[{"name": ..., "value": ...}]`).
+
+### Fixed
+- **Latent production bug**: `create_image_asset` linked campaigns with AssetFieldType `"IMAGE"`, which does not exist in v25 — the real value is `MARKETING_IMAGE`. The fake enum had masked this; `tests/conftest.py`'s `AssetFieldTypeEnum` now mirrors real v25 values (SITELINK=13, CALL=16, PRICE=24, LEAD_FORM=9, MOBILE_APP=14, ...).
+- Contract tests assert the real `WebhookDelivery.advertiser_webhook_url` field and the `Money` shape of `PriceOffering.price`.
+
+### Validation
+- `python scripts/validate_local.py` green end-to-end: isolated smoke (**55 tool modules**, zero duplicate-tool warnings), Ruff clean, pytest **330/330 passed** (25 new tests, including v25 contract tests for all new tools).
+
+See `docs/RELEASE_0.16.6.md`.
+
 ## 0.16.5 — 2026-08-21
 
 ### Added

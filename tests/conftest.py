@@ -37,24 +37,31 @@ class FakeAuditLog:
 
 class AssetFieldTypeEnum(enum.Enum):
     UNSPECIFIED = 0
-    SITELINK = 1
-    CALL = 2
-    BUSINESS_MESSAGE = 3
-    IMAGE = 4
-    PROMOTION = 5
-    HEADLINE = 6
-    LONG_HEADLINE = 7
-    DESCRIPTION = 8
-    BUSINESS_NAME = 9
-    CALLOUT = 10
-    STRUCTURED_SNIPPET = 11
-    MARKETING_IMAGE = 12
-    SQUARE_MARKETING_IMAGE = 13
-    PORTRAIT_MARKETING_IMAGE = 14
-    LOGO = 15
-    LANDSCAPE_LOGO = 16
-    VIDEO = 17
-    YOUTUBE_VIDEO = 18
+    UNKNOWN = 1
+    HEADLINE = 2
+    DESCRIPTION = 3
+    MANDATORY_AD_TEXT = 4
+    MARKETING_IMAGE = 5
+    MEDIA_BUNDLE = 6
+    YOUTUBE_VIDEO = 7
+    BOOK_ON_GOOGLE = 8
+    LEAD_FORM = 9
+    PROMOTION = 10
+    CALLOUT = 11
+    STRUCTURED_SNIPPET = 12
+    SITELINK = 13
+    MOBILE_APP = 14
+    HOTEL_CALLOUT = 15
+    CALL = 16
+    LONG_HEADLINE = 17
+    BUSINESS_NAME = 18
+    SQUARE_MARKETING_IMAGE = 19
+    PORTRAIT_MARKETING_IMAGE = 20
+    LOGO = 21
+    LANDSCAPE_LOGO = 22
+    VIDEO = 23
+    PRICE = 24
+    BUSINESS_MESSAGE = 31
 
 
 class ConversionActionStatusEnum(enum.Enum):
@@ -353,6 +360,109 @@ class ProductChannelExclusivityEnum(enum.Enum):
     MULTI_CHANNEL = 3
 
 
+class LeadFormCallToActionTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    LEARN_MORE = 2
+    GET_QUOTE = 3
+    APPLY_NOW = 4
+    SIGN_UP = 5
+    CONTACT_US = 6
+    SUBSCRIBE = 7
+    DOWNLOAD = 8
+    BOOK_NOW = 9
+    GET_OFFER = 10
+    REGISTER = 11
+    GET_INFO = 12
+    REQUEST_DEMO = 13
+    JOIN_NOW = 14
+    GET_STARTED = 15
+
+
+class LeadFormDesiredIntentEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    LOW_INTENT = 2
+    HIGH_INTENT = 3
+
+
+class LeadFormFieldUserInputTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    FULL_NAME = 2
+    EMAIL = 3
+    PHONE_NUMBER = 4
+    POSTAL_CODE = 5
+    FIRST_NAME = 23
+    LAST_NAME = 24
+    PRODUCT = 1016
+
+
+class LeadFormPostSubmitCallToActionTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    VISIT_SITE = 2
+    DOWNLOAD = 3
+    LEARN_MORE = 4
+    SHOP_NOW = 5
+
+
+class PriceExtensionTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    BRANDS = 2
+    EVENTS = 3
+    LOCATIONS = 4
+    NEIGHBORHOODS = 5
+    PRODUCT_CATEGORIES = 6
+    PRODUCT_TIERS = 7
+    SERVICES = 8
+    SERVICE_CATEGORIES = 9
+    SERVICE_TIERS = 10
+
+
+class PriceExtensionPriceQualifierEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    FROM = 2
+    UP_TO = 3
+    AVERAGE = 4
+
+
+class PriceExtensionPriceUnitEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    PER_HOUR = 2
+    PER_DAY = 3
+    PER_WEEK = 4
+    PER_MONTH = 5
+    PER_YEAR = 6
+    PER_NIGHT = 7
+
+
+class FrequencyCapLevelEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    AD_GROUP_AD = 2
+    AD_GROUP = 3
+    CAMPAIGN = 4
+
+
+class FrequencyCapEventTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    IMPRESSION = 2
+    VIDEO_VIEW = 3
+
+
+class FrequencyCapTimeUnitEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    DAY = 2
+    WEEK = 3
+    MONTH = 4
+
+
 class UserIdentifierSourceEnum(enum.Enum):
     UNSPECIFIED = 0
     UNKNOWN = 1
@@ -415,6 +525,16 @@ class FakeEnums:
     ProductChannelExclusivityEnum = ProductChannelExclusivityEnum
     AdServingOptimizationStatusEnum = AdServingOptimizationStatusEnum
     UserIdentifierSourceEnum = UserIdentifierSourceEnum
+    LeadFormCallToActionTypeEnum = LeadFormCallToActionTypeEnum
+    LeadFormDesiredIntentEnum = LeadFormDesiredIntentEnum
+    LeadFormFieldUserInputTypeEnum = LeadFormFieldUserInputTypeEnum
+    LeadFormPostSubmitCallToActionTypeEnum = LeadFormPostSubmitCallToActionTypeEnum
+    PriceExtensionTypeEnum = PriceExtensionTypeEnum
+    PriceExtensionPriceQualifierEnum = PriceExtensionPriceQualifierEnum
+    PriceExtensionPriceUnitEnum = PriceExtensionPriceUnitEnum
+    FrequencyCapLevelEnum = FrequencyCapLevelEnum
+    FrequencyCapEventTypeEnum = FrequencyCapEventTypeEnum
+    FrequencyCapTimeUnitEnum = FrequencyCapTimeUnitEnum
 
 
 class AutoVivify:
