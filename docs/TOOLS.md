@@ -61,7 +61,7 @@ Intentional cross-account manager/client linking is allowed only through the exp
 
 ## Reporting and GAQL
 
-The MCP exposes focused reports for the common operator views plus a raw GAQL fallback. Coverage includes campaigns, ad groups, keywords, ads, search terms, devices, geography, assets, audiences, quality score, policy/disapproval, Shopping performance and change history.
+The MCP exposes focused reports for the common operator views plus a raw GAQL fallback. Coverage includes campaigns, ad groups, keywords, ads, search terms, devices, geography, assets, audiences, quality score, policy/disapproval, Shopping performance, search impression share / lost-IS budget & rank diagnostics, and change history.
 
 Use raw GAQL when a newly added selectable field does not yet deserve a dedicated convenience tool. Deployment customer isolation still applies to raw GAQL.
 
@@ -73,7 +73,7 @@ Supported operator workflows include:
 - campaign groups
 - campaign drafts and promotion
 - Search and generic supported campaign shells
-- Standard Shopping
+- Standard Shopping (including listing-group/product-group trees via `shopping_listing_groups`)
 - Demand Gen
 - Performance Max
 - Smart Campaign workflows
@@ -195,9 +195,9 @@ Live targeting changes are conservatively treated as `spend` risk. Customer iden
 Measurement coverage includes:
 
 - conversion actions
-- offline conversions
+- offline conversions (with optional GDPR `consent`)
 - call conversions (`upload_call_conversion`, UPLOAD_CALLS actions)
-- enhanced conversions
+- enhanced conversions (with optional GDPR `consent`)
 - retractions/restatements
 - conversion custom variables
 - conversion value rules and rule sets

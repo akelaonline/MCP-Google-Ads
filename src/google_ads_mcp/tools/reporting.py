@@ -421,6 +421,52 @@ def register(mcp, ctx: AppContext) -> None:
                 seen[item_id] = row
         return {"products": list(seen.values()), "count": len(seen)}
 
+    @mcp.tool()
+    def get_impression_share_report(
+        customer_id: str,
+        date_range: str = "LAST_7_DAYS",
+        campaign_id: str | None = None,
+    ) -> dict:
+        """Search impression share diagnostics per campaign.
+
+        Impression-share values are 0-1 fractions (multiply by 100 for %).
+        ``search_budget_lost_impression_share`` is the share lost to budget
+        constraints; ``search_rank_lost_impression_share`` the share lost to
+        ad rank. Also includes top/absolute-top breakdowns and
+        exact-match impression share.
+        """
+        where = f"WHERE segments.date DURING {date_range}"
+        if campaign_id:
+            where += f" AND campaign.id = {int(campaign_id)}"
+        query = f"""
+            SELECT
+                campaign.id, campaign.name, campaign.status,
+                metrics.impressions, metrics.clicks, metrics.cost_micros,
+                metrics.search_impression_share,
+                metrics.search_absolute_top_impression_share,
+                metrics.search_top_impression_share,
+                metrics.search_exact_match_impression_share,
+                metrics.search_budget_lost_impression_share,
+                metrics.search_budget_lost_top_impression_share,
+                metrics.search_budget_lost_absolute_top_impression_share,
+                metrics.search_rank_lost_impression_share,
+                metrics.search_rank_lost_top_impression_share,
+                metrics.search_rank_lost_absolute_top_impression_share
+            FROM campaign
+            {where}
+            ORDER BY campaign.id
+        """
+        rows = ctx.client.search(customer_id, query)
+        for row in rows:
+            metrics = row.get("metrics", {})
+            if "cost_micros" in metrics:
+                metrics["cost"] = from_micros(int(metrics["cost_micros"]))
+        return {
+            "date_range": date_range,
+            "campaigns": rows,
+            "count": len(rows),
+        }
+
 
 def _flatten_campaign_row(row: dict) -> dict:
     c, m = row["campaign"], row["metrics"]

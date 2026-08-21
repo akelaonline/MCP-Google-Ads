@@ -314,6 +314,62 @@ class WebpageConditionOperatorEnum(enum.Enum):
     CONTAINS = 3
 
 
+class ListingGroupTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    SUBDIVISION = 2
+    UNIT = 3
+
+
+class ProductCategoryLevelEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    LEVEL1 = 2
+    LEVEL2 = 3
+    LEVEL3 = 4
+    LEVEL4 = 5
+    LEVEL5 = 6
+
+
+class ProductConditionEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    NEW = 3
+    REFURBISHED = 4
+    USED = 5
+
+
+class ProductChannelEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    ONLINE = 2
+    LOCAL = 3
+
+
+class ProductChannelExclusivityEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    SINGLE_CHANNEL = 2
+    MULTI_CHANNEL = 3
+
+
+class UserIdentifierSourceEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    FIRST_PARTY = 2
+    THIRD_PARTY = 3
+
+
+class AdServingOptimizationStatusEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    OPTIMIZE = 2
+    CONVERSION_OPTIMIZE = 3
+    ROTATE = 4
+    ROTATE_INDEFINITELY = 5
+    UNAVAILABLE = 6
+
+
 class FakeEnums:
     AssetFieldTypeEnum = AssetFieldTypeEnum
     ConversionActionStatusEnum = ConversionActionStatusEnum
@@ -352,6 +408,13 @@ class FakeEnums:
     AppCampaignBiddingStrategyGoalTypeEnum = AppCampaignBiddingStrategyGoalTypeEnum
     WebpageConditionOperandEnum = WebpageConditionOperandEnum
     WebpageConditionOperatorEnum = WebpageConditionOperatorEnum
+    ListingGroupTypeEnum = ListingGroupTypeEnum
+    ProductCategoryLevelEnum = ProductCategoryLevelEnum
+    ProductConditionEnum = ProductConditionEnum
+    ProductChannelEnum = ProductChannelEnum
+    ProductChannelExclusivityEnum = ProductChannelExclusivityEnum
+    AdServingOptimizationStatusEnum = AdServingOptimizationStatusEnum
+    UserIdentifierSourceEnum = UserIdentifierSourceEnum
 
 
 class AutoVivify:

@@ -49,6 +49,7 @@ from . import (
     remarketing_actions,
     reporting,
     shared_sets,
+    shopping_listing_groups,
     smart_bidding_controls,
     smart_campaigns,
     targeting,
@@ -110,4 +111,5 @@ ALL_MODULES = [
     pmax_signals_listing,
     recommendations,
     url_options,
+    shopping_listing_groups,
 ]

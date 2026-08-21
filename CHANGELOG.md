@@ -2,6 +2,22 @@
 
 Google Ads MCP follows Semantic Versioning. Detailed release notes for production releases live in `docs/RELEASE_X.Y.Z.md`.
 
+## 0.16.5 — 2026-08-21
+
+### Added
+- **GDPR consent on conversion uploads**: `upload_offline_conversion` and `upload_enhanced_conversion` now accept `consent` (`GRANTED`/`DENIED`), written to both `ad_user_data` and `ad_personalization` of the v25 `Consent` message — required for EEA conversions.
+- **Search impression share diagnostics**: `get_impression_share_report` returns `search_impression_share`, `search_absolute_top_impression_share`, `search_top_impression_share`, `search_exact_match_impression_share`, `search_budget_lost_impression_share` (top/absolute-top breakdowns) and `search_rank_lost_impression_share` (top/absolute-top breakdowns) per campaign — the lost-IS budget/rank metrics operators use daily.
+- **Standard Shopping listing groups** (new `shopping_listing_groups` module): `add_shopping_listing_group` (SUBDIVISION root / UNIT leaves with dimensions PRODUCT_BRAND, PRODUCT_ITEM_ID, PRODUCT_GROUPING, PRODUCT_LABELS, PRODUCT_TYPE, PRODUCT_CATEGORY, PRODUCT_CONDITION, PRODUCT_CHANNEL, PRODUCT_CHANNEL_EXCLUSIVITY; parent links for tree structure; bid modifiers), `update_shopping_listing_group`, `remove_shopping_listing_group`, `list_shopping_listing_groups`.
+- **Ad rotation**: `set_campaign_ad_rotation` (`OPTIMIZE`, `CONVERSION_OPTIMIZE`, `ROTATE`, `ROTATE_INDEFINITELY`) via `campaign.ad_serving_optimization_status`.
+
+### Fixed
+- `tests/conftest.py` gained the missing `UserIdentifierSourceEnum` fake (no test previously exercised `upload_enhanced_conversion`'s identifier path) and real v25 values for `ProductConditionEnum` (`NEW=3`, not 2).
+
+### Validation
+- `python scripts/validate_local.py` green end-to-end: isolated smoke (54 tool modules, zero duplicate-tool warnings), Ruff clean, pytest **305/305 passed** (22 new tests, including v25 contract tests for the consent message, listing-group case values, and the ad-rotation update mask).
+
+See `docs/RELEASE_0.16.5.md`.
+
 ## 0.16.4 — 2026-08-21
 
 ### Added

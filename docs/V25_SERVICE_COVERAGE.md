@@ -41,7 +41,7 @@ propose/confirm/audit safety layer.
 | AdGroupBidModifierService | Integrated | device modifiers + update/remove |
 | AdGroupCriterionCustomizerService | Integrated | criterion customizers |
 | AdGroupCriterionLabelService | Integrated | keyword/criterion labels |
-| AdGroupCriterionService | Integrated | keywords, audiences, bids, negatives |
+| AdGroupCriterionService | Integrated | keywords, audiences, bids, negatives, Standard Shopping listing groups |
 | AdGroupCustomizerService | Integrated | ad-group customizers |
 | AdGroupLabelService | Integrated | ad-group labels |
 | AdGroupService | Integrated | ad-group lifecycle, DSA ad groups, tracking URL options |
@@ -76,14 +76,14 @@ propose/confirm/audit safety layer.
 | CampaignGoalConfigService | Integrated | v25 goal config |
 | CampaignGroupService | Integrated | campaign-group lifecycle |
 | CampaignLabelService | Integrated | campaign labels |
-| CampaignService | Integrated | campaign lifecycle, app campaigns (MULTI_CHANNEL + app_campaign_setting), DSA campaigns (dynamic_search_ads_setting), tracking URL options, EnablePMaxBrandGuidelines |
+| CampaignService | Integrated | campaign lifecycle, app campaigns (MULTI_CHANNEL + app_campaign_setting), DSA campaigns (dynamic_search_ads_setting), tracking URL options, ad rotation, EnablePMaxBrandGuidelines |
 | CampaignSharedSetService | Integrated | shared negative-list attachment |
 | ContentCreatorInsightsService | Integrated / access-controlled | creator + trending insights; Google allowlist required |
 | ConversionActionService | Integrated | conversion-action lifecycle |
 | ConversionAdjustmentUploadService | Integrated | retractions/restatements |
 | ConversionCustomVariableService | Integrated | custom-variable lifecycle |
 | ConversionGoalCampaignConfigService | Integrated | conversion-goal campaign config |
-| ConversionUploadService | Integrated | offline/enhanced/call conversions |
+| ConversionUploadService | Integrated | offline/enhanced/call conversions, GDPR consent on uploads |
 | ConversionValueRuleService | Integrated | value-rule lifecycle |
 | ConversionValueRuleSetService | Integrated | value-rule-set lifecycle |
 | CustomAudienceService | Integrated | CustomAudience lifecycle |
