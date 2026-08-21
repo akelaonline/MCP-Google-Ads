@@ -1,40 +1,33 @@
-# Google Ads MCP 0.16.1 production validation checklist
+# Google Ads MCP 0.16.2 production validation checklist
 
 Use this checklist after updating the local server from GitHub and before treating a specific deployment as production-validated.
 
-The purpose is to verify both functionality and the safety boundaries added in the v0.16 series, including the 0.16.1 startup/isolation hotfix.
+The purpose is to verify both functionality and the safety boundaries added in the v0.16 series, including the 0.16.1 startup/isolation hotfix and the 0.16.2 fixture/tool-registration cleanup.
 
-## 1. Install and static validation
+## 1. Install and local validation gate
 
 ```bash
 cd /path/to/MCP-Google-Ads
 source .venv/bin/activate
 pip install -e ".[dev]"
-python scripts/smoke_test.py
-ruff check src tests scripts
-pytest -q
+python scripts/validate_local.py
 ```
 
-Also exercise the real server-construction path:
+The validator runs the isolated smoke test, Ruff, and the complete pytest suite with the same Python interpreter. It also prints the exact Git commit and dependency versions.
 
-```bash
-python - <<'PY'
-from google_ads_mcp.server import build_server
-server = build_server()
-print("OK build_server", server)
-PY
+Expected release version: `0.16.2`.
+
+A successful gate ends with:
+
+```text
+LOCAL VALIDATION GREEN
+validated commit: <sha>
+validated version: 0.16.2
 ```
 
-Record:
+The smoke test must construct FastMCP without duplicate-tool warnings, verify canonical PMax/ConversionValueRule tool ownership, and pass nested protobuf map/list MCC isolation.
 
-```bash
-git rev-parse HEAD
-python -c "import google_ads_mcp; print(google_ads_mcp.__version__)"
-```
-
-Expected release version: `0.16.1`.
-
-Do not continue to live mutation testing if the local suite, smoke test, or `build_server()` check fails.
+Do not continue to live testing if the validator exits non-zero.
 
 ## 2. Read-only kill switch
 
@@ -149,7 +142,19 @@ Only if the deployment uses MCC link administration, test the explicit manager/c
 
 Verify the legitimate two-customer relationship is permitted while arbitrary mixed-customer campaign/ad/asset operations remain blocked.
 
-## 10. Risk classification / auto-approve boundary
+## 10. Canonical specialist tools
+
+Confirm the client exposes exactly one public instance of each of these names and no duplicate-registration warning appears at startup:
+
+- `list_asset_group_signals`
+- `add_asset_group_signal`
+- `list_asset_group_listing_filters`
+- `list_conversion_value_rules`
+- `create_conversion_value_rule`
+
+PMax signal/listing behavior should come from the v25-complete specialist implementation and include the expanded signal/listing surface documented in `TOOLS.md`.
+
+## 11. Risk classification / auto-approve boundary
 
 With global standard auto-approve enabled only in a dedicated test environment:
 
@@ -170,7 +175,7 @@ Verify:
 
 Restore all auto-approve values to the intended production policy afterward.
 
-## 11. Double-confirm race
+## 12. Double-confirm race
 
 Create one pending action. Trigger two confirmation requests as close together as the test client permits.
 
@@ -178,7 +183,7 @@ Expected result within one MCP process: only one execution reaches Google Ads. T
 
 Do not run several MCP processes against the same `audit.db`; the current lock is process-local, not distributed.
 
-## 12. HTTP boundary — only when used
+## 13. HTTP boundary — only when used
 
 If the deployment uses HTTP instead of stdio:
 
