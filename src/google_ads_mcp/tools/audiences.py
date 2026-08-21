@@ -589,14 +589,15 @@ def register(mcp, ctx: AppContext) -> None:
         """Propose adding or excluding Display/YouTube topic targeting."""
         customer = ctx.client.assert_customer_allowed(customer_id)
         client = ctx.client.raw
-        topic_service = client.get_service("TopicConstantService")
         operation = client.get_type("AdGroupCriterionOperation")
         criterion = operation.create
         criterion.ad_group = client.get_service("AdGroupService").ad_group_path(
             customer, ad_group_id
         )
         criterion.negative = negative
-        criterion.topic.topic_constant = topic_service.topic_constant_path(topic_id)
+        # Topic constants are global resources ("topicConstants/{id}"); v25 has
+        # no TopicConstantService stub to build the path for us.
+        criterion.topic.topic_constant = f"topicConstants/{topic_id}"
 
         verb = "Exclude" if negative else "Target"
         description = f"{verb} topic {topic_id} on ad group {ad_group_id}"

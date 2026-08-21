@@ -77,12 +77,17 @@ Supported operator workflows include:
 - Demand Gen
 - Performance Max
 - Smart Campaign workflows
-- campaign-level targeting, schedules and exclusions
+- campaign-level targeting, schedules (add/update/remove) and exclusions
+- tracking URL templates, final URL suffixes and custom URL parameters at account/campaign/ad-group level
 - automatic-asset removal controls
 - campaign/ad-group bid modifiers
 - account-level negative criteria
+- Dynamic Search Ads campaigns, DSA ad groups (`SEARCH_DYNAMIC_ADS`) and webpage targets
+- App campaigns (ACi/ACe) with v25 `MULTI_CHANNEL` + `app_campaign_setting`
 
 Campaign creation defaults to conservative states where the workflow supports it; major creation helpers create PAUSED resources rather than silently starting spend.
+
+Standard ad previews (`AdService.generate_preview`) no longer exist in the v25 API; use PMax shareable previews (`generate_pmax_shareable_previews`) or YouTube previews where the surface applies.
 
 Legacy Local and Smart Shopping creation are intentionally not emulated on obsolete contracts. Use Performance Max.
 
@@ -191,6 +196,7 @@ Measurement coverage includes:
 
 - conversion actions
 - offline conversions
+- call conversions (`upload_call_conversion`, UPLOAD_CALLS actions)
 - enhanced conversions
 - retractions/restatements
 - conversion custom variables

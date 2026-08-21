@@ -145,6 +145,77 @@ def test_add_ad_schedule_creates_criterion():
     assert result["status"] == "executed"
 
 
+def test_update_ad_schedule_requires_a_change():
+    ctx = build_ctx(lambda *a, **k: None)
+    tool_fns = register_module(tools.targeting, ctx)
+
+    with pytest.raises(ValueError, match="Provide at least one"):
+        tool_fns["update_ad_schedule"](
+            customer_id="123", campaign_id="456", criterion_id="789"
+        )
+
+
+def test_update_ad_schedule_validates_hour_range():
+    ctx = build_ctx(lambda *a, **k: None)
+    tool_fns = register_module(tools.targeting, ctx)
+
+    with pytest.raises(ValueError, match="before end_hour"):
+        tool_fns["update_ad_schedule"](
+            customer_id="123",
+            campaign_id="456",
+            criterion_id="789",
+            start_hour=18,
+            end_hour=9,
+        )
+
+
+def test_update_ad_schedule_builds_update_operation():
+    captured = []
+
+    def fake_mutate(service_name, customer_id, operations, **kwargs):
+        captured.extend(list(operations))
+        return FakeMutateResult("a")
+
+    ctx = build_ctx(fake_mutate)
+    tool_fns = register_module(tools.targeting, ctx)
+    result = tool_fns["update_ad_schedule"](
+        customer_id="123",
+        campaign_id="456",
+        criterion_id="789",
+        end_hour=20,
+        bid_modifier=1.2,
+    )
+
+    assert result["status"] == "executed"
+    assert result["description"].startswith("Update ad schedule")
+    assert "update" in captured[0]._children
+    assert captured[0]._children["update"]._children["resource_name"] == (
+        "customers/123/CampaignCriterionServicePath/456/789"
+    )
+    assert captured[0].update.ad_schedule.end_hour == 20
+    assert captured[0].update.bid_modifier == 1.2
+    assert "end_hour" in captured[0]._children["update"]._children["ad_schedule"]._children
+
+
+def test_remove_ad_schedule_builds_remove_operation():
+    captured = []
+
+    def fake_mutate(service_name, customer_id, operations, **kwargs):
+        captured.extend(list(operations))
+        return FakeMutateResult("a")
+
+    ctx = build_ctx(fake_mutate)
+    tool_fns = register_module(tools.targeting, ctx)
+    result = tool_fns["remove_ad_schedule"](
+        customer_id="123", campaign_id="456", criterion_id="789"
+    )
+
+    assert result["status"] == "executed"
+    assert captured[0]._children["remove"] == (
+        "customers/123/CampaignCriterionServicePath/456/789"
+    )
+
+
 def test_set_device_bid_modifier_creates_if_missing():
     calls = []
 

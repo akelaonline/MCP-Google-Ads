@@ -11,8 +11,10 @@ _AUTO_AD_GROUP_TYPE_BY_CHANNEL = {
     "SEARCH": "SEARCH_STANDARD",
     "DISPLAY": "DISPLAY_STANDARD",
     "SHOPPING": "SHOPPING_PRODUCT_ADS",
-    # Demand Gen explicitly requires an ad group with no type.
+    # Demand Gen and App campaigns explicitly require an ad group with no type.
+    # App campaigns report channel MULTI_CHANNEL in v25.
     "DEMAND_GEN": None,
+    "MULTI_CHANNEL": None,
 }
 
 

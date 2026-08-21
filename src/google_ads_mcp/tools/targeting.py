@@ -211,6 +211,121 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
+    def update_ad_schedule(
+        customer_id: str,
+        campaign_id: str,
+        criterion_id: str,
+        start_hour: int | None = None,
+        end_hour: int | None = None,
+        bid_modifier: float | None = None,
+    ) -> dict:
+        """Propose updating an existing ad-schedule/daypart criterion.
+
+        ``criterion_id`` comes from ``list_campaign_criteria``. Only the fields
+        provided are changed; pass ``bid_modifier=None`` to leave the existing
+        modifier untouched.
+        """
+        if start_hour is None and end_hour is None and bid_modifier is None:
+            raise ValueError(
+                "Provide at least one of start_hour, end_hour, or bid_modifier."
+            )
+        if start_hour is not None and not (0 <= start_hour <= 23):
+            raise ValueError("start_hour must be between 0 and 23.")
+        if end_hour is not None and not (1 <= end_hour <= 24):
+            raise ValueError("end_hour must be between 1 and 24.")
+        if start_hour is not None and end_hour is not None and start_hour >= end_hour:
+            raise ValueError("start_hour must be before end_hour.")
+        if bid_modifier is not None and not (0.1 <= bid_modifier <= 10.0):
+            raise ValueError("bid_modifier must be between 0.1 and 10.0.")
+
+        client = ctx.client.raw
+        criterion_service = client.get_service("CampaignCriterionService")
+        operation = client.get_type("CampaignCriterionOperation")
+        criterion = operation.update
+        criterion.resource_name = criterion_service.campaign_criterion_path(
+            customer_id.replace("-", ""), campaign_id, str(criterion_id)
+        )
+        if start_hour is not None:
+            criterion.ad_schedule.start_hour = start_hour
+            criterion.ad_schedule.start_minute = client.enums.MinuteOfHourEnum.ZERO.value
+        if end_hour is not None:
+            criterion.ad_schedule.end_hour = end_hour
+            criterion.ad_schedule.end_minute = client.enums.MinuteOfHourEnum.ZERO.value
+        if bid_modifier is not None:
+            criterion.bid_modifier = bid_modifier
+
+        paths = []
+        if start_hour is not None:
+            paths += ["ad_schedule.start_hour", "ad_schedule.start_minute"]
+        if end_hour is not None:
+            paths += ["ad_schedule.end_hour", "ad_schedule.end_minute"]
+        if bid_modifier is not None:
+            paths.append("bid_modifier")
+        operation.update_mask.CopyFrom(field_mask_pb2.FieldMask(paths=paths))
+
+        changed = []
+        if start_hour is not None:
+            changed.append(f"start={start_hour}:00")
+        if end_hour is not None:
+            changed.append(f"end={end_hour}:00")
+        if bid_modifier is not None:
+            changed.append(f"bid modifier x{bid_modifier}")
+        description = (
+            f"Update ad schedule criterion {criterion_id} on campaign {campaign_id}: "
+            + ", ".join(changed)
+        )
+
+        def execute():
+            return ctx.client.mutate(
+                "CampaignCriterionService", customer_id, [operation]
+            )
+
+        return ctx.safety.propose(
+            tool_name="update_ad_schedule",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "campaign_id": campaign_id,
+                "criterion_id": criterion_id,
+                "start_hour": start_hour,
+                "end_hour": end_hour,
+                "bid_modifier": bid_modifier,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
+    def remove_ad_schedule(
+        customer_id: str,
+        campaign_id: str,
+        criterion_id: str,
+    ) -> dict:
+        """Propose removing one ad-schedule/daypart criterion."""
+        client = ctx.client.raw
+        criterion_service = client.get_service("CampaignCriterionService")
+        operation = client.get_type("CampaignCriterionOperation")
+        operation.remove = criterion_service.campaign_criterion_path(
+            customer_id.replace("-", ""), campaign_id, str(criterion_id)
+        )
+
+        description = (
+            f"Remove ad schedule criterion {criterion_id} from campaign {campaign_id}"
+        )
+
+        def execute():
+            return ctx.client.mutate(
+                "CampaignCriterionService", customer_id, [operation]
+            )
+
+        return ctx.safety.propose(
+            tool_name="remove_ad_schedule",
+            customer_id=customer_id,
+            description=description,
+            payload={"campaign_id": campaign_id, "criterion_id": criterion_id},
+            execute=execute,
+        )
+
+    @mcp.tool()
     def set_device_bid_modifier(
         customer_id: str, campaign_id: str, device: str, bid_modifier: float
     ) -> dict:

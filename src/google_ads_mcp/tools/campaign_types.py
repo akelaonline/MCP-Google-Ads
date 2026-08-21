@@ -51,9 +51,8 @@ def register(mcp, ctx: AppContext) -> None:
         campaign.advertising_channel_type = (
             client.enums.AdvertisingChannelTypeEnum.SHOPPING
         )
-        campaign.advertising_channel_sub_type = (
-            client.enums.AdvertisingChannelSubTypeEnum.STANDARD_SHOPPING
-        )
+        # v25 removed the STANDARD_SHOPPING channel sub-type value. Standard
+        # Shopping campaigns are identified by SHOPPING channel + shopping_setting.
         campaign.status = client.enums.CampaignStatusEnum.PAUSED
         campaign.shopping_setting.merchant_id = int(merchant_center_id)
         campaign.shopping_setting.feed_label = sales_country.upper()

@@ -317,6 +317,78 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
+    def upload_call_conversion(
+        customer_id: str,
+        conversion_action_id: str,
+        caller_id: str,
+        call_start_date_time: str,
+        conversion_date_time: str,
+        conversion_value: float | None = None,
+        currency_code: str = "USD",
+        consent: str | None = None,
+    ) -> dict:
+        """Propose uploading a call conversion (conversion from a phone call).
+
+        ``caller_id`` is the phone number the customer called from, in E.164
+        format with country code (for example ``+5491112345678``). The target
+        conversion action must be ENABLED and type ``UPLOAD_CALLS``.
+        ``call_start_date_time`` and ``conversion_date_time`` must be in
+        ``yyyy-MM-dd HH:mm:ss+00:00`` format. ``consent`` (``GRANTED``/``DENIED``)
+        is required for conversions from EEA users where consent applies.
+        """
+        _validate_call_conversion_inputs(
+            caller_id,
+            call_start_date_time,
+            conversion_date_time,
+            conversion_value,
+            currency_code,
+            consent,
+        )
+        _ensure_upload_call_action(ctx, customer_id, conversion_action_id)
+
+        client = ctx.client.raw
+        conversion_upload_service = client.get_service("ConversionUploadService")
+        call_conversion = _build_call_conversion(
+            client,
+            customer_id,
+            conversion_action_id,
+            caller_id,
+            call_start_date_time,
+            conversion_date_time,
+            conversion_value,
+            currency_code,
+            consent,
+        )
+        description = (
+            f"Upload call conversion: action {conversion_action_id}, "
+            f"caller={_mask_caller_id(caller_id)}, "
+            f"value={conversion_value} {currency_code.upper()}"
+        )
+
+        def execute():
+            return _upload_call_conversion(
+                conversion_upload_service,
+                customer_id,
+                call_conversion,
+            )
+
+        return ctx.safety.propose(
+            tool_name="upload_call_conversion",
+            customer_id=customer_id,
+            description=description,
+            payload={
+                "conversion_action_id": conversion_action_id,
+                "caller_id_masked": _mask_caller_id(caller_id),
+                "call_start_date_time": call_start_date_time,
+                "conversion_date_time": conversion_date_time,
+                "conversion_value": conversion_value,
+                "currency_code": currency_code.upper(),
+                "consent": consent,
+            },
+            execute=execute,
+        )
+
+    @mcp.tool()
     def create_conversion_value_rule(
         customer_id: str,
         action: str,
@@ -509,3 +581,115 @@ def _normalize_e164(phone: str) -> str:
 
 def _hash_normalized(value: str) -> str:
     return hashlib.sha256(value.strip().lower().encode("utf-8")).hexdigest()
+
+
+def _validate_call_conversion_inputs(
+    caller_id: str,
+    call_start_date_time: str,
+    conversion_date_time: str,
+    conversion_value: float | None,
+    currency_code: str,
+    consent: str | None,
+) -> None:
+    if not re.fullmatch(r"\+?[1-9]\d{7,14}", str(caller_id).strip()):
+        raise ValueError(
+            "caller_id must be an E.164 phone number with country code, for "
+            "example +5491112345678."
+        )
+    if not call_start_date_time or not call_start_date_time.strip():
+        raise ValueError("call_start_date_time must not be empty.")
+    if not conversion_date_time or not conversion_date_time.strip():
+        raise ValueError("conversion_date_time must not be empty.")
+    if conversion_value is not None and conversion_value < 0:
+        raise ValueError("conversion_value must be zero or greater.")
+    if not currency_code or len(currency_code) != 3:
+        raise ValueError("currency_code must be a three-letter currency code.")
+    if consent is not None and consent not in {"GRANTED", "DENIED"}:
+        raise ValueError("consent must be GRANTED or DENIED.")
+
+
+def _ensure_upload_call_action(
+    ctx: AppContext,
+    customer_id: str,
+    conversion_action_id: str,
+) -> None:
+    query = f"""
+        SELECT conversion_action.id, conversion_action.type, conversion_action.status
+        FROM conversion_action
+        WHERE conversion_action.id = {int(conversion_action_id)}
+        LIMIT 1
+    """
+    rows = ctx.client.search(customer_id, query)
+    if not rows:
+        raise ValueError(
+            f"Conversion action {conversion_action_id} was not found or is not accessible."
+        )
+    action = rows[0].get("conversion_action", {})
+    if action.get("type") != "UPLOAD_CALLS":
+        raise ValueError(
+            f"Conversion action {conversion_action_id} is type {action.get('type')!r}; "
+            "call conversion uploads require UPLOAD_CALLS."
+        )
+    if action.get("status") != "ENABLED":
+        raise ValueError(
+            f"Conversion action {conversion_action_id} is not ENABLED "
+            f"(status={action.get('status')!r})."
+        )
+
+
+def _build_call_conversion(
+    client,
+    customer_id: str,
+    conversion_action_id: str,
+    caller_id: str,
+    call_start_date_time: str,
+    conversion_date_time: str,
+    conversion_value: float | None,
+    currency_code: str,
+    consent: str | None,
+):
+    call_conversion = client.get_type("CallConversion")
+    call_conversion.conversion_action = client.get_service(
+        "ConversionActionService"
+    ).conversion_action_path(customer_id.replace("-", ""), conversion_action_id)
+    call_conversion.caller_id = caller_id.strip().lstrip("+")
+    call_conversion.call_start_date_time = call_start_date_time.strip()
+    call_conversion.conversion_date_time = conversion_date_time.strip()
+    if conversion_value is not None:
+        call_conversion.conversion_value = conversion_value
+        call_conversion.currency_code = currency_code.upper()
+    if consent is not None:
+        # v25 models consent as a message with separate ad-data and
+        # ad-personalization flags, both using ConsentStatusEnum.
+        call_conversion.consent.ad_user_data = client.enums.ConsentStatusEnum[
+            consent
+        ].value
+        call_conversion.consent.ad_personalization = client.enums.ConsentStatusEnum[
+            consent
+        ].value
+    return call_conversion
+
+
+def _upload_call_conversion(service, customer_id: str, call_conversion):
+    """Upload one call conversion and turn partial row failures into errors."""
+    response = service.upload_call_conversions(
+        customer_id=customer_id.replace("-", ""),
+        conversions=[call_conversion],
+        partial_failure=True,
+    )
+    partial_error = getattr(response, "partial_failure_error", None)
+    if partial_error is not None:
+        code = int(getattr(partial_error, "code", 0) or 0)
+        message = str(getattr(partial_error, "message", "") or "").strip()
+        if code or message:
+            detail = f"code={code}" + (f", {message}" if message else "")
+            raise GoogleAdsMcpError(f"Google Ads rejected the conversion upload ({detail}).")
+    return response
+
+
+def _mask_caller_id(caller_id: str) -> str:
+    """Mask everything but the last four digits of a phone number."""
+    digits = re.sub(r"\D", "", str(caller_id))
+    if len(digits) <= 4:
+        return "*" * len(digits)
+    return "*" * (len(digits) - 4) + digits[-4:]
