@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "google-ads-mcp"
-version = "0.16.4"
+version = "0.16.5"
 description = "Production-grade read/write MCP server for Google Ads API v25 with confirmation, audit, durable replay, and MCC customer isolation."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -26,6 +26,10 @@ def _build_ctx_with_upload_service(captured: dict, search_rows=None):
             captured.update(kwargs)
             return SimpleNamespace(partial_failure_error=None)
 
+        def upload_click_conversions(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(partial_failure_error=None)
+
     def fake_mutate(*args, **kwargs):
         raise AssertionError("call conversion uploads must not use ctx.client.mutate")
 
@@ -64,6 +68,70 @@ def test_upload_call_conversion_validates_consent():
             conversion_date_time="2026-08-20 15:35:00+00:00",
             consent="MAYBE",
         )
+
+
+_UPLOAD_CLICKS_ACTION = [
+    {
+        "conversion_action": {
+            "id": 777,
+            "type": "UPLOAD_CLICKS",
+            "status": "ENABLED",
+        }
+    }
+]
+
+
+def test_upload_offline_conversion_validates_consent():
+    ctx = build_ctx(lambda *a, **k: None)
+    tool_fns = register_module(tools.conversions, ctx)
+
+    with pytest.raises(ValueError, match="consent must be GRANTED or DENIED"):
+        tool_fns["upload_offline_conversion"](
+            customer_id="123",
+            conversion_action_id="777",
+            gclid="abc123",
+            conversion_date_time="2026-08-20 15:30:00+00:00",
+            conversion_value=10.0,
+            consent="MAYBE",
+        )
+
+
+def test_upload_offline_conversion_writes_consent_message():
+    captured = {}
+    ctx = _build_ctx_with_upload_service(captured, search_rows=_UPLOAD_CLICKS_ACTION)
+    tool_fns = register_module(tools.conversions, ctx)
+    result = tool_fns["upload_offline_conversion"](
+        customer_id="123",
+        conversion_action_id="777",
+        gclid="abc123",
+        conversion_date_time="2026-08-20 15:30:00+00:00",
+        conversion_value=10.0,
+        consent="GRANTED",
+    )
+
+    assert result["status"] == "executed"
+    (click_conversion,) = captured["conversions"]
+    assert click_conversion.consent.ad_user_data == 2  # GRANTED
+    assert click_conversion.consent.ad_personalization == 2  # GRANTED
+
+
+def test_upload_enhanced_conversion_writes_consent_message():
+    captured = {}
+    ctx = _build_ctx_with_upload_service(captured, search_rows=_UPLOAD_CLICKS_ACTION)
+    tool_fns = register_module(tools.conversions, ctx)
+    result = tool_fns["upload_enhanced_conversion"](
+        customer_id="123",
+        conversion_action_id="777",
+        gclid="abc123",
+        conversion_date_time="2026-08-20 15:30:00+00:00",
+        email="persona@example.com",
+        consent="DENIED",
+    )
+
+    assert result["status"] == "executed"
+    (click_conversion,) = captured["conversions"]
+    assert click_conversion.consent.ad_user_data == 3  # DENIED
+    assert click_conversion.consent.ad_personalization == 3  # DENIED
 
 
 def test_upload_call_conversion_requires_upload_calls_action():

@@ -182,6 +182,46 @@ def register(mcp, ctx: AppContext) -> None:
         )
 
     @mcp.tool()
+    def set_campaign_ad_rotation(
+        customer_id: str, campaign_id: str, rotation: str
+    ) -> dict:
+        """Propose changing how ads are rotated within a campaign.
+
+        ``rotation`` values: ``OPTIMIZE`` (favor ads expected to perform
+        better), ``CONVERSION_OPTIMIZE`` (optimize for conversions),
+        ``ROTATE`` (evenly for 90 days, then optimize) or
+        ``ROTATE_INDEFINITELY`` (rotate evenly forever).
+        """
+        valid = {"OPTIMIZE", "CONVERSION_OPTIMIZE", "ROTATE", "ROTATE_INDEFINITELY"}
+        if rotation not in valid:
+            raise ValueError(
+                f"rotation must be one of {sorted(valid)}, got {rotation!r}."
+            )
+        client = ctx.client.raw
+        operation = client.get_type("CampaignOperation")
+        operation.update.resource_name = client.get_service("CampaignService").campaign_path(
+            customer_id.replace("-", ""), campaign_id
+        )
+        operation.update.ad_serving_optimization_status = (
+            client.enums.AdServingOptimizationStatusEnum[rotation].value
+        )
+        operation.update_mask.CopyFrom(
+            field_mask_pb2.FieldMask(paths=["ad_serving_optimization_status"])
+        )
+        description = f"Set ad rotation on campaign {campaign_id} -> {rotation}"
+
+        def execute():
+            return ctx.client.mutate("CampaignService", customer_id, [operation])
+
+        return ctx.safety.propose(
+            tool_name="set_campaign_ad_rotation",
+            customer_id=customer_id,
+            description=description,
+            payload={"campaign_id": campaign_id, "rotation": rotation},
+            execute=execute,
+        )
+
+    @mcp.tool()
     def remove_campaign(customer_id: str, campaign_id: str) -> dict:
         """Propose permanently removing a campaign."""
         client = ctx.client.raw

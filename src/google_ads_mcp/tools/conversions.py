@@ -109,17 +109,21 @@ def register(mcp, ctx: AppContext) -> None:
         phone_number: str | None = None,
         conversion_value: float | None = None,
         currency_code: str = "USD",
+        consent: str | None = None,
     ) -> dict:
         """Propose uploading an enhanced offline click conversion.
 
         The conversion action must be ENABLED and type ``UPLOAD_CLICKS``.
         Email and phone are normalized according to Google's enhanced-conversion
         rules and SHA-256 hashed locally; raw identifiers are never included in
-        the audit payload.
+        the audit payload. ``consent`` (``GRANTED``/``DENIED``) applies to both
+        ad-data and ad-personalization for EEA conversions where consent is
+        required.
         """
         if not email and not phone_number:
             raise ValueError("Provide at least one of email or phone_number.")
         _validate_click_upload_inputs(gclid, conversion_date_time, conversion_value)
+        _validate_consent(consent)
         _ensure_upload_click_action(ctx, customer_id, conversion_action_id)
 
         normalized_phone = _normalize_e164(phone_number) if phone_number else None
@@ -136,6 +140,7 @@ def register(mcp, ctx: AppContext) -> None:
             conversion_date_time,
             conversion_value,
             currency_code,
+            consent=consent,
         )
 
         if hashed_email:
@@ -173,6 +178,7 @@ def register(mcp, ctx: AppContext) -> None:
             payload={
                 "conversion_action_id": conversion_action_id,
                 "gclid_prefix": gclid[:12],
+                "consent": consent,
                 "conversion_date_time": conversion_date_time,
                 "has_email": bool(email),
                 "has_phone": bool(phone_number),
@@ -271,12 +277,16 @@ def register(mcp, ctx: AppContext) -> None:
         conversion_date_time: str,
         conversion_value: float,
         currency_code: str = "USD",
+        consent: str | None = None,
     ) -> dict:
         """Propose uploading an offline click conversion.
 
         The target conversion action must be ENABLED and type ``UPLOAD_CLICKS``.
+        ``consent`` (``GRANTED``/``DENIED``) applies to both ad-data and
+        ad-personalization for EEA conversions where consent is required.
         """
         _validate_click_upload_inputs(gclid, conversion_date_time, conversion_value)
+        _validate_consent(consent)
         _ensure_upload_click_action(ctx, customer_id, conversion_action_id)
 
         client = ctx.client.raw
@@ -289,6 +299,7 @@ def register(mcp, ctx: AppContext) -> None:
             conversion_date_time,
             conversion_value,
             currency_code,
+            consent=consent,
         )
         description = (
             f"Upload offline conversion: action {conversion_action_id}, "
@@ -312,6 +323,7 @@ def register(mcp, ctx: AppContext) -> None:
                 "conversion_date_time": conversion_date_time,
                 "conversion_value": conversion_value,
                 "currency_code": currency_code.upper(),
+                "consent": consent,
             },
             execute=execute,
         )
@@ -532,6 +544,8 @@ def _build_click_conversion(
     conversion_date_time: str,
     conversion_value: float | None,
     currency_code: str,
+    *,
+    consent: str | None = None,
 ):
     click_conversion = client.get_type("ClickConversion")
     click_conversion.conversion_action = client.get_service(
@@ -542,7 +556,21 @@ def _build_click_conversion(
     if conversion_value is not None:
         click_conversion.conversion_value = conversion_value
         click_conversion.currency_code = currency_code.upper()
+    if consent is not None:
+        # v25 models consent as a message with separate ad-data and
+        # ad-personalization flags, both using ConsentStatusEnum.
+        click_conversion.consent.ad_user_data = client.enums.ConsentStatusEnum[
+            consent
+        ].value
+        click_conversion.consent.ad_personalization = client.enums.ConsentStatusEnum[
+            consent
+        ].value
     return click_conversion
+
+
+def _validate_consent(consent: str | None) -> None:
+    if consent is not None and consent not in {"GRANTED", "DENIED"}:
+        raise ValueError("consent must be GRANTED or DENIED.")
 
 
 def _validate_click_upload_inputs(
