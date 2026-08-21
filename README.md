@@ -13,7 +13,7 @@ Built by [**Akela**](https://github.com/akelaonline)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Google Ads API v25](https://img.shields.io/badge/Google%20Ads%20API-v25-4285F4.svg)](https://developers.google.com/google-ads/api)
-[![Version](https://img.shields.io/badge/version-0.16.3-informational.svg)](docs/RELEASE_0.16.3.md)
+[![Version](https://img.shields.io/badge/version-0.16.7-informational.svg)](docs/RELEASE_0.16.7.md)
 
 [Quick start](#quick-start) · [Safety](#safety-by-default) · [Validation](#validation-before-production) · [Coverage](docs/V25_SERVICE_COVERAGE.md) · [Docs](#documentation)
 
@@ -41,18 +41,24 @@ GOOGLE_ADS_MCP_READ_ONLY=true
 
 Read-only keeps reporting/GAQL/audit inspection available but blocks both new write proposals and confirmation of previously pending actions.
 
-## Current validation target: 0.16.3
+## Current version: 0.16.7
 
-**0.16.3 is the version to test. Do not replace a known-good production MCP with 0.16.0, 0.16.1, or 0.16.2.**
+**0.16.7 is the current version. Do not replace a known-good production MCP with 0.16.0, 0.16.1, or 0.16.2.**
 
-The v0.16 line was deliberately validated iteratively in a real local dependency environment:
+The v0.16 line was validated iteratively in a real local dependency environment:
 
 - **0.16.0**: failed server/tool import because `from_micros()` was missing; recursive MCC isolation also missed protobuf map/`Struct` values.
 - **0.16.1**: restored server startup and fixed the recursive walker. A clean local run then collected **231 tests**, exposing 13 stale test-double failures and FastMCP warnings for duplicate public tool registration.
 - **0.16.2**: synchronized the test clients with the production isolation contract and made public tool ownership deterministic. A clean local run then built the server cleanly (0 duplicate-tool warnings) but still reported 3 stale-fixture pytest failures and 22 Ruff findings.
 - **0.16.3**: resolves the remaining 3 pytest failures and all 22 Ruff findings without weakening any safety or isolation behavior. `python scripts/validate_local.py` is green end-to-end (smoke, Ruff, 232/232 pytest) against this version.
+- **0.16.4** (PR #9): closes the functional gaps — ad schedule update/remove, tracking URL options (account/campaign/ad group), call conversion uploads, app campaigns (v25 `MULTI_CHANNEL` + `app_campaign_setting`), Dynamic Search Ads (campaign + `SEARCH_DYNAMIC_ADS` ad groups + webpage targets). Also fixes four latent v25 contract bugs (`STANDARD_SHOPPING` channel sub-type, `mutate_customers`→`mutate_customer`, `mutate_bidding_strategys`→`mutate_bidding_strategies`, removed `TopicConstantService`) and adds `tests/test_v25_contract_sweep.py`, which verifies every service/mutate method the codebase uses against the real v25 stubs.
+- **0.16.5** (PR #10): expert-scope additions — GDPR `consent` on offline/enhanced uploads, `get_impression_share_report` (incl. lost-IS budget/rank), Standard Shopping listing groups (product-group trees), `set_campaign_ad_rotation`.
+- **0.16.6** (PR #11): extended assets (lead form, price, location, mobile app, app deep link), positive placement targeting, frequency caps, audience exclusions at campaign/ad-group level, conversion custom variables on uploads. Fixes the latent `AssetFieldType "IMAGE"` → `MARKETING_IMAGE` contract bug.
+- **0.16.7** (PR #12): minor gaps — `set_campaign_excluded_asset_field_types`, `update_campaign_dates`, change-history filters (`resource_type`/`operation`/`user_email`), `cpc_bid_ceiling`/`cpc_bid_floor` on Target CPA/ROAS.
 
-See [`docs/RELEASE_0.16.3.md`](docs/RELEASE_0.16.3.md).
+`python scripts/validate_local.py` is green end-to-end (smoke, Ruff, **341/341 pytest**) against 0.16.7.
+
+See [`docs/RELEASE_0.16.7.md`](docs/RELEASE_0.16.7.md) and the per-version release notes for 0.16.4–0.16.6 in [`docs/`](docs/).
 
 ### Deterministic public tool ownership
 
@@ -125,13 +131,13 @@ Use one running MCP process per `audit.db`; the pending-action lock is process-l
 | Domain | Coverage |
 |---|---|
 | Accounts & MCC | discovery/hierarchy, manager/client links, users/roles/invitations, customer settings |
-| Reporting | campaigns, ad groups, ads, keywords, search terms, devices, geo, assets, audiences, shopping, change history, raw GAQL |
-| Campaigns | Search, Standard Shopping, Performance Max, Demand Gen, Smart Campaigns |
-| Budgets & bidding | budget lifecycle, Manual CPC, Max Clicks/Conversions/Value, CPA/ROAS/Impression Share, portfolio bidding, bid modifiers |
-| Ads & assets | RSA, Responsive Display, Demand Gen, images/video/calls/sitelinks/callouts/snippets/promotions/Business Message/WhatsApp |
-| Keywords & targeting | lifecycle, bids, match types, negatives, shared/account exclusions, location/language/device/audience/topic targeting |
+| Reporting | campaigns, ad groups, ads, keywords, search terms, devices, geo, assets, audiences, shopping, impression share / lost-IS, change history (with filters), raw GAQL |
+| Campaigns | Search, Standard Shopping (incl. listing groups), Performance Max, Demand Gen, **App campaigns (ACi/ACe)**, **Dynamic Search Ads**, Smart Campaigns, ad rotation, frequency caps, campaign dates, extension-inheritance controls |
+| Budgets & bidding | budget lifecycle, Manual CPC, Max Clicks/Conversions/Value, CPA/ROAS/Impression Share (+ CPC ceiling/floor), portfolio bidding, bid modifiers |
+| Ads & assets | RSA, Responsive Display, Demand Gen, images/video/calls/sitelinks/callouts/snippets/promotions/Business Message/WhatsApp/**lead form/price/location/mobile app/deep link** |
+| Keywords & targeting | lifecycle, bids, match types, negatives, shared/account exclusions, location/language/device/audience/topic targeting, **positive placements**, **audience exclusions**, ad schedules (add/update/remove), tracking URL options |
 | Audiences | remarketing, UserList, Customer Match, Audience, CustomAudience, CustomInterest |
-| Conversions & goals | actions, offline/enhanced uploads, adjustments, custom variables, value rules/sets, unified v25 goals |
+| Conversions & goals | actions, offline/**call**/enhanced uploads (**GDPR consent**, **custom variables**), adjustments, custom variables, value rules/sets, unified v25 goals |
 | Performance Max | campaign/asset groups/assets, signals, SHOPPING/RETAIL/WEBPAGE listing filters, brand guidelines, previews |
 | Experiments | lifecycle, arms, schedule/errors/promote/graduate/end, atomic traffic split updates |
 | Batch / Smart Bidding | controlled Batch Jobs, seasonality adjustments, data exclusions |
@@ -206,7 +212,7 @@ Only proceed when it ends with:
 ```text
 LOCAL VALIDATION GREEN
 validated commit: <sha>
-validated version: 0.16.3
+validated version: 0.16.7
 ```
 
 Then follow [`docs/VALIDATION_CHECKLIST.md`](docs/VALIDATION_CHECKLIST.md) for the live-account sequence: read-only checks, MCC isolation, propose/cancel, propose/confirm, durable restart replay, cross-customer blocking, legitimate manager/client linking, risk boundaries and double-confirm behavior.
@@ -226,6 +232,10 @@ This MCP wraps Google Ads API, not every adjacent Google advertising product.
 
 ## Documentation
 
+- [0.16.7 release notes](docs/RELEASE_0.16.7.md)
+- [0.16.6 release notes](docs/RELEASE_0.16.6.md)
+- [0.16.5 release notes](docs/RELEASE_0.16.5.md)
+- [0.16.4 release notes](docs/RELEASE_0.16.4.md)
 - [0.16.3 release / re-test notes](docs/RELEASE_0.16.3.md)
 - [Safe local update procedure](docs/UPDATE_LOCAL.md)
 - [Production validation checklist](docs/VALIDATION_CHECKLIST.md)
