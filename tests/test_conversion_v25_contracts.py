@@ -51,6 +51,22 @@ class _RawProxy:
         return self._client.copy_from(target, source)
 
 
+def _normalize_customer(customer_id: str) -> str:
+    value = str(customer_id).replace("-", "").strip()
+    if not value.isdigit():
+        raise ValueError("customer_id must be numeric")
+    return value
+
+
+def _assert_owned(customer_id: str, resource_name: str, **kwargs) -> str:
+    customer = _normalize_customer(customer_id)
+    value = str(resource_name).strip()
+    root = f"customers/{customer}"
+    if value != root and not value.startswith(root + "/"):
+        raise ValueError("resource belongs to another customer")
+    return value
+
+
 def _ctx(action_type="UPLOAD_CLICKS", action_status="ENABLED"):
     raw = _RawProxy()
     mutations = []
@@ -73,7 +89,13 @@ def _ctx(action_type="UPLOAD_CLICKS", action_status="ENABLED"):
             ]
         return []
 
-    client = SimpleNamespace(raw=raw, mutate=mutate, search=search)
+    client = SimpleNamespace(
+        raw=raw,
+        mutate=mutate,
+        search=search,
+        assert_customer_allowed=_normalize_customer,
+        assert_resource_name_customer=_assert_owned,
+    )
     audit = FakeAuditLog()
     safety = SafetyLayer(auto_approve=True, ttl_minutes=30, audit_log=audit)
     return (
