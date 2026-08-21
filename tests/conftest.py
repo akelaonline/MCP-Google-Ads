@@ -378,6 +378,27 @@ class FakeRawClient:
         return None
 
 
+def _normalize_customer_id(customer_id: str) -> str:
+    value = str(customer_id).replace("-", "").strip()
+    if not value.isdigit():
+        raise ValueError("customer_id must be numeric with optional dashes")
+    return value
+
+
+def _assert_resource_name_customer(
+    customer_id: str,
+    resource_name: str,
+    *,
+    field_name: str = "resource_name",
+) -> str:
+    customer = _normalize_customer_id(customer_id)
+    value = str(resource_name).strip()
+    root = f"customers/{customer}"
+    if value != root and not value.startswith(root + "/"):
+        raise ValueError(f"{field_name} belongs to another customer")
+    return value
+
+
 def build_ctx(
     mutate_side_effect,
     extra_services: dict | None = None,
@@ -404,6 +425,8 @@ def build_ctx(
         mutate=mutate_side_effect,
         mutate_atomic=mutate_atomic,
         search=fake_search,
+        assert_customer_allowed=_normalize_customer_id,
+        assert_resource_name_customer=_assert_resource_name_customer,
     )
     safety = SafetyLayer(auto_approve=True, ttl_minutes=30, audit_log=FakeAuditLog())
     return AppContext(
