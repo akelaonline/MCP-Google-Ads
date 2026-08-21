@@ -44,9 +44,9 @@ propose/confirm/audit safety layer.
 | AdGroupCriterionService | Integrated | keywords, audiences, bids, negatives |
 | AdGroupCustomizerService | Integrated | ad-group customizers |
 | AdGroupLabelService | Integrated | ad-group labels |
-| AdGroupService | Integrated | ad-group lifecycle |
+| AdGroupService | Integrated | ad-group lifecycle, DSA ad groups, tracking URL options |
 | AdParameterService | Integrated | `{param1}` / `{param2}` ad parameters |
-| AdService | Integrated | RSA creative edits and supported ad operations |
+| AdService | Integrated | RSA creative edits and supported ad operations. `generate_preview` does not exist in v25 (verified against the v25 stubs); previews are covered by ShareablePreviewService instead |
 | AssetGenerationService | Integrated / access-controlled | GenerateText + GenerateImages; Google closed beta |
 | AssetGroupAssetService | Integrated | Performance Max asset links |
 | AssetGroupListingGroupFilterService | Integrated | SHOPPING, RETAIL Product Tags, WEBPAGE filters |
@@ -70,20 +70,20 @@ propose/confirm/audit safety layer.
 | CampaignBidModifierService | Integrated | CALLS interaction modifier read/update/remove |
 | CampaignBudgetService | Integrated | daily/shared budgets |
 | CampaignConversionGoalService | Integrated | campaign goal biddability |
-| CampaignCriterionService | Integrated | targeting, negatives, schedules, geo, languages |
+| CampaignCriterionService | Integrated | targeting, negatives, schedules (add/update/remove), geo, languages, webpage (DSA) targets |
 | CampaignCustomizerService | Integrated | campaign customizers |
 | CampaignDraftService | Integrated | create/rename/promote/errors/remove |
 | CampaignGoalConfigService | Integrated | v25 goal config |
 | CampaignGroupService | Integrated | campaign-group lifecycle |
 | CampaignLabelService | Integrated | campaign labels |
-| CampaignService | Integrated | campaign lifecycle + EnablePMaxBrandGuidelines |
+| CampaignService | Integrated | campaign lifecycle, app campaigns (MULTI_CHANNEL + app_campaign_setting), DSA campaigns (dynamic_search_ads_setting), tracking URL options, EnablePMaxBrandGuidelines |
 | CampaignSharedSetService | Integrated | shared negative-list attachment |
 | ContentCreatorInsightsService | Integrated / access-controlled | creator + trending insights; Google allowlist required |
 | ConversionActionService | Integrated | conversion-action lifecycle |
 | ConversionAdjustmentUploadService | Integrated | retractions/restatements |
 | ConversionCustomVariableService | Integrated | custom-variable lifecycle |
 | ConversionGoalCampaignConfigService | Integrated | conversion-goal campaign config |
-| ConversionUploadService | Integrated | offline/enhanced conversions |
+| ConversionUploadService | Integrated | offline/enhanced/call conversions |
 | ConversionValueRuleService | Integrated | value-rule lifecycle |
 | ConversionValueRuleSetService | Integrated | value-rule-set lifecycle |
 | CustomAudienceService | Integrated | CustomAudience lifecycle |
@@ -97,7 +97,7 @@ propose/confirm/audit safety layer.
 | CustomerLabelService | Integrated | manager/customer labels |
 | CustomerManagerLinkService | Integrated | accept/decline/move/unlink manager relationships using the v25 singular mutate RPC with `operations[]` |
 | CustomerNegativeCriterionService | Integrated | account-level placement/app/content/IP/shared-list exclusions |
-| CustomerService | Integrated | accessible customers, create client, mutable operational settings |
+| CustomerService | Integrated | accessible customers, create client, mutable operational settings, tracking URL options |
 | CustomerSkAdNetworkConversionValueSchemaService | Integrated / specialized | schema visibility via GAQL + capability explanation; generic mutation intentionally not exposed because the public v25 resource documents `schema` as output-only |
 | CustomerUserAccessInvitationService | Integrated | user invitations |
 | CustomerUserAccessService | Integrated | roles/access removal |

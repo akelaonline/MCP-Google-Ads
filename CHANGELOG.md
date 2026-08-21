@@ -2,6 +2,28 @@
 
 Google Ads MCP follows Semantic Versioning. Detailed release notes for production releases live in `docs/RELEASE_X.Y.Z.md`.
 
+## 0.16.4 — 2026-08-21
+
+### Added
+- **Ad schedule update/remove**: `update_ad_schedule` and `remove_ad_schedule` complement the existing `add_ad_schedule` (daypart criteria can now be edited or deleted, not only created).
+- **Tracking URL / URL options**: new `url_options` module with `set_campaign_tracking_url`, `set_ad_group_tracking_url` and `set_account_tracking_url` (v25 `tracking_url_template`, `final_url_suffix`, `url_custom_parameters`), plus matching read tools `get_campaign_tracking_url`, `get_ad_group_tracking_url` and `get_account_tracking_url`.
+- **Call conversion uploads**: `upload_call_conversion` via `ConversionUploadService.upload_call_conversions` (UPLOAD_CALLS actions), with caller-id masking in payloads/descriptions, E.164 validation, optional consent (v25 `Consent` message with `ad_user_data`/`ad_personalization` flags) and partial-failure surfacing.
+- **App campaigns**: new `app_campaigns` module with `create_app_campaign` (ACi/ACe) using v25 `MULTI_CHANNEL` channel + `APP_CAMPAIGN`/`APP_CAMPAIGN_FOR_ENGAGEMENT` sub-type, `app_campaign_setting` (app store, bidding strategy goal type) and goal-validated bidding (target CPA / target ROAS / Maximize Conversions / Maximize Conversion Value). `create_ad_group` with `ad_group_type='AUTO'` now handles app campaigns (no ad-group type, like Demand Gen).
+- **Dynamic Search Ads**: new `dynamic_search_ads` module with `create_dsa_campaign` (SEARCH channel + `dynamic_search_ads_setting`, no longer relying on the removed SEARCH_DYNAMIC_ADS channel sub-type), `create_dsa_ad_group` (`AdGroupType.SEARCH_DYNAMIC_ADS`), `add_webpage_target` (URL/CATEGORY/PAGE_TITLE/PAGE_CONTENT/CUSTOM_LABEL conditions with EQUALS/CONTAINS) and `list_webpage_targets`.
+
+### Fixed
+- `create_shopping_campaign` no longer writes `advertising_channel_sub_type = STANDARD_SHOPPING`: v25 removed that enum value (verified against the v25 proto and field reference). Standard Shopping is identified by SHOPPING channel + `shopping_setting`; this was a latent production bug that only a live-account call would have surfaced.
+- The fake `AdvertisingChannelSubTypeEnum` and `MinuteOfHourEnum` in `tests/conftest.py` now mirror real v25 values (APP_CAMPAIGN=12, APP_CAMPAIGN_FOR_ENGAGEMENT=13, `MinuteOfHour.ZERO=2`).
+
+### Known boundary
+- Standard ad previews (`AdService.generate_preview`) do not exist in v25 — the RPC was removed from the API (verified against the v25 service stubs: only `mutate_ads` remains). PMax shareable previews (`generate_pmax_shareable_previews`) and YouTube previews remain the supported preview surfaces. This is documented, not emulated.
+
+### Validation
+- `python scripts/validate_local.py` green end-to-end: isolated smoke (53 tool modules, zero duplicate-tool warnings), Ruff clean, pytest **277/277 passed** (45 new tests, including v25 contract tests that build real protobuf messages and update masks).
+- Live Google Ads API credentials and a real account were still not exercised; live-account E2E remains a separate step.
+
+See `docs/RELEASE_0.16.4.md`.
+
 ## 0.16.3 — 2026-08-21
 
 ### Fixed

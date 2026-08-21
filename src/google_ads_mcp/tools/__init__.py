@@ -7,6 +7,7 @@ from . import (
     ad_groups,
     ads,
     advanced_audiences,
+    app_campaigns,
     asset_generation_optional,
     asset_links_bid_modifiers,
     asset_set_management,
@@ -27,6 +28,7 @@ from . import (
     customizers,
     data_links,
     data_manager,
+    dynamic_search_ads,
     experiment_arm_batch,
     experiments,
     keyword_forecast,
@@ -50,6 +52,7 @@ from . import (
     smart_bidding_controls,
     smart_campaigns,
     targeting,
+    url_options,
     youtube_uploads,
 )
 
@@ -69,6 +72,8 @@ ALL_MODULES = [
     campaign_admin,
     campaign_types,
     smart_campaigns,
+    app_campaigns,
+    dynamic_search_ads,
     remaining_core_services,
     experiment_arm_batch,
     budgets,
@@ -104,4 +109,5 @@ ALL_MODULES = [
     pmax_admin,
     pmax_signals_listing,
     recommendations,
+    url_options,
 ]

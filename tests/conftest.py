@@ -87,6 +87,7 @@ class AdGroupTypeEnum(enum.Enum):
     VIDEO_TRUE_VIEW_IN_STREAM = 9
     VIDEO_TRUE_VIEW_IN_DISPLAY = 10
     VIDEO_NON_SKIPPABLE_IN_STREAM = 11
+    SEARCH_DYNAMIC_ADS = 13
     VIDEO_RESPONSIVE = 16
 
 
@@ -116,13 +117,15 @@ class AdvertisingChannelTypeEnum(enum.Enum):
     SEARCH = 2
     DISPLAY = 3
     SHOPPING = 4
+    MULTI_CHANNEL = 7
     PERFORMANCE_MAX = 13
     DEMAND_GEN = 14
 
 
 class AdvertisingChannelSubTypeEnum(enum.Enum):
     UNSPECIFIED = 0
-    STANDARD_SHOPPING = 8
+    APP_CAMPAIGN = 12
+    APP_CAMPAIGN_FOR_ENGAGEMENT = 13
 
 
 class EuPoliticalAdvertisingStatusEnum(enum.Enum):
@@ -237,10 +240,11 @@ class DayOfWeekEnum(enum.Enum):
 
 class MinuteOfHourEnum(enum.Enum):
     UNSPECIFIED = 0
-    ZERO = 1
-    FIFTEEN = 2
-    THIRTY = 3
-    FORTY_FIVE = 4
+    UNKNOWN = 1
+    ZERO = 2
+    FIFTEEN = 3
+    THIRTY = 4
+    FORTY_FIVE = 5
 
 
 class DeviceEnum(enum.Enum):
@@ -271,6 +275,43 @@ class ConsentStatusEnum(enum.Enum):
     UNKNOWN = 1
     GRANTED = 2
     DENIED = 3
+
+
+class AppCampaignAppStoreEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    APPLE_APP_STORE = 2
+    GOOGLE_APP_STORE = 3
+
+
+class AppCampaignBiddingStrategyGoalTypeEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    OPTIMIZE_INSTALLS_TARGET_INSTALL_COST = 2
+    OPTIMIZE_IN_APP_CONVERSIONS_TARGET_INSTALL_COST = 3
+    OPTIMIZE_IN_APP_CONVERSIONS_TARGET_CONVERSION_COST = 4
+    OPTIMIZE_RETURN_ON_ADVERTISING_SPEND = 5
+    OPTIMIZE_PRE_REGISTRATION_CONVERSION_VOLUME = 6
+    OPTIMIZE_INSTALLS_WITHOUT_TARGET_INSTALL_COST = 7
+    OPTIMIZE_IN_APP_CONVERSIONS_WITHOUT_TARGET_CPA = 8
+    OPTIMIZE_TOTAL_VALUE_WITHOUT_TARGET_ROAS = 9
+
+
+class WebpageConditionOperandEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    URL = 2
+    CATEGORY = 3
+    PAGE_TITLE = 4
+    PAGE_CONTENT = 5
+    CUSTOM_LABEL = 6
+
+
+class WebpageConditionOperatorEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    EQUALS = 2
+    CONTAINS = 3
 
 
 class FakeEnums:
@@ -307,6 +348,10 @@ class FakeEnums:
     ExperimentTypeEnum = ExperimentTypeEnum
     ExperimentStatusEnum = ExperimentStatusEnum
     ConsentStatusEnum = ConsentStatusEnum
+    AppCampaignAppStoreEnum = AppCampaignAppStoreEnum
+    AppCampaignBiddingStrategyGoalTypeEnum = AppCampaignBiddingStrategyGoalTypeEnum
+    WebpageConditionOperandEnum = WebpageConditionOperandEnum
+    WebpageConditionOperatorEnum = WebpageConditionOperatorEnum
 
 
 class AutoVivify:
