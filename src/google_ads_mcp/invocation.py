@@ -21,9 +21,10 @@ silently relying on registration order.
 from __future__ import annotations
 
 import inspect
+from collections.abc import Callable
 from contextvars import ContextVar
 from functools import wraps
-from typing import Any, Callable
+from typing import Any
 
 _REPLAY_TOOL_ARGUMENT = "__google_ads_mcp_replay_tool_name__"
 

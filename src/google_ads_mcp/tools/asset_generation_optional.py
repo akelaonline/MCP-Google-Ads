@@ -19,7 +19,7 @@ from ..errors import GoogleAdsMcpError, format_google_ads_exception
 def _generate(ctx: AppContext, customer_id: str, request_type: str, method: str, payload: dict) -> dict:
     customer = ctx.client.assert_customer_allowed(customer_id)
     if not isinstance(payload, dict):
-        raise ValueError("request must be a protobuf-JSON object.")
+        raise TypeError("request must be a protobuf-JSON object.")
     if "customer_id" in payload or "customerId" in payload:
         raise ValueError("Do not put customer_id in request; use the customer_id tool argument.")
 

@@ -45,7 +45,7 @@ def _depth(resource: str, parent_map: dict[str, str | None]) -> int:
     depth = 0
     seen: set[str] = set()
     current = resource
-    while current in parent_map and parent_map[current]:
+    while parent_map.get(current):
         if current in seen:
             raise GoogleAdsMcpError("Existing listing-group tree contains a cycle.")
         seen.add(current)

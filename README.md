@@ -13,7 +13,7 @@ Built by [**Akela**](https://github.com/akelaonline)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Google Ads API v25](https://img.shields.io/badge/Google%20Ads%20API-v25-4285F4.svg)](https://developers.google.com/google-ads/api)
-[![Version](https://img.shields.io/badge/version-0.16.2-informational.svg)](docs/RELEASE_0.16.2.md)
+[![Version](https://img.shields.io/badge/version-0.16.3-informational.svg)](docs/RELEASE_0.16.3.md)
 
 [Quick start](#quick-start) · [Safety](#safety-by-default) · [Validation](#validation-before-production) · [Coverage](docs/V25_SERVICE_COVERAGE.md) · [Docs](#documentation)
 
@@ -41,21 +41,22 @@ GOOGLE_ADS_MCP_READ_ONLY=true
 
 Read-only keeps reporting/GAQL/audit inspection available but blocks both new write proposals and confirmation of previously pending actions.
 
-## Current validation target: 0.16.2
+## Current validation target: 0.16.3
 
-**0.16.2 is the version to test. Do not replace a known-good production MCP with 0.16.0 or 0.16.1.**
+**0.16.3 is the version to test. Do not replace a known-good production MCP with 0.16.0, 0.16.1, or 0.16.2.**
 
 The v0.16 line was deliberately validated iteratively in a real local dependency environment:
 
 - **0.16.0**: failed server/tool import because `from_micros()` was missing; recursive MCC isolation also missed protobuf map/`Struct` values.
 - **0.16.1**: restored server startup and fixed the recursive walker. A clean local run then collected **231 tests**, exposing 13 stale test-double failures and FastMCP warnings for duplicate public tool registration.
-- **0.16.2**: synchronizes the test clients with the production isolation contract and makes public tool ownership deterministic. It is the current **re-test candidate**, not a claim that the suite has already passed.
+- **0.16.2**: synchronized the test clients with the production isolation contract and made public tool ownership deterministic. A clean local run then built the server cleanly (0 duplicate-tool warnings) but still reported 3 stale-fixture pytest failures and 22 Ruff findings.
+- **0.16.3**: resolves the remaining 3 pytest failures and all 22 Ruff findings without weakening any safety or isolation behavior. `python scripts/validate_local.py` is green end-to-end (smoke, Ruff, 232/232 pytest) against this version.
 
-See [`docs/RELEASE_0.16.2.md`](docs/RELEASE_0.16.2.md).
+See [`docs/RELEASE_0.16.3.md`](docs/RELEASE_0.16.3.md).
 
 ### Deterministic public tool ownership
 
-The local re-test identified legacy/new implementations competing for the same names. 0.16.2 explicitly assigns the v25-complete runtime owners:
+The local re-test identified legacy/new implementations competing for the same names. 0.16.2 explicitly assigned the v25-complete runtime owners, unchanged in 0.16.3:
 
 ```text
 list_asset_group_signals             -> pmax_signals_listing.py
@@ -205,7 +206,7 @@ Only proceed when it ends with:
 ```text
 LOCAL VALIDATION GREEN
 validated commit: <sha>
-validated version: 0.16.2
+validated version: 0.16.3
 ```
 
 Then follow [`docs/VALIDATION_CHECKLIST.md`](docs/VALIDATION_CHECKLIST.md) for the live-account sequence: read-only checks, MCC isolation, propose/cancel, propose/confirm, durable restart replay, cross-customer blocking, legitimate manager/client linking, risk boundaries and double-confirm behavior.
@@ -225,7 +226,7 @@ This MCP wraps Google Ads API, not every adjacent Google advertising product.
 
 ## Documentation
 
-- [0.16.2 release / re-test notes](docs/RELEASE_0.16.2.md)
+- [0.16.3 release / re-test notes](docs/RELEASE_0.16.3.md)
 - [Safe local update procedure](docs/UPDATE_LOCAL.md)
 - [Production validation checklist](docs/VALIDATION_CHECKLIST.md)
 - [Setup](docs/SETUP.md)

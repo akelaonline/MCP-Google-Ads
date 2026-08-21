@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from ..context import AppContext
@@ -456,12 +456,12 @@ def register(mcp, ctx: AppContext) -> None:
         audience = _audience_id(user_list_id)
         if remove_as_of_time:
             try:
-                parsed = datetime.fromisoformat(remove_as_of_time.replace("Z", "+00:00"))
+                parsed = datetime.fromisoformat(remove_as_of_time)
             except ValueError as ex:
                 raise ValueError("remove_as_of_time must be RFC 3339.") from ex
             if parsed.tzinfo is None:
                 raise ValueError("remove_as_of_time must include a timezone offset or Z.")
-            if parsed.astimezone(timezone.utc) > datetime.now(timezone.utc):
+            if parsed.astimezone(UTC) > datetime.now(UTC):
                 raise ValueError("remove_as_of_time must not be in the future.")
         body: dict[str, Any] = {
             "destinations": [

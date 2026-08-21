@@ -266,6 +266,13 @@ class ExperimentStatusEnum(enum.Enum):
     ENDED = 8
 
 
+class ConsentStatusEnum(enum.Enum):
+    UNSPECIFIED = 0
+    UNKNOWN = 1
+    GRANTED = 2
+    DENIED = 3
+
+
 class FakeEnums:
     AssetFieldTypeEnum = AssetFieldTypeEnum
     ConversionActionStatusEnum = ConversionActionStatusEnum
@@ -299,6 +306,7 @@ class FakeEnums:
     KeywordPlanNetworkEnum = KeywordPlanNetworkEnum
     ExperimentTypeEnum = ExperimentTypeEnum
     ExperimentStatusEnum = ExperimentStatusEnum
+    ConsentStatusEnum = ConsentStatusEnum
 
 
 class AutoVivify:

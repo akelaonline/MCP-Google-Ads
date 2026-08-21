@@ -74,9 +74,12 @@ def _write_call_reason(call: ast.Call) -> str | None:
     # Data Manager and similar REST wrappers use request(method, ...).
     if attr == "request" and call.args:
         method = call.args[0]
-        if isinstance(method, ast.Constant) and isinstance(method.value, str):
-            if method.value.upper() in _HTTP_WRITE_METHODS:
-                return f"direct HTTP {method.value.upper()} request"
+        if (
+            isinstance(method, ast.Constant)
+            and isinstance(method.value, str)
+            and method.value.upper() in _HTTP_WRITE_METHODS
+        ):
+            return f"direct HTTP {method.value.upper()} request"
 
     return None
 
@@ -88,22 +91,22 @@ class _OuterBodyCalls(ast.NodeVisitor):
         self.root = root
         self.calls: list[ast.Call] = []
 
-    def visit_FunctionDef(self, node):  # noqa: N802
+    def visit_FunctionDef(self, node):
         if node is self.root:
             for statement in node.body:
                 self.visit(statement)
         # Nested def = deferred closure/helper local to this function; skip it.
 
-    def visit_AsyncFunctionDef(self, node):  # noqa: N802
+    def visit_AsyncFunctionDef(self, node):
         if node is self.root:
             for statement in node.body:
                 self.visit(statement)
 
-    def visit_Lambda(self, node):  # noqa: N802
+    def visit_Lambda(self, node):
         # A lambda may be supplied as execute=...; treat it as deferred.
         return
 
-    def visit_Call(self, node):  # noqa: N802
+    def visit_Call(self, node):
         self.calls.append(node)
         self.generic_visit(node)
 

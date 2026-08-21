@@ -202,11 +202,12 @@ def register(mcp, ctx: AppContext) -> None:
             # Enum lookup validates against the current v25 client contract.
             getattr(raw.enums.ConversionActionCategoryEnum, category)
             categories.append(category)
-        if "NO_CONDITION" in clean_dimensions:
-            if len(categories) != 1 or categories[0] not in {"STORE_VISIT", "STORE_SALE"}:
-                raise ValueError(
-                    "NO_CONDITION requires exactly one conversion_action_category: STORE_VISIT or STORE_SALE."
-                )
+        if "NO_CONDITION" in clean_dimensions and (
+            len(categories) != 1 or categories[0] not in {"STORE_VISIT", "STORE_SALE"}
+        ):
+            raise ValueError(
+                "NO_CONDITION requires exactly one conversion_action_category: STORE_VISIT or STORE_SALE."
+            )
 
         operation = raw.get_type("ConversionValueRuleSetOperation")
         rule_set = operation.create

@@ -202,8 +202,15 @@ def test_asset_generation_v25_contracts_are_registered_and_customer_scoped():
     assert "generate_google_ads_text_assets" in mcp.tools
     assert "generate_google_ads_image_assets" in mcp.tools
 
-    assert mcp.tools["generate_google_ads_text_assets"]("1111111111", {}) == {}
-    assert mcp.tools["generate_google_ads_image_assets"]("1111111111", {}) == {}
+    # proto.Message.to_dict() (without including_default_value_fields=False) always
+    # includes empty repeated fields for a message that declares them, matching the
+    # to_dict() convention used everywhere else in this codebase.
+    assert mcp.tools["generate_google_ads_text_assets"]("1111111111", {}) == {
+        "generated_text": []
+    }
+    assert mcp.tools["generate_google_ads_image_assets"]("1111111111", {}) == {
+        "generated_images": []
+    }
     assert [kind for kind, _ in client.asset_generation_service.calls] == ["text", "images"]
 
 

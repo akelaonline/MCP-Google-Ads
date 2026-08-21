@@ -2,7 +2,7 @@
 
 This repository is designed so an existing local server can be updated directly from GitHub without replacing its credentials or local runtime state.
 
-**Current validation target: `0.16.2`. Do not deploy `0.16.0` or `0.16.1` over a working production MCP until `0.16.2` passes the local validation gate.**
+**Current validation target: `0.16.3`. Do not deploy `0.16.0`, `0.16.1`, or `0.16.2` over a working production MCP until `0.16.3` passes the local validation gate.**
 
 ## Before updating
 
@@ -49,7 +49,7 @@ git status --short
 For the current validation target the package version must report:
 
 ```text
-0.16.2
+0.16.3
 ```
 
 `git status --short` should normally be empty except for intentional local untracked files.
@@ -75,7 +75,7 @@ It prints the Git SHA, MCP version, Python version, Google Ads client version, F
 ```text
 LOCAL VALIDATION GREEN
 validated commit: <sha>
-validated version: 0.16.2
+validated version: 0.16.3
 ```
 
 The smoke stage uses a temporary SQLite audit DB, forces read-only mode, validates nested MCC isolation, imports the full tool package, constructs FastMCP and verifies that legacy duplicate definitions do not override their canonical v25 tool owners. It does not send Google Ads requests and does not write to the installation's production audit/pending database.
@@ -90,7 +90,7 @@ Equivalent individual commands, useful when diagnosing a failure:
 
 Do not replace the currently running production MCP if the validator exits non-zero.
 
-See [`RELEASE_0.16.2.md`](RELEASE_0.16.2.md) for the fixture/duplicate-registration cleanup and [`VALIDATION_CHECKLIST.md`](VALIDATION_CHECKLIST.md) for the live-account validation sequence.
+See [`RELEASE_0.16.3.md`](RELEASE_0.16.3.md) for the Ruff/pytest cleanup and [`VALIDATION_CHECKLIST.md`](VALIDATION_CHECKLIST.md) for the live-account validation sequence.
 
 ## Conservative first restart
 

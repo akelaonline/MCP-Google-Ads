@@ -255,10 +255,13 @@ class AuditLog:
         invocation_arguments = None
         invocation_error = None
         if invocation_encrypted is not None:
+            from cryptography.fernet import InvalidToken
+
             try:
                 plaintext = self._fernet().decrypt(bytes(invocation_encrypted))
                 invocation_arguments = json.loads(plaintext.decode("utf-8"))
-            except Exception as ex:  # corrupt/missing key must fail closed, not execute
+            except (InvalidToken, json.JSONDecodeError, UnicodeDecodeError) as ex:
+                # Corrupt/missing key or corrupt payload must fail closed, not execute.
                 invocation_error = f"Unable to decrypt persisted tool arguments: {ex}"
 
         return {

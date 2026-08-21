@@ -15,7 +15,10 @@ def _validate_iso_date(value: str | None, field_name: str) -> str | None:
         return None
     text = str(value).strip()
     try:
-        datetime.strptime(text, "%Y-%m-%d")
+        # Format-only validation: experiment start/end dates are naive,
+        # customer-local calendar dates, compared to each other as text
+        # elsewhere — not to a real-time clock, so no timezone applies here.
+        datetime.strptime(text, "%Y-%m-%d")  # noqa: DTZ007
     except ValueError as ex:
         raise ValueError(f"{field_name} must use YYYY-MM-DD.") from ex
     return text
