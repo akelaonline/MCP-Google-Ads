@@ -1,6 +1,6 @@
 """Real Google Ads API v25 protobuf contracts for core write modules.
 
-These tests make no external Google Ads calls. They instantiate the official
+These tests make no external Google Ads calls. They instantiate Google's real
 31.x client's v25 message/service surface and capture the operations each MCP
 tool builds. This catches fields/enums/types that AutoVivify unit fakes cannot.
 """
@@ -49,6 +49,22 @@ class _CaptureClient:
         self.raw = _Raw()
         self.calls = []
         self.search_fn = search_fn or (lambda customer_id, query: [])
+
+    def assert_customer_allowed(self, customer_id):
+        value = str(customer_id).replace("-", "").strip()
+        if not value.isdigit():
+            raise ValueError("customer_id must be numeric with optional dashes")
+        return value
+
+    def assert_resource_name_customer(
+        self, customer_id, resource_name, *, field_name="resource_name"
+    ):
+        customer = self.assert_customer_allowed(customer_id)
+        value = str(resource_name).strip()
+        root = f"customers/{customer}"
+        if value != root and not value.startswith(root + "/"):
+            raise ValueError(f"{field_name} belongs to another customer")
+        return value
 
     def search(self, customer_id, query):
         return self.search_fn(customer_id, query)
