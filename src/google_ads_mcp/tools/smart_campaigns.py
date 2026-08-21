@@ -5,7 +5,10 @@ from __future__ import annotations
 import proto
 from google.protobuf import field_mask_pb2
 
-from ..campaign_compat import DEFAULT_EU_POLITICAL_ADVERTISING, apply_required_campaign_fields
+from ..campaign_compat import (
+    DEFAULT_EU_POLITICAL_ADVERTISING,
+    apply_required_campaign_fields,
+)
 from ..client import micros
 from ..context import AppContext
 from ..errors import GoogleAdsMcpError, format_google_ads_exception

@@ -198,13 +198,10 @@ class GoogleAdsClientWrapper:
             for operation in operation_list:
                 _normalize_campaign_create(self.raw, operation)
 
-        if allow_cross_customer_references:
-            self._assert_all_cross_customer_references_allowed(
-                customer_id, operation_list
-            )
-        elif service_name == "CustomerClientLinkService" and _all_operations_are_creates(
-            operation_list
-        ):
+        is_scoped_manager_link_create = service_name == "CustomerClientLinkService" and (
+            _all_operations_are_creates(operation_list)
+        )
+        if allow_cross_customer_references or is_scoped_manager_link_create:
             self._assert_all_cross_customer_references_allowed(
                 customer_id, operation_list
             )
@@ -367,12 +364,14 @@ def _customer_scoped_resource_names(message: Any) -> list[str]:
 
     try:
         from google.protobuf.descriptor import FieldDescriptor
-    except Exception:
+    except ImportError:
         return []
 
     try:
         fields = list_fields()
-    except Exception:
+    except (ValueError, TypeError):
+        # ListFields() can raise on a malformed/partially-built message; treat it
+        # as "no scoped resources found" rather than crashing the mutation guard.
         return []
 
     found: list[str] = []
@@ -480,6 +479,6 @@ def micros(amount: float) -> int:
     return round(amount * 1_000_000)
 
 
-def from_micros(amount_micros: int | float) -> float:
+def from_micros(amount_micros: float) -> float:
     """Convert Google Ads micros to a base currency amount (25500000 -> 25.5)."""
     return float(amount_micros) / 1_000_000

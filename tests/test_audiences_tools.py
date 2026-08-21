@@ -79,7 +79,7 @@ def test_upload_customer_match_members_requires_at_least_one_field():
     ctx = build_ctx(lambda *a, **k: None)
     tool_fns = register_module(tools.audiences, ctx)
 
-    with pytest.raises(ValueError, match="at least one"):
+    with pytest.raises(ValueError, match="No non-empty email or phone identifiers"):
         tool_fns["upload_customer_match_members"](
             customer_id="123", user_list_resource_name="customers/123/userLists/2"
         )
@@ -89,7 +89,9 @@ def test_upload_customer_match_members_hashes_pii_and_runs_job():
     calls = {"created": False, "added_ops": None, "ran": False}
 
     class _FakeOfflineUserDataJobService:
-        def create_offline_user_data_job(self, *, customer_id, job):
+        def create_offline_user_data_job(
+            self, *, customer_id, job, enable_match_rate_range_preview=False
+        ):
             calls["created"] = True
             return SimpleNamespaceLike(
                 resource_name="customers/123/offlineUserDataJobs/9"

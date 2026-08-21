@@ -2,6 +2,29 @@
 
 Google Ads MCP follows Semantic Versioning. Detailed release notes for production releases live in `docs/RELEASE_X.Y.Z.md`.
 
+## 0.16.3 — 2026-08-21
+
+### Fixed
+- The final 3 pytest failures from the 0.16.2 clean local run are resolved: `tests/conftest.py`'s `FakeEnums` now defines `ConsentStatusEnum` (`UNSPECIFIED`/`UNKNOWN`/`GRANTED`/`DENIED`, matching the real v25 `ConsentStatusEnum.ConsentStatus` contract) so Customer Match consent tests exercise the real `audiences.py` code path instead of failing on a missing mock attribute.
+- Updated `test_upload_customer_match_members_requires_at_least_one_field` to match the current, more specific production error message ("No non-empty email or phone identifiers were supplied.") instead of the stale generic "at least one" wording.
+- Updated `test_upload_customer_match_members_hashes_pii_and_runs_job`'s fake `OfflineUserDataJobService` to accept `enable_match_rate_range_preview`, a real v25 `CreateOfflineUserDataJobRequest` field the production tool now passes.
+- Updated `test_asset_generation_v25_contracts_are_registered_and_customer_scoped` to expect `{"generated_text": []}` / `{"generated_images": []}` instead of `{}` — `proto.Message.to_dict(..., preserving_proto_field_name=True)` (the same call convention used everywhere else in this codebase) includes empty repeated fields by default; the test's expectation, not the production code, was wrong.
+- `asset_generation_optional._generate()` now raises `TypeError` (not `ValueError`) when `request` is not a dict, matching the `TypeError`-for-wrong-type / `ValueError`-for-invalid-value convention already used by `batch_jobs.py`, `bulk.py`, and `keywords.py`.
+
+### Hardening
+- Replaced two blanket `except Exception` handlers with the specific exceptions each call site can actually raise: `AuditLog` pending-action decryption now catches `(InvalidToken, json.JSONDecodeError, UnicodeDecodeError)` instead of swallowing every exception silently as decrypt failure; `client.py`'s protobuf field-walker (used by the recursive MCC/customer-isolation guard) now catches `(ValueError, TypeError)` from `ListFields()` instead of masking unrelated bugs as "no scoped resources found."
+- Reformatted the `allow_cross_customer_references or service_name == "..." and _all_operations_are_creates(...)` condition in `client.py`'s mutation-isolation gate into an explicitly named, parenthesized boolean (`is_scoped_manager_link_create`) after a Ruff auto-fix collapsed the original `if/elif` into a single line relying on unstated `and`/`or` precedence. Verified boolean-equivalent to the prior `if/elif` before and after reformatting; this is a readability fix in Google Ads MCP's most security-sensitive gate, not a behavior change.
+- Fixed two `datetime.strptime()` calls (`billing.py`, `experiments.py`) that Ruff flagged as producing naive datetimes (`DTZ007`): both are format-only validation of customer-local calendar dates/timestamps with no real timezone semantics, so they're annotated `# noqa: DTZ007` with an explanation rather than forced into an incorrect UTC-aware value.
+- Simplified `data_manager.py`'s RFC 3339 parsing to rely on `datetime.fromisoformat()`'s native `Z`-suffix support (Python 3.11+) instead of a manual `"Z" -> "+00:00"` string replace.
+- Minor Ruff cleanups with no behavior change: sorted imports, `Callable` import moved to `collections.abc`, redundant `getattr()` call and dict-membership-then-index pattern simplified, nested `if` statements combined, unused `noqa: N802` directives removed, `scripts/validate_local.py` marked executable.
+
+### Validation
+- `python scripts/validate_local.py` is green end-to-end against this commit: isolated smoke (currency helpers, recursive MCC/Struct isolation, 50 tool modules import, `build_server()` succeeds with zero duplicate-registration warnings, canonical tool owners verified), Ruff (`ruff check src tests scripts` — 0 errors), and pytest (232/232 passed).
+- This is the first version in the 0.16.x line where all four of the user's stated release gates (231/231 — now 232/232 after the consent-enum fix added one path — Ruff, smoke, zero duplicate-tool warnings) are simultaneously green in a real local run.
+- Live Google Ads API credentials and a real account were still not exercised in this validation; only offline/mocked tests and the isolated smoke test ran. Live-account E2E remains a separate step before this replaces a running production MCP.
+
+See `docs/RELEASE_0.16.3.md`.
+
 ## 0.16.2 — 2026-08-20
 
 ### Fixed

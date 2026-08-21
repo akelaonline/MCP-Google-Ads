@@ -630,7 +630,7 @@ def register(mcp, ctx: AppContext) -> None:
         goal = operation.update if existing else operation.create
         if existing:
             goal.resource_name = existing[0]["goal"]["resource_name"]
-        value_settings = getattr(getattr(goal, settings_field), "value_settings")
+        value_settings = getattr(goal, settings_field).value_settings
         suffix_paths = _set_lifecycle_value_settings(
             value_settings,
             value_mode=value_mode,
