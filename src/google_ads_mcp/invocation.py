@@ -34,8 +34,30 @@ _CANONICAL_TOOL_MODULES: dict[str, str] = {
     "list_asset_group_signals": "google_ads_mcp.tools.pmax_signals_listing",
     "add_asset_group_signal": "google_ads_mcp.tools.pmax_signals_listing",
     "list_asset_group_listing_filters": "google_ads_mcp.tools.pmax_signals_listing",
+    # The typed, condition-based implementation in conversions.py is the
+    # canonical create path; remaining_core_services keeps the generic
+    # protobuf-JSON power-user variant under a distinct public name
+    # (create_conversion_value_rule_from_json).
+    "create_conversion_value_rule": "google_ads_mcp.tools.conversions",
+    # The richer read (incl. owner_customer and condition objects) lives in
+    # remaining_core_services.
     "list_conversion_value_rules": "google_ads_mcp.tools.remaining_core_services",
-    "create_conversion_value_rule": "google_ads_mcp.tools.remaining_core_services",
+}
+
+# Modules whose legacy definitions are deliberately NOT registered for each
+# canonical tool name. Only these may be skipped silently; any other module
+# defining the same public tool name fails server construction instead of
+# being lost without a trace.
+_LEGACY_TOOL_MODULES: dict[str, frozenset[str]] = {
+    "list_asset_group_signals": frozenset({"google_ads_mcp.tools.performance_max"}),
+    "add_asset_group_signal": frozenset({"google_ads_mcp.tools.performance_max"}),
+    "list_asset_group_listing_filters": frozenset(
+        {"google_ads_mcp.tools.performance_max"}
+    ),
+    "create_conversion_value_rule": frozenset(
+        {"google_ads_mcp.tools.remaining_core_services"}
+    ),
+    "list_conversion_value_rules": frozenset({"google_ads_mcp.tools.conversions"}),
 }
 
 _CURRENT_INVOCATION: ContextVar[tuple[str, dict[str, Any]] | None] = ContextVar(
@@ -91,6 +113,11 @@ def registered_tool_owners() -> dict[str, str]:
 def canonical_tool_modules() -> dict[str, str]:
     """Return the explicit canonical-owner map for superseded tool definitions."""
     return dict(_CANONICAL_TOOL_MODULES)
+
+
+def legacy_tool_modules() -> dict[str, frozenset[str]]:
+    """Return tool name -> declared legacy modules that may be skipped silently."""
+    return {name: frozenset(modules) for name, modules in _LEGACY_TOOL_MODULES.items()}
 
 
 def replay_tool(tool_name: str, arguments: dict[str, Any], action_id: str) -> Any:
@@ -156,12 +183,29 @@ def install_tool_tracking(mcp) -> None:
 
 
 def _candidate_should_register(tool_name: str, function: Callable[..., Any]) -> bool:
-    """Resolve known legacy duplicates and fail loudly on unexpected duplicates."""
+    """Resolve declared legacy duplicates and fail loudly on unexpected ones.
+
+    A tool name with a canonical owner may be skipped silently only when the
+    defining module is explicitly declared as superseded legacy in
+    ``_LEGACY_TOOL_MODULES``. Any other module competing for the same public
+    name raises ``RuntimeError`` instead of being lost without a trace.
+    """
     module_name = function.__module__
     canonical_module = _CANONICAL_TOOL_MODULES.get(tool_name)
-    if canonical_module is not None and module_name != canonical_module:
-        # The specialist implementation will register when its module is reached.
-        return False
+    if canonical_module is not None:
+        if module_name == canonical_module:
+            pass  # the canonical implementation registers
+        elif module_name in _LEGACY_TOOL_MODULES.get(tool_name, frozenset()):
+            # Declared legacy definition superseded by the canonical owner.
+            return False
+        else:
+            raise RuntimeError(
+                f"Unexpected duplicate MCP tool registration for '{tool_name}': "
+                f"module {module_name!r} is neither the canonical owner "
+                f"{canonical_module!r} nor a declared legacy superseded by it. "
+                "Declare the supersession in invocation.py or give the tool a "
+                "single public owner."
+            )
 
     existing_owner = _TOOL_OWNERS.get(tool_name)
     if existing_owner is not None:

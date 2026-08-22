@@ -13,7 +13,7 @@ Built by [**Akela**](https://github.com/akelaonline)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Google Ads API v25](https://img.shields.io/badge/Google%20Ads%20API-v25-4285F4.svg)](https://developers.google.com/google-ads/api)
-[![Version](https://img.shields.io/badge/version-0.16.7-informational.svg)](docs/RELEASE_0.16.7.md)
+[![Version](https://img.shields.io/badge/version-0.16.8-informational.svg)](docs/RELEASE_0.16.8.md)
 
 [Quick start](#quick-start) · [Safety](#safety-by-default) · [Validation](#validation-before-production) · [Coverage](docs/V25_SERVICE_COVERAGE.md) · [Docs](#documentation)
 
@@ -41,9 +41,9 @@ GOOGLE_ADS_MCP_READ_ONLY=true
 
 Read-only keeps reporting/GAQL/audit inspection available but blocks both new write proposals and confirmation of previously pending actions.
 
-## Current version: 0.16.7
+## Current version: 0.16.8
 
-**0.16.7 is the current version. Do not replace a known-good production MCP with 0.16.0, 0.16.1, or 0.16.2.**
+**0.16.8 is the current version. Do not replace a known-good production MCP with 0.16.0, 0.16.1, or 0.16.2.**
 
 The v0.16 line was validated iteratively in a real local dependency environment:
 
@@ -55,24 +55,25 @@ The v0.16 line was validated iteratively in a real local dependency environment:
 - **0.16.5** (PR #10): expert-scope additions — GDPR `consent` on offline/enhanced uploads, `get_impression_share_report` (incl. lost-IS budget/rank), Standard Shopping listing groups (product-group trees), `set_campaign_ad_rotation`.
 - **0.16.6** (PR #11): extended assets (lead form, price, location, mobile app, app deep link), positive placement targeting, frequency caps, audience exclusions at campaign/ad-group level, conversion custom variables on uploads. Fixes the latent `AssetFieldType "IMAGE"` → `MARKETING_IMAGE` contract bug.
 - **0.16.7** (PR #12): minor gaps — `set_campaign_excluded_asset_field_types`, `update_campaign_dates`, change-history filters (`resource_type`/`operation`/`user_email`), `cpc_bid_ceiling`/`cpc_bid_floor` on Target CPA/ROAS.
+- **0.16.8** (registry review): fix silent duplicate-tool registration — only declared legacy modules may be skipped; `create_conversion_value_rule` is now owned by `conversions.py` (typed conditions) with the protobuf-JSON variant exposed as `create_conversion_value_rule_from_json`. Guarded by `tests/test_tool_registry_sweep.py`.
 
-`python scripts/validate_local.py` is green end-to-end (smoke, Ruff, **341/341 pytest**) against 0.16.7.
+`python scripts/validate_local.py` is green end-to-end (smoke, Ruff, **346/346 pytest**) against 0.16.8.
 
-See [`docs/RELEASE_0.16.7.md`](docs/RELEASE_0.16.7.md) and the per-version release notes for 0.16.4–0.16.6 in [`docs/`](docs/).
+See [`docs/RELEASE_0.16.8.md`](docs/RELEASE_0.16.8.md) and the per-version release notes for 0.16.4–0.16.7 in [`docs/`](docs/).
 
 ### Deterministic public tool ownership
 
-The local re-test identified legacy/new implementations competing for the same names. 0.16.2 explicitly assigned the v25-complete runtime owners, unchanged in 0.16.3:
+The local re-test identified legacy/new implementations competing for the same names. Canonical owners are explicit (updated in 0.16.8 after the registry review):
 
 ```text
 list_asset_group_signals             -> pmax_signals_listing.py
 add_asset_group_signal               -> pmax_signals_listing.py
 list_asset_group_listing_filters     -> pmax_signals_listing.py
-list_conversion_value_rules          -> remaining_core_services.py
-create_conversion_value_rule         -> remaining_core_services.py
+create_conversion_value_rule         -> conversions.py        (typed conditions)
+list_conversion_value_rules          -> remaining_core_services.py (rich read)
 ```
 
-Legacy source definitions are not registered as public FastMCP tools. Any unexpected future duplicate public name now fails server construction rather than being silently overwritten by registration order.
+Declared legacy definitions (for example `performance_max.py` for the asset-group signals, or the protobuf-JSON create variant, which remains available as `create_conversion_value_rule_from_json`) are deliberately not registered. **Only modules explicitly declared as superseded legacy may be skipped silently** — any other module defining the same public tool name fails server construction, and `tests/test_tool_registry_sweep.py` asserts the real assembled server owns every canonical tool and that no undeclared duplicate exists anywhere in the tree.
 
 ## Safety by default
 
@@ -212,7 +213,7 @@ Only proceed when it ends with:
 ```text
 LOCAL VALIDATION GREEN
 validated commit: <sha>
-validated version: 0.16.7
+validated version: 0.16.8
 ```
 
 Then follow [`docs/VALIDATION_CHECKLIST.md`](docs/VALIDATION_CHECKLIST.md) for the live-account sequence: read-only checks, MCC isolation, propose/cancel, propose/confirm, durable restart replay, cross-customer blocking, legitimate manager/client linking, risk boundaries and double-confirm behavior.
@@ -232,6 +233,7 @@ This MCP wraps Google Ads API, not every adjacent Google advertising product.
 
 ## Documentation
 
+- [0.16.8 release notes](docs/RELEASE_0.16.8.md)
 - [0.16.7 release notes](docs/RELEASE_0.16.7.md)
 - [0.16.6 release notes](docs/RELEASE_0.16.6.md)
 - [0.16.5 release notes](docs/RELEASE_0.16.5.md)

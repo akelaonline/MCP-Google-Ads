@@ -301,13 +301,15 @@ def register(mcp, ctx: AppContext) -> None:
         return {"conversion_value_rules": rows, "count": len(rows)}
 
     @mcp.tool()
-    def create_conversion_value_rule(
+    def create_conversion_value_rule_from_json(
         customer_id: str,
         rule: dict,
         validate_only: bool = False,
     ) -> dict:
         """Propose creating a conversion value rule from protobuf-JSON fields.
 
+        Power-user variant of ``create_conversion_value_rule`` (conversions.py):
+        accepts the full v25 ConversionValueRule payload and ``validate_only``.
         Use action plus one or more supported condition objects. Output-only id,
         owner_customer, and resource_name are rejected by the protobuf contract.
         """
@@ -328,9 +330,9 @@ def register(mcp, ctx: AppContext) -> None:
             return ctx.client.mutate("ConversionValueRuleService", customer, [operation], validate_only=validate_only)
 
         return ctx.safety.propose(
-            tool_name="create_conversion_value_rule",
+            tool_name="create_conversion_value_rule_from_json",
             customer_id=customer,
-            description="Create conversion value rule",
+            description="Create conversion value rule from protobuf-JSON payload",
             payload={"rule": rule, "validate_only": validate_only},
             execute=execute,
         )

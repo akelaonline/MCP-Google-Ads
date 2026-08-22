@@ -2,6 +2,20 @@
 
 Google Ads MCP follows Semantic Versioning. Detailed release notes for production releases live in `docs/RELEASE_X.Y.Z.md`.
 
+## 0.16.8 — 2026-08-21
+
+### Fixed
+- **Silent duplicate-tool registration (registry review finding)**: `_candidate_should_register()` used to skip *any* module whose name was not the canonical owner, without checking whether the losing module was the legacy source that motivated the canonical entry. A new implementation competing for an already-canonicalized name was dropped without a trace. Now only modules **explicitly declared as superseded legacy** in `_LEGACY_TOOL_MODULES` are skipped silently; any other module defining the same public tool name raises `RuntimeError` at server construction.
+- **Conversion Value Rules owner correction**: the typed, condition-based `create_conversion_value_rule` (`geo_target_ids`/`audience_condition`/`device_type`) in `conversions.py` is now the canonical public tool — previously the generic protobuf-JSON variant in `remaining_core_services.py` won silently, making the typed implementation unreachable via MCP. The power-user variant remains available as **`create_conversion_value_rule_from_json`** (full v25 payload + `validate_only`). `list_conversion_value_rules` keeps `remaining_core_services.py` as owner (richer read: `owner_customer` + condition objects).
+
+### Added
+- `tests/test_tool_registry_sweep.py` — builds the real assembled server (all tool modules, like `smoke_test.py`) and asserts: every canonical tool is owned by its declared module; no tool name is defined by an undeclared module anywhere in the tree; an undeclared duplicate raises `RuntimeError`; a declared legacy is skipped silently.
+
+### Validation
+- `python scripts/validate_local.py` green end-to-end: isolated smoke (55 tool modules, zero duplicate-tool warnings), Ruff clean, pytest **346/346 passed** (5 new registry tests).
+
+See `docs/RELEASE_0.16.8.md`.
+
 ## 0.16.7 — 2026-08-21
 
 ### Added
