@@ -1,5 +1,7 @@
 # v0.16.8 — Production-validated Google Ads MCP for Claude
 
+![Google Ads MCP by Alejandro José · Akela](assets/google-ads-mcp-akela.svg)
+
 **Operate Google Ads from Claude — don't just read it.**
 
 Google Ads MCP 0.16.8 is the recommended production build of the v0.16 line: a self-hosted read/write MCP server for Google Ads API v25 with human confirmation, MCC isolation, durable pending actions, and local audit logging.
