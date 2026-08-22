@@ -1,7 +1,12 @@
 <div align="center">
 
-<a href="README.md"><img src="https://img.shields.io/badge/🇦🇷_🇪🇸-Español-6DA544?style=for-the-badge" alt="Español"></a>
-<a href="README.en.md"><img src="https://img.shields.io/badge/🇬🇧_🇺🇸-English-00246B?style=for-the-badge" alt="English"></a>
+## 🌐 Choose your language / Elegí tu idioma
+
+| [**🇬🇧🇺🇸 Read in English**](README.en.md) | [**🇦🇷🇪🇸 Leer en Español**](README.md) |
+|:---:|:---:|
+| *(You are here)* | *(Estás acá → click para cambiar)* |
+
+---
 
 # Google Ads MCP
 

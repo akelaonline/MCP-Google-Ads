@@ -1,7 +1,12 @@
 <div align="center">
 
-<a href="README.md"><img src="https://img.shields.io/badge/🇦🇷_🇪🇸-Español-6DA544?style=for-the-badge" alt="Español"></a>
-<a href="README.en.md"><img src="https://img.shields.io/badge/🇬🇧_🇺🇸-English-00246B?style=for-the-badge" alt="English"></a>
+## 🌐 Elegí tu idioma / Choose your language
+
+| [**🇦🇷🇪🇸 Leer en Español**](README.md) | [**🇬🇧🇺🇸 Read in English**](README.en.md) |
+|:---:|:---:|
+| *(Estás acá)* | *(You are here → click to switch)* |
+
+---
 
 # Google Ads MCP
 
@@ -11,7 +16,7 @@ Reportes, campañas, presupuestos, audiencias, conversiones y Performance Max, c
 
 Creado y mantenido por [**Akela**](https://github.com/akelaonline)
 
-[![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Google Ads API v25](https://img.shields.io/badge/Google%20Ads%20API-v25-4285F4.svg)](https://developers.google.com/google-ads/api)
 [![Versión](https://img.shields.io/badge/versión-0.16.8-informational.svg)](docs/RELEASE_0.16.8.md)
@@ -74,6 +79,8 @@ Ver [`docs/RELEASE_0.16.8.md`](docs/RELEASE_0.16.8.md) y las notas de cada versi
 
 ### Propiedad determinística de cada herramienta
 
+La herramienta detectó implementaciones nuevas y viejas compitiendo por los mismos nombres. Los dueños canónicos son explícitos (actualizados en 0.16.8 tras la revisión del registro):
+
 ```text
 list_asset_group_signals             -> pmax_signals_listing.py
 add_asset_group_signal               -> pmax_signals_listing.py
@@ -82,7 +89,7 @@ create_conversion_value_rule         -> conversions.py        (condiciones tipad
 list_conversion_value_rules          -> remaining_core_services.py (lectura completa)
 ```
 
-Solo los módulos declarados explícitamente como legacy pueden omitirse en silencio; cualquier otro módulo que compita por el mismo nombre público hace fallar la construcción del servidor en lugar de perderse sin aviso. Blindado por una prueba que arma el servidor real completo y verifica que no exista ningún duplicado no declarado.
+Las definiciones legacy declaradas (por ejemplo `performance_max.py` para las señales de asset group, o la variante protobuf-JSON de creación, que sigue disponible como `create_conversion_value_rule_from_json`) deliberadamente no se registran. **Solo los módulos declarados explícitamente como legacy superado pueden omitirse en silencio** — cualquier otro módulo que defina el mismo nombre público de herramienta hace fallar la construcción del servidor, y `tests/test_tool_registry_sweep.py` verifica que el servidor real ensamblado sea dueño de cada herramienta canónica y que no exista ningún duplicado no declarado en todo el árbol.
 
 ## Seguridad de fábrica
 
@@ -112,7 +119,7 @@ Cada escritura se clasifica como:
 - `destructive`
 - `sensitive`
 
-Las operaciones que cambian la entrega son conservadoras: cambios en keywords habilitadas, segmentación, capacidad de conversión, o adjuntar assets en vivo se clasifican como `spend` aunque la operación no mencione un monto explícito.
+Las operaciones que cambian la entrega son conservadoras. Cambios en keywords habilitadas, segmentación, capacidad de conversión, adjuntar assets en vivo, y editar un RSA existente se clasifican como `spend` aunque la operación no mencione un monto explícito en dinero.
 
 Política recomendada en producción:
 
@@ -141,18 +148,18 @@ Usá un solo proceso del servidor por `audit.db`; el bloqueo de acciones pendien
 | Área | Cobertura |
 |---|---|
 | Cuentas y MCC | descubrimiento/jerarquía, vínculos manager/cliente, usuarios/roles/invitaciones, configuración de cuenta |
-| Reportes | campañas, grupos de anuncios, anuncios, keywords, términos de búsqueda, dispositivos, geo, assets, audiencias, shopping, cuota de impresiones, historial de cambios (con filtros), GAQL crudo |
-| Campañas | Search, Standard Shopping (con grupos de productos), Performance Max, Demand Gen, **App Campaigns**, **Dynamic Search Ads**, Smart Campaigns, rotación de anuncios, límites de frecuencia, fechas de campaña |
-| Presupuesto y pujas | ciclo de vida del presupuesto, CPC manual, Maximizar Clics/Conversiones/Valor, CPA/ROAS objetivo, cuota de impresiones (+ techo/piso de CPC), estrategias de cartera, modificadores de puja |
-| Anuncios y assets | RSA, Display adaptable, Demand Gen, imágenes/video/llamadas/sitelinks/callouts/snippets/promociones/WhatsApp/**formulario de leads/precio/ubicación/app móvil/deep link** |
-| Keywords y segmentación | ciclo de vida, pujas, tipos de concordancia, negativas, ubicación/idioma/dispositivo/audiencia/tema, **ubicaciones positivas**, **exclusión de audiencias**, franjas horarias, opciones de URL de seguimiento |
-| Audiencias | remarketing, listas de usuarios, Customer Match, audiencias personalizadas e intereses personalizados |
-| Conversiones y objetivos | acciones, cargas offline/**telefónicas**/enhanced (**consentimiento GDPR**, variables personalizadas), ajustes, reglas y sets de valor, objetivos unificados v25 |
-| Performance Max | grupos de assets, señales, filtros de listado, guías de marca, previsualizaciones |
-| Experimentos | ciclo de vida, brazos, programación, promoción y graduación, splits de tráfico atómicos |
+| Reportes | campañas, grupos de anuncios, anuncios, keywords, términos de búsqueda, dispositivos, geo, assets, audiencias, shopping, cuota de impresiones / IS perdida, historial de cambios (con filtros), GAQL crudo |
+| Campañas | Search, Standard Shopping (con grupos de productos), Performance Max, Demand Gen, **App Campaigns (ACi/ACe)**, **Dynamic Search Ads**, Smart Campaigns, rotación de anuncios, límites de frecuencia, fechas de campaña, controles de herencia de extensiones |
+| Presupuesto y pujas | ciclo de vida del presupuesto, CPC manual, Maximizar Clics/Conversiones/Valor, CPA/ROAS/cuota de impresiones objetivo (+ techo/piso de CPC), estrategias de cartera, modificadores de puja |
+| Anuncios y assets | RSA, Display adaptable, Demand Gen, imágenes/video/llamadas/sitelinks/callouts/snippets/promociones/Business Message/WhatsApp/**formulario de leads/precio/ubicación/app móvil/deep link** |
+| Keywords y segmentación | ciclo de vida, pujas, tipos de concordancia, negativas, exclusiones compartidas/de cuenta, ubicación/idioma/dispositivo/audiencia/tema, **ubicaciones positivas**, **exclusión de audiencias**, franjas horarias (agregar/actualizar/quitar), opciones de URL de seguimiento |
+| Audiencias | remarketing, listas de usuarios (UserList), Customer Match, Audience, CustomAudience, CustomInterest |
+| Conversiones y objetivos | acciones, cargas offline/**telefónicas**/enhanced (**consentimiento GDPR**, variables personalizadas), ajustes, variables personalizadas, reglas y sets de valor, objetivos unificados v25 |
+| Performance Max | grupos de campaña/assets, señales, filtros de listado SHOPPING/RETAIL/WEBPAGE, guías de marca, previsualizaciones |
+| Experimentos | ciclo de vida, brazos, programación/errores/promoción/graduación/finalización, splits de tráfico atómicos |
 | Batch / Smart Bidding | batch jobs controlados, ajustes de estacionalidad, exclusiones de datos |
-| Facturación y vínculos | cuentas de pago, presupuestos de cuenta/facturas, vínculos de producto, YouTube/analítica de apps |
-| Planificación / especializado | Keyword Planner, Reach Planner, sugerencias de marca/viajes, Local Services, identidad, incentivos, SKAd, carga de YouTube |
+| Facturación y vínculos | cuentas de pago, configuración de facturación, presupuestos de cuenta/facturas, ProductLink/Invitation, DataLink, YouTube/analítica de apps |
+| Planificación / especializado | Keyword Planner, Reach Planner, sugerencias de viajes/marca, Local Services, identidad, incentivos, visibilidad SKAd, carga de YouTube |
 | Con acceso restringido | Audience Insights, Benchmarks, Creator Insights; generación de assets (beta cerrada) |
 
 Ver [`docs/V25_SERVICE_COVERAGE.md`](docs/V25_SERVICE_COVERAGE.md) y [`docs/TOOLS.md`](docs/TOOLS.md).
