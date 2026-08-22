@@ -45,4 +45,14 @@ ruff check      -> All checks passed!
 pytest -q       -> 346 passed
 ```
 
-As with every 0.16.x release, no live Google Ads account was exercised: all validation is offline/mocked. Live-account E2E remains the required separate step before production replacement.
+## Live-account E2E (post-release)
+
+Unlike earlier 0.16.x notes, 0.16.8 has also been exercised end-to-end against a real production Google Ads MCC, following `docs/VALIDATION_CHECKLIST.md`:
+
+- **Read-only kill switch** — with `GOOGLE_ADS_MCP_READ_ONLY=true`, reads/GAQL kept working and a write attempt was rejected before any Google Ads mutation, with no pending action created.
+- **Cross-customer isolation** — a deliberate cross-customer resource reference (`attach_audience_to_ad_group` pointing at another customer's user list) was blocked before contacting Google Ads: `"Cross-customer mutation was blocked before contacting Google Ads."`
+- **Propose / cancel** — a proposed write returned `pending_confirmation`, the target account was confirmed unchanged, and `cancel_pending_action()` discarded it cleanly.
+- **Propose / confirm** — a second proposal was confirmed for real; the mutation applied to the live account and the audit log recorded a matching `status: "success"` entry under the same `action_id`.
+- **Durable restart replay** — a pending action was left unconfirmed, the MCP process was restarted, and the action was still listed (`loaded_in_memory: false`, reloaded from the durable store) and could still be confirmed afterward (`replayed_after_restart: true`).
+
+No production campaign, budget, or delivery-affecting setting was altered by this pass — every mutation used was a trivially reversible metadata change on a disposable test account, and the account was restored to its original state at the end.

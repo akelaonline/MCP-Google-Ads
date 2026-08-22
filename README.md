@@ -1,111 +1,127 @@
 <div align="center">
 
+## 🌐 Elegí tu idioma / Choose your language
+
+| [**🇦🇷🇪🇸 Leer en Español**](README.md) | [**🇬🇧🇺🇸 Read in English**](README.en.md) |
+|:---:|:---:|
+| *(Estás acá)* | *(You are here → click to switch)* |
+
+---
+
 # Google Ads MCP
 
-**Production-grade read/write Model Context Protocol server for Google Ads API v25.**
+**El servidor MCP para operar Google Ads desde Claude — no solo leerlo.**
 
-Operate Google Ads from Claude or any compatible MCP client with explicit confirmation,
-SQLite audit, encrypted durable pending actions, MCC/customer isolation, a hard read-only
-mode, and broad v25 coverage.
+Reportes, campañas, presupuestos, audiencias, conversiones y Performance Max, controlados por vos: cada escritura se propone, se previsualiza y espera tu confirmación antes de tocar una sola cuenta real.
 
-Built by [**Akela**](https://github.com/akelaonline)
+Creado y mantenido por [**Akela**](https://github.com/akelaonline)
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Google Ads API v25](https://img.shields.io/badge/Google%20Ads%20API-v25-4285F4.svg)](https://developers.google.com/google-ads/api)
-[![Version](https://img.shields.io/badge/version-0.16.8-informational.svg)](docs/RELEASE_0.16.8.md)
+[![Versión](https://img.shields.io/badge/versión-0.16.8-informational.svg)](docs/RELEASE_0.16.8.md)
+[![Tests](https://img.shields.io/badge/tests-346%2F346-success.svg)](docs/RELEASE_0.16.8.md)
 
-[Quick start](#quick-start) · [Safety](#safety-by-default) · [Validation](#validation-before-production) · [Coverage](docs/V25_SERVICE_COVERAGE.md) · [Docs](#documentation)
+[Inicio rápido](#inicio-rápido) · [Seguridad](#seguridad-de-fábrica) · [Validación](#validar-antes-de-producción) · [Cobertura](docs/V25_SERVICE_COVERAGE.md) · [Documentación](#documentación)
 
 </div>
 
 ---
 
-## What this is
+## Qué es esto
 
-Google Ads MCP is a local MCP server designed to **operate**, not only report on, Google Ads accounts. Claude, an IDE agent, or another MCP-compatible client can use the same server.
+**Google Ads MCP** es un servidor [Model Context Protocol](https://modelcontextprotocol.io) que conecta a Claude (o cualquier cliente MCP compatible) directamente con la API v25 de Google Ads — para **gestionar** cuentas, no solo mirarlas.
 
-It covers reporting and GAQL; campaign, budget and bidding operations; ads, assets, keywords and targeting; audiences and Customer Match; conversions/goals; Performance Max; experiments; Smart Campaigns; batch jobs; MCC/account access; billing/product links; planning; and specialist v25 services.
+Pensado para agencias y gestores de cuentas que administran campañas de **Google Ads y Meta Ads** desde un mismo asistente: reportes y GAQL crudo; campañas, presupuestos y estrategias de puja; anuncios, assets, keywords y segmentación; audiencias y Customer Match; conversiones y objetivos; Performance Max; experimentos; Smart Campaigns; batch jobs; acceso a cuentas y MCC; facturación y vínculos de producto; planificación; y servicios especializados de v25.
 
-Every normal write follows:
+Palabras clave: *automatización de Google Ads con IA, gestión de campañas PPC con Claude, servidor MCP para publicidad digital, control de gasto publicitario con IA, agencia de marketing digital con Claude, integración Google Ads API v25, asistente de IA para Google Ads.*
+
+Toda escritura real sigue el mismo camino, sin atajos:
 
 ```text
-propose -> preview -> confirm -> execute -> audit
+proponer → previsualizar → confirmar → ejecutar → auditar
 ```
 
-For reporting-only deployments:
+Para despliegues de solo reporte:
 
 ```dotenv
 GOOGLE_ADS_MCP_READ_ONLY=true
 ```
 
-Read-only keeps reporting/GAQL/audit inspection available but blocks both new write proposals and confirmation of previously pending actions.
+En modo solo lectura, los reportes, GAQL y la auditoría siguen disponibles, pero se bloquean tanto las propuestas de escritura nuevas como la confirmación de acciones pendientes previas.
 
-## Current version: 0.16.8
+## Por qué confiar en esta herramienta
 
-**0.16.8 is the current version. Do not replace a known-good production MCP with 0.16.0, 0.16.1, or 0.16.2.**
+- **Nunca ejecuta sin tu confirmación.** Cada escritura queda "pendiente" hasta que vos la aprobás explícitamente — nada se aplica a una cuenta real por accidente.
+- **Aislamiento entre clientes verificado.** Si administrás varias cuentas desde una MCC, el servidor bloquea —antes de llamar a Google— cualquier operación que intente mezclar recursos de dos clientes distintos.
+- **Auditoría completa y reversible.** Toda acción propuesta, confirmada o cancelada queda registrada; las acciones pendientes sobreviven incluso a un reinicio del servidor.
+- **Validado en producción real**, no solo en teoría: cada versión pasa una batería de pruebas automáticas (346/346 en la 0.16.8) y una validación manual contra cuentas reales antes de recomendarse para uso diario.
 
-The v0.16 line was validated iteratively in a real local dependency environment:
+## Versión actual: 0.16.8
 
-- **0.16.0**: failed server/tool import because `from_micros()` was missing; recursive MCC isolation also missed protobuf map/`Struct` values.
-- **0.16.1**: restored server startup and fixed the recursive walker. A clean local run then collected **231 tests**, exposing 13 stale test-double failures and FastMCP warnings for duplicate public tool registration.
-- **0.16.2**: synchronized the test clients with the production isolation contract and made public tool ownership deterministic. A clean local run then built the server cleanly (0 duplicate-tool warnings) but still reported 3 stale-fixture pytest failures and 22 Ruff findings.
-- **0.16.3**: resolves the remaining 3 pytest failures and all 22 Ruff findings without weakening any safety or isolation behavior. `python scripts/validate_local.py` is green end-to-end (smoke, Ruff, 232/232 pytest) against this version.
-- **0.16.4** (PR #9): closes the functional gaps — ad schedule update/remove, tracking URL options (account/campaign/ad group), call conversion uploads, app campaigns (v25 `MULTI_CHANNEL` + `app_campaign_setting`), Dynamic Search Ads (campaign + `SEARCH_DYNAMIC_ADS` ad groups + webpage targets). Also fixes four latent v25 contract bugs (`STANDARD_SHOPPING` channel sub-type, `mutate_customers`→`mutate_customer`, `mutate_bidding_strategys`→`mutate_bidding_strategies`, removed `TopicConstantService`) and adds `tests/test_v25_contract_sweep.py`, which verifies every service/mutate method the codebase uses against the real v25 stubs.
-- **0.16.5** (PR #10): expert-scope additions — GDPR `consent` on offline/enhanced uploads, `get_impression_share_report` (incl. lost-IS budget/rank), Standard Shopping listing groups (product-group trees), `set_campaign_ad_rotation`.
-- **0.16.6** (PR #11): extended assets (lead form, price, location, mobile app, app deep link), positive placement targeting, frequency caps, audience exclusions at campaign/ad-group level, conversion custom variables on uploads. Fixes the latent `AssetFieldType "IMAGE"` → `MARKETING_IMAGE` contract bug.
-- **0.16.7** (PR #12): minor gaps — `set_campaign_excluded_asset_field_types`, `update_campaign_dates`, change-history filters (`resource_type`/`operation`/`user_email`), `cpc_bid_ceiling`/`cpc_bid_floor` on Target CPA/ROAS.
-- **0.16.8** (registry review): fix silent duplicate-tool registration — only declared legacy modules may be skipped; `create_conversion_value_rule` is now owned by `conversions.py` (typed conditions) with the protobuf-JSON variant exposed as `create_conversion_value_rule_from_json`. Guarded by `tests/test_tool_registry_sweep.py`.
+**0.16.8 es la versión recomendada hoy.** No reemplaces una instalación productiva que ya funciona por 0.16.0, 0.16.1 o 0.16.2 — esas versiones tenían fallas conocidas y corregidas más adelante.
 
-`python scripts/validate_local.py` is green end-to-end (smoke, Ruff, **346/346 pytest**) against 0.16.8.
+La serie v0.16 se validó de forma iterativa, siempre contra un entorno local real:
 
-See [`docs/RELEASE_0.16.8.md`](docs/RELEASE_0.16.8.md) and the per-version release notes for 0.16.4–0.16.7 in [`docs/`](docs/).
+- **0.16.0**: fallaba al importar el servidor (`from_micros()` faltante); el aislamiento MCC recursivo tampoco cubría valores `Struct`/map de protobuf.
+- **0.16.1**: arregla el arranque y el recorrido recursivo. La corrida local pasó a detectar **231 tests**, exponiendo 13 fallas de dobles de prueba desactualizados y avisos de registro duplicado de herramientas.
+- **0.16.2**: sincroniza los clientes de prueba con el contrato de aislamiento real y fija la propiedad determinística de cada herramienta pública. El servidor se construye limpio (0 avisos de duplicados), pero quedaban 3 fallas de fixtures y 22 hallazgos de Ruff.
+- **0.16.3**: resuelve las 3 fallas de pytest y los 22 hallazgos de Ruff restantes, sin debilitar ninguna barrera de seguridad. `validate_local.py` queda verde de punta a punta (smoke, Ruff, 232/232 pytest).
+- **0.16.4**: cierra vacíos funcionales — actualizar/quitar franjas horarias de anuncios, opciones de URL de seguimiento (cuenta/campaña/grupo de anuncios), carga de conversiones telefónicas, App Campaigns (v25 `MULTI_CHANNEL`), Dynamic Search Ads completo. Corrige además cuatro bugs latentes de contrato v25 y suma una prueba que verifica cada servicio/método contra los stubs reales de v25.
+- **0.16.5**: consentimiento GDPR en cargas offline/enhanced, reporte de cuota de impresiones perdida, grupos de productos para Standard Shopping, rotación de anuncios por campaña.
+- **0.16.6**: assets extendidos (formulario de leads, precio, ubicación, app móvil, deep link), segmentación positiva de ubicaciones, límites de frecuencia, exclusión de audiencias a nivel campaña/grupo, variables personalizadas de conversión.
+- **0.16.7**: ajustes menores — exclusión de tipos de asset por campaña, fechas de campaña, filtros de historial de cambios, límites de CPC en estrategias Target CPA/ROAS.
+- **0.16.8**: corrige un bug de registro silencioso de herramientas duplicadas — solo los módulos legacy declarados explícitamente pueden omitirse; `create_conversion_value_rule` ahora pertenece a `conversions.py` (versión tipada), y la variante en formato protobuf-JSON queda disponible aparte como `create_conversion_value_rule_from_json`. Blindado con una prueba de registro dedicada.
 
-### Deterministic public tool ownership
+`python scripts/validate_local.py` está verde de punta a punta (smoke, Ruff, **346/346 pytest**) sobre 0.16.8 — validado además con pruebas reales de punta a punta contra una cuenta de Google Ads en producción: modo solo lectura, aislamiento entre clientes, proponer/cancelar, proponer/confirmar, y recuperación de acciones pendientes tras un reinicio.
 
-The local re-test identified legacy/new implementations competing for the same names. Canonical owners are explicit (updated in 0.16.8 after the registry review):
+Ver [`docs/RELEASE_0.16.8.md`](docs/RELEASE_0.16.8.md) y las notas de cada versión 0.16.4–0.16.7 en [`docs/`](docs/).
+
+### Propiedad determinística de cada herramienta
+
+La herramienta detectó implementaciones nuevas y viejas compitiendo por los mismos nombres. Los dueños canónicos son explícitos (actualizados en 0.16.8 tras la revisión del registro):
 
 ```text
 list_asset_group_signals             -> pmax_signals_listing.py
 add_asset_group_signal               -> pmax_signals_listing.py
 list_asset_group_listing_filters     -> pmax_signals_listing.py
-create_conversion_value_rule         -> conversions.py        (typed conditions)
-list_conversion_value_rules          -> remaining_core_services.py (rich read)
+create_conversion_value_rule         -> conversions.py        (condiciones tipadas)
+list_conversion_value_rules          -> remaining_core_services.py (lectura completa)
 ```
 
-Declared legacy definitions (for example `performance_max.py` for the asset-group signals, or the protobuf-JSON create variant, which remains available as `create_conversion_value_rule_from_json`) are deliberately not registered. **Only modules explicitly declared as superseded legacy may be skipped silently** — any other module defining the same public tool name fails server construction, and `tests/test_tool_registry_sweep.py` asserts the real assembled server owns every canonical tool and that no undeclared duplicate exists anywhere in the tree.
+Las definiciones legacy declaradas (por ejemplo `performance_max.py` para las señales de asset group, o la variante protobuf-JSON de creación, que sigue disponible como `create_conversion_value_rule_from_json`) deliberadamente no se registran. **Solo los módulos declarados explícitamente como legacy superado pueden omitirse en silencio** — cualquier otro módulo que defina el mismo nombre público de herramienta hace fallar la construcción del servidor, y `tests/test_tool_registry_sweep.py` verifica que el servidor real ensamblado sea dueño de cada herramienta canónica y que no exista ningún duplicado no declarado en todo el árbol.
 
-## Safety by default
+## Seguridad de fábrica
 
-### MCC/customer isolation
+### Aislamiento MCC / entre clientes
 
-Use an explicit deployment allowlist when one credential can reach several customers:
+Usá una lista explícita de cuentas permitidas cuando una misma credencial pueda alcanzar varios clientes:
 
 ```dotenv
 GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS=123-456-7890,987-654-3210
 GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true
 ```
 
-The server:
+El servidor:
 
-- blocks customer-scoped reads/writes outside the allowlist;
-- filters account discovery;
-- filters `customer_client`, `customer_client_link`, and `customer_manager_link` rows, including raw GAQL;
-- recursively inspects customer-scoped resource names in CREATE/UPDATE/REMOVE payloads, including protobuf maps/Structs and repeated/list fields;
-- permits the intentional two-customer manager/client link only when both customers are allowlisted.
+- bloquea lecturas/escrituras fuera de la lista permitida;
+- filtra el descubrimiento de cuentas;
+- filtra filas de `customer_client`, `customer_client_link` y `customer_manager_link`, incluso en GAQL crudo;
+- inspecciona recursivamente las referencias a recursos de cliente en cada operación CREATE/UPDATE/REMOVE, incluyendo mapas/Structs de protobuf y campos repetidos;
+- permite el vínculo intencional entre dos clientes (manager/client) solo cuando ambos están en la lista permitida.
 
-### Risk classes
+### Niveles de riesgo
 
-Writes are classified as:
+Cada escritura se clasifica como:
 
 - `standard`
-- `spend`
+- `spend` (afecta gasto/entrega)
 - `destructive`
 - `sensitive`
 
-Delivery-changing operations are conservative. Enabled keyword changes, targeting, conversion-biddability, live asset attachment, and editing an existing RSA are `spend` even when no explicit currency value appears in the request.
+Las operaciones que cambian la entrega son conservadoras. Cambios en keywords habilitadas, segmentación, capacidad de conversión, adjuntar assets en vivo, y editar un RSA existente se clasifican como `spend` aunque la operación no mencione un monto explícito en dinero.
 
-Recommended production policy:
+Política recomendada en producción:
 
 ```dotenv
 GOOGLE_ADS_MCP_READ_ONLY=false
@@ -115,40 +131,40 @@ GOOGLE_ADS_MCP_AUTO_APPROVE_DESTRUCTIVE=false
 GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE=false
 ```
 
-### Durable pending confirmations
+### Confirmaciones pendientes durables
 
-Pending proposals are persisted in SQLite and replay arguments are encrypted with Fernet. Provide a stable key:
+Las propuestas quedan persistidas en SQLite y los argumentos de reintento se cifran con Fernet. Proporcioná una clave estable:
 
 ```dotenv
-GOOGLE_ADS_MCP_PENDING_ENCRYPTION_KEY=<fernet-key>
+GOOGLE_ADS_MCP_PENDING_ENCRYPTION_KEY=<clave-fernet>
 ```
 
-or persist the generated `<audit-db>.pending.key` beside the DB. Missing/corrupt encryption state fails closed.
+o dejá que el servidor genere `<audit-db>.pending.key` junto a la base. Si falta o se corrompe la clave, la confirmación falla de forma segura (no ejecuta nada).
 
-Use one running MCP process per `audit.db`; the pending-action lock is process-local, not distributed.
+Usá un solo proceso del servidor por `audit.db`; el bloqueo de acciones pendientes es local al proceso, no distribuido.
 
-## Capabilities
+## Capacidades
 
-| Domain | Coverage |
+| Área | Cobertura |
 |---|---|
-| Accounts & MCC | discovery/hierarchy, manager/client links, users/roles/invitations, customer settings |
-| Reporting | campaigns, ad groups, ads, keywords, search terms, devices, geo, assets, audiences, shopping, impression share / lost-IS, change history (with filters), raw GAQL |
-| Campaigns | Search, Standard Shopping (incl. listing groups), Performance Max, Demand Gen, **App campaigns (ACi/ACe)**, **Dynamic Search Ads**, Smart Campaigns, ad rotation, frequency caps, campaign dates, extension-inheritance controls |
-| Budgets & bidding | budget lifecycle, Manual CPC, Max Clicks/Conversions/Value, CPA/ROAS/Impression Share (+ CPC ceiling/floor), portfolio bidding, bid modifiers |
-| Ads & assets | RSA, Responsive Display, Demand Gen, images/video/calls/sitelinks/callouts/snippets/promotions/Business Message/WhatsApp/**lead form/price/location/mobile app/deep link** |
-| Keywords & targeting | lifecycle, bids, match types, negatives, shared/account exclusions, location/language/device/audience/topic targeting, **positive placements**, **audience exclusions**, ad schedules (add/update/remove), tracking URL options |
-| Audiences | remarketing, UserList, Customer Match, Audience, CustomAudience, CustomInterest |
-| Conversions & goals | actions, offline/**call**/enhanced uploads (**GDPR consent**, **custom variables**), adjustments, custom variables, value rules/sets, unified v25 goals |
-| Performance Max | campaign/asset groups/assets, signals, SHOPPING/RETAIL/WEBPAGE listing filters, brand guidelines, previews |
-| Experiments | lifecycle, arms, schedule/errors/promote/graduate/end, atomic traffic split updates |
-| Batch / Smart Bidding | controlled Batch Jobs, seasonality adjustments, data exclusions |
-| Billing & links | payments accounts, billing setup, account budgets/invoices, ProductLink/Invitation, DataLink, YouTube/app analytics |
-| Planning / specialist | Keyword Planner, Reach Planner, Travel/brand suggestions, Local Services, Identity, Incentives, SKAd visibility, YouTube upload |
-| Access-controlled | Audience Insights, Benchmarks, Creator Insights; Asset Generation closed beta |
+| Cuentas y MCC | descubrimiento/jerarquía, vínculos manager/cliente, usuarios/roles/invitaciones, configuración de cuenta |
+| Reportes | campañas, grupos de anuncios, anuncios, keywords, términos de búsqueda, dispositivos, geo, assets, audiencias, shopping, cuota de impresiones / IS perdida, historial de cambios (con filtros), GAQL crudo |
+| Campañas | Search, Standard Shopping (con grupos de productos), Performance Max, Demand Gen, **App Campaigns (ACi/ACe)**, **Dynamic Search Ads**, Smart Campaigns, rotación de anuncios, límites de frecuencia, fechas de campaña, controles de herencia de extensiones |
+| Presupuesto y pujas | ciclo de vida del presupuesto, CPC manual, Maximizar Clics/Conversiones/Valor, CPA/ROAS/cuota de impresiones objetivo (+ techo/piso de CPC), estrategias de cartera, modificadores de puja |
+| Anuncios y assets | RSA, Display adaptable, Demand Gen, imágenes/video/llamadas/sitelinks/callouts/snippets/promociones/Business Message/WhatsApp/**formulario de leads/precio/ubicación/app móvil/deep link** |
+| Keywords y segmentación | ciclo de vida, pujas, tipos de concordancia, negativas, exclusiones compartidas/de cuenta, ubicación/idioma/dispositivo/audiencia/tema, **ubicaciones positivas**, **exclusión de audiencias**, franjas horarias (agregar/actualizar/quitar), opciones de URL de seguimiento |
+| Audiencias | remarketing, listas de usuarios (UserList), Customer Match, Audience, CustomAudience, CustomInterest |
+| Conversiones y objetivos | acciones, cargas offline/**telefónicas**/enhanced (**consentimiento GDPR**, variables personalizadas), ajustes, variables personalizadas, reglas y sets de valor, objetivos unificados v25 |
+| Performance Max | grupos de campaña/assets, señales, filtros de listado SHOPPING/RETAIL/WEBPAGE, guías de marca, previsualizaciones |
+| Experimentos | ciclo de vida, brazos, programación/errores/promoción/graduación/finalización, splits de tráfico atómicos |
+| Batch / Smart Bidding | batch jobs controlados, ajustes de estacionalidad, exclusiones de datos |
+| Facturación y vínculos | cuentas de pago, configuración de facturación, presupuestos de cuenta/facturas, ProductLink/Invitation, DataLink, YouTube/analítica de apps |
+| Planificación / especializado | Keyword Planner, Reach Planner, sugerencias de viajes/marca, Local Services, identidad, incentivos, visibilidad SKAd, carga de YouTube |
+| Con acceso restringido | Audience Insights, Benchmarks, Creator Insights; generación de assets (beta cerrada) |
 
-See [`docs/V25_SERVICE_COVERAGE.md`](docs/V25_SERVICE_COVERAGE.md) and [`docs/TOOLS.md`](docs/TOOLS.md).
+Ver [`docs/V25_SERVICE_COVERAGE.md`](docs/V25_SERVICE_COVERAGE.md) y [`docs/TOOLS.md`](docs/TOOLS.md).
 
-## Quick start
+## Inicio rápido
 
 ```bash
 git clone https://github.com/akelaonline/MCP-Google-Ads.git
@@ -160,7 +176,7 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Configure at least:
+Configurá al menos:
 
 ```dotenv
 GOOGLE_ADS_DEVELOPER_TOKEN=
@@ -170,27 +186,27 @@ GOOGLE_ADS_REFRESH_TOKEN=
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=
 ```
 
-Local stdio MCP example:
+Ejemplo local por stdio:
 
 ```json
 {
   "mcpServers": {
     "google-ads": {
-      "command": "/absolute/path/to/MCP-Google-Ads/.venv/bin/python",
+      "command": "/ruta/absoluta/a/MCP-Google-Ads/.venv/bin/python",
       "args": ["-m", "google_ads_mcp.server"],
       "env": {
-        "GOOGLE_ADS_MCP_ENV_FILE": "/absolute/path/to/MCP-Google-Ads/.env"
+        "GOOGLE_ADS_MCP_ENV_FILE": "/ruta/absoluta/a/MCP-Google-Ads/.env"
       }
     }
   }
 }
 ```
 
-`stdio` is recommended. HTTP remains blocked by default; if deliberately enabled, place it behind your own authenticated/restricted boundary. `GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true` does **not** provide authentication.
+Se recomienda `stdio`. El transporte HTTP queda bloqueado por defecto; si se habilita deliberadamente, hacerlo detrás de tu propio límite autenticado. `GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true` **no** agrega autenticación por sí solo.
 
-## Validation before production
+## Validar antes de producción
 
-After pulling `main`, validate the exact local checkout **before** replacing a running MCP:
+Después de actualizar desde `main`, validá el checkout exacto **antes** de reemplazar un MCP en funcionamiento:
 
 ```bash
 git fetch origin
@@ -200,15 +216,15 @@ python -m pip install -e ".[dev]"
 python scripts/validate_local.py
 ```
 
-The validator runs:
+El validador corre:
 
 ```text
-isolated offline smoke -> Ruff -> complete pytest
+smoke offline aislado -> Ruff -> pytest completo
 ```
 
-The smoke uses a temporary audit DB and read-only configuration, imports every tool module, builds the server, tests the `from_micros()` regression, exercises nested MCC map/list isolation, and verifies canonical tool ownership.
+El smoke test usa una base de auditoría temporal y configuración solo-lectura, importa cada módulo de herramientas, construye el servidor, prueba la regresión de `from_micros()`, ejercita el aislamiento MCC anidado, y verifica la propiedad determinística de cada herramienta.
 
-Only proceed when it ends with:
+Recién avanzá cuando termine con:
 
 ```text
 LOCAL VALIDATION GREEN
@@ -216,42 +232,42 @@ validated commit: <sha>
 validated version: 0.16.8
 ```
 
-Then follow [`docs/VALIDATION_CHECKLIST.md`](docs/VALIDATION_CHECKLIST.md) for the live-account sequence: read-only checks, MCC isolation, propose/cancel, propose/confirm, durable restart replay, cross-customer blocking, legitimate manager/client linking, risk boundaries and double-confirm behavior.
+Después seguí [`docs/VALIDATION_CHECKLIST.md`](docs/VALIDATION_CHECKLIST.md) para la secuencia contra cuenta real: chequeos de solo lectura, aislamiento MCC, proponer/cancelar, proponer/confirmar, recuperación tras reinicio, bloqueo cross-cliente, vínculo legítimo manager/cliente, límites de riesgo y protección ante doble confirmación.
 
-This repository intentionally has **no GitHub Actions workflow**; validation is local/manual.
+Este repositorio no tiene GitHub Actions a propósito; la validación es local y manual.
 
-## Scope boundaries
+## Límites de alcance
 
-This MCP wraps Google Ads API, not every adjacent Google advertising product.
+Este MCP envuelve la API de Google Ads, no cada producto publicitario adyacente de Google.
 
-- Merchant Center catalog/feed editing belongs to Merchant API; Ads-side linking and Shopping/PMax operations are covered here.
-- Google Business Profile resource administration is separate.
-- Legacy Smart Shopping should use Performance Max.
-- Removed/unsupported legacy video writes are not emulated.
-- Google beta/allowlisted services still require Google-side eligibility.
-- `ReservationService` is not publicly available and is not faked.
+- La edición de catálogo/feed de Merchant Center pertenece a Merchant API; el vínculo del lado de Ads y las operaciones de Shopping/PMax sí están cubiertas acá.
+- La administración de Google Business Profile es un producto aparte.
+- Smart Shopping (legado) debería migrarse a Performance Max.
+- No se emulan escrituras de video legadas ya eliminadas por Google.
+- Los servicios beta o con acceso restringido de Google siguen requiriendo elegibilidad del lado de Google.
+- `ReservationService` no está disponible públicamente y no se simula.
 
-## Documentation
+## Documentación
 
-- [0.16.8 release notes](docs/RELEASE_0.16.8.md)
-- [0.16.7 release notes](docs/RELEASE_0.16.7.md)
-- [0.16.6 release notes](docs/RELEASE_0.16.6.md)
-- [0.16.5 release notes](docs/RELEASE_0.16.5.md)
-- [0.16.4 release notes](docs/RELEASE_0.16.4.md)
-- [0.16.3 release / re-test notes](docs/RELEASE_0.16.3.md)
-- [Safe local update procedure](docs/UPDATE_LOCAL.md)
-- [Production validation checklist](docs/VALIDATION_CHECKLIST.md)
-- [Setup](docs/SETUP.md)
-- [MCP clients](docs/CLIENTS.md)
-- [Safety model](docs/SAFETY.md)
-- [Tool reference](docs/TOOLS.md)
-- [Google Ads API v25 coverage](docs/V25_SERVICE_COVERAGE.md)
-- [Agency tools](docs/AGENCY_TOOLS.md)
-- [Batch jobs & Smart Bidding](docs/BATCH_SMART_BIDDING.md)
-- [Examples](docs/EXAMPLES.md)
-- [FAQ](docs/FAQ.md)
-- [Changelog](CHANGELOG.md)
+- [Notas de la versión 0.16.8](docs/RELEASE_0.16.8.md)
+- [Notas de la versión 0.16.7](docs/RELEASE_0.16.7.md)
+- [Notas de la versión 0.16.6](docs/RELEASE_0.16.6.md)
+- [Notas de la versión 0.16.5](docs/RELEASE_0.16.5.md)
+- [Notas de la versión 0.16.4](docs/RELEASE_0.16.4.md)
+- [Notas de la versión 0.16.3](docs/RELEASE_0.16.3.md)
+- [Procedimiento seguro de actualización local](docs/UPDATE_LOCAL.md)
+- [Checklist de validación en producción](docs/VALIDATION_CHECKLIST.md)
+- [Instalación](docs/SETUP.md)
+- [Clientes MCP compatibles](docs/CLIENTS.md)
+- [Modelo de seguridad](docs/SAFETY.md)
+- [Referencia de herramientas](docs/TOOLS.md)
+- [Cobertura de la API v25 de Google Ads](docs/V25_SERVICE_COVERAGE.md)
+- [Herramientas para agencias](docs/AGENCY_TOOLS.md)
+- [Batch jobs y Smart Bidding](docs/BATCH_SMART_BIDDING.md)
+- [Ejemplos](docs/EXAMPLES.md)
+- [Preguntas frecuentes](docs/FAQ.md)
+- [Historial de cambios](CHANGELOG.md)
 
-## License
+## Licencia
 
-MIT. See [`LICENSE`](LICENSE).
+MIT. Ver [`LICENSE`](LICENSE).
