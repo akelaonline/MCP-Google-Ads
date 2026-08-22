@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">Google Ads MCP by Alejandro José · Akela</title>
+  <desc id="desc">A branded banner for the self-hosted read/write Google Ads MCP server.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#080b14"/>
+      <stop offset="0.55" stop-color="#10182b"/>
+      <stop offset="1" stop-color="#0a1020"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6ea8fe"/>
+      <stop offset="1" stop-color="#4285F4"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="360" rx="28" fill="url(#bg)"/>
+  <circle cx="1090" cy="-30" r="210" fill="#4285F4" opacity="0.08"/>
+  <circle cx="1160" cy="330" r="190" fill="#34A853" opacity="0.07"/>
+  <circle cx="80" cy="390" r="180" fill="#FBBC05" opacity="0.05"/>
+
+  <!-- Abstract Google Ads-inspired mark -->
+  <g transform="translate(78 74)" filter="url(#shadow)">
+    <path d="M55 8c18-10 41-4 51 14l105 182c10 18 4 41-14 51-18 10-41 4-51-14L41 59C31 41 37 18 55 8z" fill="url(#blue)"/>
+    <path d="M158 23c10-18 33-24 51-14 18 10 24 33 14 51l-75 130-44-76z" fill="#34A853"/>
+    <circle cx="64" cy="228" r="38" fill="#FBBC05"/>
+    <circle cx="64" cy="228" r="17" fill="#ffffff" opacity="0.18"/>
+  </g>
+
+  <g font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="350" y="92" fill="#9ab7e8" font-size="20" font-weight="700" letter-spacing="4">MODEL CONTEXT PROTOCOL</text>
+    <text x="350" y="157" fill="#ffffff" font-size="55" font-weight="800">Google Ads MCP</text>
+    <text x="350" y="202" fill="#c8d5ee" font-size="24" font-weight="500">Operate Google Ads from Claude — with human control.</text>
+
+    <g transform="translate(350 233)">
+      <rect width="112" height="34" rx="17" fill="#4285F4" opacity="0.18"/>
+      <text x="56" y="23" text-anchor="middle" fill="#87b7ff" font-size="14" font-weight="700">API v25</text>
+
+      <rect x="126" width="132" height="34" rx="17" fill="#34A853" opacity="0.18"/>
+      <text x="192" y="23" text-anchor="middle" fill="#70d68d" font-size="14" font-weight="700">346 TESTS</text>
+
+      <rect x="272" width="138" height="34" rx="17" fill="#FBBC05" opacity="0.15"/>
+      <text x="341" y="23" text-anchor="middle" fill="#ffd45f" font-size="14" font-weight="700">MCC SAFE</text>
+
+      <rect x="424" width="150" height="34" rx="17" fill="#ffffff" opacity="0.08"/>
+      <text x="499" y="23" text-anchor="middle" fill="#d6deee" font-size="14" font-weight="700">SELF-HOSTED</text>
+    </g>
+
+    <text x="350" y="313" fill="#ffffff" font-size="19" font-weight="700">Alejandro José · Akela</text>
+    <text x="550" y="313" fill="#8696b5" font-size="17">AI Products · Marketing Technology · Automation</text>
+  </g>
+</svg>
