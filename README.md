@@ -16,8 +16,8 @@
 
 Creado y mantenido por **[Alejandro José · Akela](https://github.com/akelaonline)**
 
-[![Versión](https://img.shields.io/badge/versión-0.16.8-111111?style=for-the-badge)](docs/RELEASE_0.16.8.md)
-[![Tests](https://img.shields.io/badge/tests-346%2F346-16a34a?style=for-the-badge)](docs/RELEASE_0.16.8.md)
+[![Versión](https://img.shields.io/badge/versión-0.17.0-111111?style=for-the-badge)](docs/RELEASE_0.17.0.md)
+[![Tests](https://img.shields.io/badge/tests-362%2F362-16a34a?style=for-the-badge)](docs/RELEASE_0.17.0.md)
 [![Google Ads API](https://img.shields.io/badge/Google_Ads_API-v25-4285F4?style=for-the-badge&logo=googleads&logoColor=white)](https://developers.google.com/google-ads/api)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](pyproject.toml)
 [![MIT](https://img.shields.io/badge/license-MIT-black?style=for-the-badge)](LICENSE)
@@ -234,14 +234,14 @@ Antes de abrir Claude:
 python scripts/validate_local.py
 ```
 
-La versión 0.16.8 debe terminar con:
+La versión 0.17.0 debe terminar con:
 
 ```text
 LOCAL VALIDATION GREEN
-validated version: 0.16.8
+validated version: 0.17.0
 ```
 
-El gate ejecuta smoke aislado + Ruff + pytest completo. La referencia actual es **346/346 tests**.
+El gate ejecuta smoke aislado + Ruff + pytest completo. La referencia actual es **362/362 tests**.
 
 Si el import falla, verificá primero que estés usando el Python del venv:
 
@@ -451,19 +451,20 @@ El objetivo no es “darle control total a una IA”. El objetivo es **darle her
 
 ---
 
-## Versión actual — 0.16.8
+## Versión actual — 0.17.0
 
-`0.16.8` es la versión recomendada.
+`0.17.0` es la versión recomendada. Suma soporte para Google Merchant Center *(beta)* sobre la base 0.16.8, que sigue completa y sin cambios.
 
 - Google Ads API v25.
-- Smoke aislado verde.
+- Merchant Center *(beta)*: diagnóstico de cuenta, catálogo de productos, altas/bajas y feeds, vía Merchant API.
+- Smoke aislado verde (56 módulos de tools).
 - Ruff limpio.
-- **346/346 pytest**.
+- **362/362 pytest** (16 nuevos de Merchant Center).
 - Cero duplicate-tool warnings.
 - Registro canónico de tools blindado por regresión.
-- E2E real validado: read-only, aislamiento cross-customer, propose/cancel, propose/confirm y durable replay después de restart.
+- Google Ads sigue E2E validado contra una MCC real (read-only, aislamiento cross-customer, propose/cancel, propose/confirm, durable replay). Merchant Center todavía es solo local: unit tests + smoke, sin validar aún contra una cuenta real.
 
-El detalle técnico, incluyendo el bug de registro corregido y los owners canónicos de Conversion Value Rules / PMax, vive en [`docs/RELEASE_0.16.8.md`](docs/RELEASE_0.16.8.md).
+El detalle técnico vive en [`docs/RELEASE_0.17.0.md`](docs/RELEASE_0.17.0.md). El release anterior, [`docs/RELEASE_0.16.8.md`](docs/RELEASE_0.16.8.md), sigue vigente para todo lo que no es Merchant Center.
 
 Historial completo: [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -513,7 +514,7 @@ Guía completa: [`docs/SETUP.md#troubleshooting`](docs/SETUP.md#troubleshooting)
 | [`docs/EXAMPLES.md`](docs/EXAMPLES.md) | conversaciones y consultas listas para usar |
 | [`docs/V25_SERVICE_COVERAGE.md`](docs/V25_SERVICE_COVERAGE.md) | cobertura servicio por servicio de API v25 |
 | [`docs/VALIDATION_CHECKLIST.md`](docs/VALIDATION_CHECKLIST.md) | validación antes de producción |
-| [`docs/RELEASE_0.16.8.md`](docs/RELEASE_0.16.8.md) | release actual |
+| [`docs/RELEASE_0.17.0.md`](docs/RELEASE_0.17.0.md) | release actual |
 | [`CHANGELOG.md`](CHANGELOG.md) | historial completo |
 | [`docs/FAQ.md`](docs/FAQ.md) | preguntas frecuentes |
 

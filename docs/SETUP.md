@@ -61,6 +61,28 @@ python -m google_ads_mcp.auth --generate-refresh-token
 
 Never commit `.env`.
 
+### Optional: Google Merchant Center
+
+Merchant Center tools reuse the same OAuth client. To generate one refresh
+token covering both APIs:
+
+```bash
+python -m google_ads_mcp.auth --generate-refresh-token --include-merchant-center
+```
+
+Then, optionally, add to `.env`:
+
+```dotenv
+GOOGLE_MERCHANT_CENTER_REFRESH_TOKEN=
+GOOGLE_MERCHANT_CENTER_ID=
+```
+
+Leave both empty to keep using Merchant Center tools with the same token/scope
+as Google Ads. `GOOGLE_MERCHANT_CENTER_ID` is optional and only sets a default
+so tool calls can omit `merchant_id`. See
+[Merchant Center tools](TOOLS.md#merchant-center-merchant-api) for the full
+tool list.
+
 ## 3. Production customer isolation
 
 A manager credential can usually access more accounts than one MCP instance should control. Restrict each deployment explicitly:
