@@ -28,9 +28,12 @@ else:
 GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
 DATA_MANAGER_SCOPE = "https://www.googleapis.com/auth/datamanager"
 CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+MERCHANT_CENTER_SCOPE = "https://www.googleapis.com/auth/content"
 
 
-def generate_refresh_token(*, include_data_manager: bool = False) -> None:
+def generate_refresh_token(
+    *, include_data_manager: bool = False, include_merchant_center: bool = False
+) -> None:
     try:
         from google_auth_oauthlib.flow import InstalledAppFlow
     except ImportError:
@@ -53,6 +56,8 @@ def generate_refresh_token(*, include_data_manager: bool = False) -> None:
     scopes = [GOOGLE_ADS_SCOPE]
     if include_data_manager:
         scopes.extend([DATA_MANAGER_SCOPE, CLOUD_PLATFORM_SCOPE])
+    if include_merchant_center:
+        scopes.append(MERCHANT_CENTER_SCOPE)
 
     client_config = {
         "installed": {
@@ -87,6 +92,13 @@ def generate_refresh_token(*, include_data_manager: bool = False) -> None:
             "\nAlso set GOOGLE_ADS_DATA_MANAGER_PROJECT_ID to the Google Cloud "
             "project where Data Manager API is enabled."
         )
+    if include_merchant_center:
+        print(
+            "\nThis token also covers Merchant Center (content scope). It is used "
+            "automatically as GOOGLE_ADS_REFRESH_TOKEN unless you set a separate "
+            "GOOGLE_MERCHANT_CENTER_REFRESH_TOKEN. Also set GOOGLE_MERCHANT_CENTER_ID "
+            "to your default Merchant Center account ID."
+        )
     print()
 
 
@@ -105,13 +117,26 @@ def main() -> None:
             "for new Customer Match integrations that need Data Manager API."
         ),
     )
+    parser.add_argument(
+        "--include-merchant-center",
+        action="store_true",
+        help=(
+            "Also request the content scope for Google Merchant Center (Merchant "
+            "API): account status, products, feeds and reports."
+        ),
+    )
     args = parser.parse_args()
 
     if args.include_data_manager and not args.generate_refresh_token:
         parser.error("--include-data-manager requires --generate-refresh-token")
+    if args.include_merchant_center and not args.generate_refresh_token:
+        parser.error("--include-merchant-center requires --generate-refresh-token")
 
     if args.generate_refresh_token:
-        generate_refresh_token(include_data_manager=args.include_data_manager)
+        generate_refresh_token(
+            include_data_manager=args.include_data_manager,
+            include_merchant_center=args.include_merchant_center,
+        )
     else:
         parser.print_help()
 

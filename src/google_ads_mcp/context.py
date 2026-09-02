@@ -8,6 +8,7 @@ from typing import Any
 from .audit import AuditLog
 from .client import GoogleAdsClientWrapper
 from .config import Settings, load_settings
+from .merchant_client import MerchantCenterClient
 from .read_only import ReadOnlySafetyProxy
 from .safety import SafetyLayer
 from .scoped_client import ScopedGoogleAdsClientWrapper
@@ -19,6 +20,7 @@ class AppContext:
     client: GoogleAdsClientWrapper
     safety: Any
     audit: AuditLog
+    merchant: MerchantCenterClient | None = None
 
 
 def build_context() -> AppContext:
@@ -36,4 +38,7 @@ def build_context() -> AppContext:
         require_customer_allowlist=settings.require_customer_allowlist,
     )
     safety = ReadOnlySafetyProxy(base_safety) if settings.read_only else base_safety
-    return AppContext(settings=settings, client=client, safety=safety, audit=audit)
+    merchant = MerchantCenterClient(settings)
+    return AppContext(
+        settings=settings, client=client, safety=safety, audit=audit, merchant=merchant
+    )

@@ -396,8 +396,30 @@ Más detalle: [`docs/SAFETY.md`](docs/SAFETY.md).
 | **Billing y links** | billing setup, invoices, account budgets, ProductLink, DataLink, YouTube/app analytics |
 | **Planning / especialistas** | Keyword Planner, Reach Planner, Local Services, Identity, Incentives, SKAd visibility, YouTube upload |
 | **Acceso restringido** | Audience Insights, Benchmarks, Creator Insights, Asset Generation closed beta |
+| **Merchant Center** *(beta)* | estado de cuenta y diagnósticos, catálogo de productos + issues, altas/bajas de productos, feeds/datasources, reporting MCQL |
 
 Cobertura exhaustiva v25: [`docs/V25_SERVICE_COVERAGE.md`](docs/V25_SERVICE_COVERAGE.md).
+
+---
+
+## Merchant Center (beta)
+
+Además de Google Ads, el MCP puede hablar directo con **Merchant API** (el
+reemplazo de Content API for Shopping, que Google discontinuó en agosto 2026):
+estado de la cuenta, diagnóstico de productos rechazados/no elegibles, alta y
+baja de productos, gestión de feeds (data sources) y reporting vía MCQL —
+todo con el mismo modelo de propuesta/confirmación que el resto de las
+escrituras.
+
+- Reutiliza el mismo cliente OAuth de Google Ads: generá el refresh token con
+  `python -m google_ads_mcp.auth --generate-refresh-token --include-merchant-center`
+  (o seteá `GOOGLE_MERCHANT_CENTER_REFRESH_TOKEN` aparte si Merchant Center
+  vive en otra cuenta de Google).
+- Opcional: `GOOGLE_MERCHANT_CENTER_ID` como cuenta por defecto.
+- Herramientas típicas: `list_merchant_center_product_issues` (productos
+  rechazados/no elegibles y por qué), `get_merchant_center_product_performance`,
+  `list_merchant_center_datasources`, `insert_merchant_center_product`,
+  `remove_merchant_center_product`.
 
 ---
 

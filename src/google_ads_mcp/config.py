@@ -59,6 +59,8 @@ class Settings:
     auto_approve_sensitive: bool = False
     data_manager_project_id: str | None = None
     data_manager_refresh_token: str | None = None
+    merchant_center_refresh_token: str | None = None
+    merchant_center_default_id: str | None = None
     read_only: bool = False
 
     @property
@@ -107,6 +109,12 @@ def load_settings() -> Settings:
     data_manager_refresh_token = (
         os.environ.get("GOOGLE_ADS_DATA_MANAGER_REFRESH_TOKEN", "").strip() or None
     )
+    merchant_center_refresh_token = (
+        os.environ.get("GOOGLE_MERCHANT_CENTER_REFRESH_TOKEN", "").strip() or None
+    )
+    merchant_center_default_id = (
+        os.environ.get("GOOGLE_MERCHANT_CENTER_ID", "").strip() or None
+    )
 
     return Settings(
         developer_token=os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
@@ -130,5 +138,7 @@ def load_settings() -> Settings:
         auto_approve_sensitive=_bool("GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE", False),
         data_manager_project_id=data_manager_project_id,
         data_manager_refresh_token=data_manager_refresh_token,
+        merchant_center_refresh_token=merchant_center_refresh_token,
+        merchant_center_default_id=merchant_center_default_id,
         read_only=_bool("GOOGLE_ADS_MCP_READ_ONLY", False),
     )

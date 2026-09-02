@@ -254,6 +254,25 @@ Batch Jobs expose a constrained reviewed manifest instead of arbitrary raw proto
 
 See `BATCH_SMART_BIDDING.md`.
 
+## Merchant Center (Merchant API)
+
+Separate from the Google Ads gRPC surface: a lightweight REST client for
+`merchantapi.googleapis.com` (the replacement for Content API for Shopping,
+which Google sunset 2026-08-18). Shares the Google Ads OAuth client; either
+reuses `GOOGLE_ADS_REFRESH_TOKEN` (if generated with `--include-merchant-center`)
+or a separate `GOOGLE_MERCHANT_CENTER_REFRESH_TOKEN`.
+
+- **Config/status**: `get_merchant_center_configuration`
+- **Accounts**: `list_merchant_center_accounts`, `get_merchant_center_account`, `list_merchant_center_sub_accounts`, `list_merchant_center_account_issues`
+- **Products**: `list_merchant_center_products`, `get_merchant_center_product`, `list_merchant_center_product_issues` (disapproved/ineligible + why), `get_merchant_center_product_performance`, `search_merchant_center_reports` (raw MCQL, like `run_gaql_query` for Google Ads)
+- **Product writes** (propose/confirm, same safety model): `insert_merchant_center_product` (create or update; Merchant API has no separate update call), `remove_merchant_center_product` (destructive risk)
+- **Data sources (feeds)**: `list_merchant_center_datasources`, `get_merchant_center_datasource`, `fetch_merchant_center_datasource` (propose/confirm)
+
+Merchant Center account IDs are numeric like Google Ads customer IDs and are
+reused as the `customer_id` for pending-action/audit/allowlist purposes; a
+configured `GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS` allowlist must also include
+any Merchant Center account ID used with write tools.
+
 ## Specialist and Google-controlled services
 
 The MCP includes wrappers for specialist v25 surfaces where Google controls account eligibility, including:

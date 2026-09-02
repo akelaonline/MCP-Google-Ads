@@ -2,6 +2,22 @@
 
 Google Ads MCP follows Semantic Versioning. Detailed release notes for production releases live in `docs/RELEASE_X.Y.Z.md`.
 
+## 0.17.0 — 2026-09-02
+
+### Added
+- **Google Merchant Center support (beta)**, via the Merchant API (`merchantapi.googleapis.com`) — the replacement for Content API for Shopping, which Google sunset 2026-08-18. New `merchant_client.py` REST client (mirrors the existing Data Manager client pattern: reuses the Google Ads OAuth client, no SDK dependency) and a new `tools/merchant_center.py` module:
+  - Account status/diagnostics: `get_merchant_center_configuration`, `list_merchant_center_accounts`, `get_merchant_center_account`, `list_merchant_center_sub_accounts`, `list_merchant_center_account_issues`.
+  - Product catalog: `list_merchant_center_products`, `get_merchant_center_product`, `list_merchant_center_product_issues` (pre-built MCQL diagnostic for disapproved/ineligible products), `get_merchant_center_product_performance`, `search_merchant_center_reports` (raw MCQL, like `run_gaql_query`).
+  - Product writes (propose/confirm, same safety model as every other write tool): `insert_merchant_center_product`, `remove_merchant_center_product` (destructive risk via the existing `remove_` convention).
+  - Data sources (feeds): `list_merchant_center_datasources`, `get_merchant_center_datasource`, `fetch_merchant_center_datasource` (propose/confirm).
+  - New env vars: `GOOGLE_MERCHANT_CENTER_REFRESH_TOKEN` (optional, falls back to `GOOGLE_ADS_REFRESH_TOKEN`), `GOOGLE_MERCHANT_CENTER_ID` (optional default account).
+  - `python -m google_ads_mcp.auth --generate-refresh-token --include-merchant-center` requests the `content` OAuth scope alongside Google Ads.
+  - Merchant Center account IDs are reused as `customer_id` for the shared pending-action/audit/allowlist machinery (they are numeric like Google Ads customer IDs).
+- `tests/test_merchant_center_tools.py` — unit tests covering configuration, request shaping, MCQL query building/validation, and the propose/confirm/read-only safety gating for every write tool.
+
+### Validation
+- `python scripts/validate_local.py` green end-to-end: isolated smoke (56 tool modules, zero duplicate-tool warnings), Ruff clean, pytest **362/362 passed** (16 new Merchant Center tests).
+
 ## 0.16.8 — 2026-08-21
 
 ### Fixed
