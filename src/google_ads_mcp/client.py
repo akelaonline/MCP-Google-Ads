@@ -266,13 +266,22 @@ class GoogleAdsClientWrapper:
 
         _assert_mutation_targets_customer(customer_id, operation_list)
 
+        import inspect
+
+        kwargs: dict[str, Any] = {
+            "customer_id": customer_id,
+            "mutate_operations": operation_list,
+            "validate_only": validate_only,
+        }
         try:
-            return service.mutate(
-                customer_id=customer_id,
-                mutate_operations=operation_list,
-                partial_failure=False,
-                validate_only=validate_only,
-            )
+            accepted_params = set(inspect.signature(service.mutate).parameters)
+        except (TypeError, ValueError):
+            accepted_params = None
+        if accepted_params is None or "partial_failure" in accepted_params:
+            kwargs["partial_failure"] = False
+
+        try:
+            return service.mutate(**kwargs)
         except GoogleAdsException as ex:
             raise GoogleAdsMcpError(format_google_ads_exception(ex)) from ex
 

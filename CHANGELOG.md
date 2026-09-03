@@ -2,6 +2,16 @@
 
 Google Ads MCP follows Semantic Versioning. Detailed release notes for production releases live in `docs/RELEASE_X.Y.Z.md`.
 
+## 0.17.1 — 2026-09-03
+
+### Fixed
+- **`mutate_atomic()` crashed every atomic create+attach call with `GoogleAdsServiceClient.mutate() got an unexpected keyword argument 'partial_failure'`** — found live in production while running `create_call_asset` for a client campaign. `mutate_atomic()` (used by `create_call_asset`, `create_sitelink_asset`, `create_message_asset`, and every other tool that creates an asset and links it to a campaign in one atomic `GoogleAdsService.Mutate` call) always passed `partial_failure=False` as a keyword argument to `service.mutate(...)`, without checking whether the installed `google-ads` client library's `GoogleAdsService.mutate` method actually accepts that kwarg. The sibling method `GoogleAdsClientWrapper.mutate()` (the non-atomic, resource-specific mutate path) already guarded this correctly with `inspect.signature(method).parameters` before conditionally adding `partial_failure`/`validate_only` to the call — `mutate_atomic()` was simply missing that same guard. Fixed by applying the identical `inspect.signature()` check to `mutate_atomic()`.
+- No behavior change for callers: `partial_failure` is still sent as `False` whenever the installed library's `GoogleAdsService.mutate` accepts it; it is only omitted when the signature doesn't have that parameter, exactly matching how `mutate()` already behaved.
+
+### Validation
+- Root-caused directly against the installed `google-ads>=31.2.0,<32.0.0` client by comparing the working `mutate()` code path against the broken `mutate_atomic()` code path line by line — the fix mirrors `mutate()`'s existing, already-tested defensive pattern rather than introducing a new one.
+- Not run through `pytest`/`scripts/validate_local.py` in this pass (no Python 3.11+ interpreter available in the environment where the fix was authored) — **run `python scripts/validate_local.py` (or at minimum `pytest tests/ -k "mutate or asset"`) before merging**, per this project's normal release process.
+
 ## 0.17.0 — 2026-09-02
 
 ### Added
