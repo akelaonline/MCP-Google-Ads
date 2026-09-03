@@ -16,7 +16,7 @@
 
 Built and maintained by **[Alejandro José · Akela](https://github.com/akelaonline)**
 
-[![Version](https://img.shields.io/badge/version-0.17.1-111111?style=for-the-badge)](docs/RELEASE_0.17.1.md)
+[![Version](https://img.shields.io/badge/version-0.17.2-111111?style=for-the-badge)](docs/RELEASE_0.17.2.md)
 [![Tests](https://img.shields.io/badge/tests-362%2F362-16a34a?style=for-the-badge)](docs/RELEASE_0.17.0.md)
 [![Google Ads API](https://img.shields.io/badge/Google_Ads_API-v25-4285F4?style=for-the-badge&logo=googleads&logoColor=white)](https://developers.google.com/google-ads/api)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](pyproject.toml)
@@ -450,9 +450,9 @@ The goal is not to “give an AI total control.” The goal is to **give a human
 
 ---
 
-## Current release — 0.17.1
+## Current release — 0.17.2
 
-`0.17.1` is the recommended version. It's a patch fix on top of 0.17.0: it fixes a production bug in `mutate_atomic()` that broke every atomic asset create+attach call (`create_call_asset`, `create_sitelink_asset`, `create_message_asset`, among others) with the error `GoogleAdsServiceClient.mutate() got an unexpected keyword argument 'partial_failure'`. Full detail in [`docs/RELEASE_0.17.1.md`](docs/RELEASE_0.17.1.md).
+`0.17.2` is the recommended version. It's a second patch fix, found in live re-testing immediately after deploying 0.17.1: `validate_only` had the same bug already fixed for `partial_failure` in `mutate_atomic()`, without the same defensive guard. Detail in [`docs/RELEASE_0.17.2.md`](docs/RELEASE_0.17.2.md). The 0.17.1 fix still applies unchanged; this is the second half of the same fix. Original context: `0.17.1` was a patch fix on top of 0.17.0: it fixes a production bug in `mutate_atomic()` that broke every atomic asset create+attach call (`create_call_asset`, `create_sitelink_asset`, `create_message_asset`, among others) with the error `GoogleAdsServiceClient.mutate() got an unexpected keyword argument 'partial_failure'`. Full detail in [`docs/RELEASE_0.17.1.md`](docs/RELEASE_0.17.1.md).
 
 Everything below about `0.17.0` still applies unchanged — 0.17.1 doesn't touch any functionality, it only fixes that specific bug.
 
@@ -517,7 +517,8 @@ Full guide: [`docs/SETUP.md#troubleshooting`](docs/SETUP.md#troubleshooting).
 | [`docs/EXAMPLES.md`](docs/EXAMPLES.md) | conversations and ready-to-use queries |
 | [`docs/V25_SERVICE_COVERAGE.md`](docs/V25_SERVICE_COVERAGE.md) | service-by-service API v25 coverage |
 | [`docs/VALIDATION_CHECKLIST.md`](docs/VALIDATION_CHECKLIST.md) | validation before production |
-| [`docs/RELEASE_0.17.1.md`](docs/RELEASE_0.17.1.md) | current release |
+| [`docs/RELEASE_0.17.2.md`](docs/RELEASE_0.17.2.md) | current release |
+| [`docs/RELEASE_0.17.1.md`](docs/RELEASE_0.17.1.md) | previous release (first half of the mutate_atomic fix) |
 | [`docs/RELEASE_0.17.0.md`](docs/RELEASE_0.17.0.md) | previous release (Merchant Center) |
 | [`CHANGELOG.md`](CHANGELOG.md) | complete history |
 | [`docs/FAQ.md`](docs/FAQ.md) | frequently asked questions |

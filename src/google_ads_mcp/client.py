@@ -271,7 +271,6 @@ class GoogleAdsClientWrapper:
         kwargs: dict[str, Any] = {
             "customer_id": customer_id,
             "mutate_operations": operation_list,
-            "validate_only": validate_only,
         }
         try:
             accepted_params = set(inspect.signature(service.mutate).parameters)
@@ -279,6 +278,8 @@ class GoogleAdsClientWrapper:
             accepted_params = None
         if accepted_params is None or "partial_failure" in accepted_params:
             kwargs["partial_failure"] = False
+        if accepted_params is None or "validate_only" in accepted_params:
+            kwargs["validate_only"] = validate_only
 
         try:
             return service.mutate(**kwargs)

@@ -3,5 +3,5 @@
 Created by Akela (https://github.com/akelaonline).
 """
 
-__version__ = "0.17.1"
+__version__ = "0.17.2"
 __author__ = "Akela"

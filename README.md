@@ -16,7 +16,7 @@
 
 Creado y mantenido por **[Alejandro José · Akela](https://github.com/akelaonline)**
 
-[![Versión](https://img.shields.io/badge/versión-0.17.1-111111?style=for-the-badge)](docs/RELEASE_0.17.1.md)
+[![Versión](https://img.shields.io/badge/versión-0.17.2-111111?style=for-the-badge)](docs/RELEASE_0.17.2.md)
 [![Tests](https://img.shields.io/badge/tests-362%2F362-16a34a?style=for-the-badge)](docs/RELEASE_0.17.0.md)
 [![Google Ads API](https://img.shields.io/badge/Google_Ads_API-v25-4285F4?style=for-the-badge&logo=googleads&logoColor=white)](https://developers.google.com/google-ads/api)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](pyproject.toml)
@@ -451,9 +451,9 @@ El objetivo no es “darle control total a una IA”. El objetivo es **darle her
 
 ---
 
-## Versión actual — 0.17.1
+## Versión actual — 0.17.2
 
-`0.17.1` es la versión recomendada. Es un patch fix sobre 0.17.0: corrige un bug de producción en `mutate_atomic()` que hacía fallar toda llamada atómica de creación+adjunto de asset (`create_call_asset`, `create_sitelink_asset`, `create_message_asset`, entre otras) con el error `GoogleAdsServiceClient.mutate() got an unexpected keyword argument 'partial_failure'`. Detalle completo en [`docs/RELEASE_0.17.1.md`](docs/RELEASE_0.17.1.md).
+`0.17.2` es la versión recomendada. Es un segundo patch fix, encontrado en re-testing en vivo inmediatamente después de desplegar 0.17.1: `validate_only` tenía el mismo bug que ya se había arreglado para `partial_failure` en `mutate_atomic()`, sin el mismo guardado defensivo. Detalle en [`docs/RELEASE_0.17.2.md`](docs/RELEASE_0.17.2.md). El fix de 0.17.1 sigue vigente y sin cambios; esto es la segunda mitad del mismo arreglo. Contexto original: `0.17.1` fue un patch fix sobre 0.17.0: corrige un bug de producción en `mutate_atomic()` que hacía fallar toda llamada atómica de creación+adjunto de asset (`create_call_asset`, `create_sitelink_asset`, `create_message_asset`, entre otras) con el error `GoogleAdsServiceClient.mutate() got an unexpected keyword argument 'partial_failure'`. Detalle completo en [`docs/RELEASE_0.17.1.md`](docs/RELEASE_0.17.1.md).
 
 Todo lo que sigue abajo sobre `0.17.0` sigue vigente sin cambios — 0.17.1 no toca ninguna funcionalidad, solo corrige ese bug puntual.
 
@@ -518,7 +518,8 @@ Guía completa: [`docs/SETUP.md#troubleshooting`](docs/SETUP.md#troubleshooting)
 | [`docs/EXAMPLES.md`](docs/EXAMPLES.md) | conversaciones y consultas listas para usar |
 | [`docs/V25_SERVICE_COVERAGE.md`](docs/V25_SERVICE_COVERAGE.md) | cobertura servicio por servicio de API v25 |
 | [`docs/VALIDATION_CHECKLIST.md`](docs/VALIDATION_CHECKLIST.md) | validación antes de producción |
-| [`docs/RELEASE_0.17.1.md`](docs/RELEASE_0.17.1.md) | release actual |
+| [`docs/RELEASE_0.17.2.md`](docs/RELEASE_0.17.2.md) | release actual |
+| [`docs/RELEASE_0.17.1.md`](docs/RELEASE_0.17.1.md) | release anterior (primera mitad del fix de mutate_atomic) |
 | [`docs/RELEASE_0.17.0.md`](docs/RELEASE_0.17.0.md) | release anterior (Merchant Center) |
 | [`CHANGELOG.md`](CHANGELOG.md) | historial completo |
 | [`docs/FAQ.md`](docs/FAQ.md) | preguntas frecuentes |

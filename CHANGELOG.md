@@ -2,6 +2,15 @@
 
 Google Ads MCP follows Semantic Versioning. Detailed release notes for production releases live in `docs/RELEASE_X.Y.Z.md`.
 
+## 0.17.2 — 2026-09-03
+
+### Fixed
+- **`mutate_atomic()` still crashed after 0.17.1**, this time with `GoogleAdsServiceClient.mutate() got an unexpected keyword argument 'validate_only'` — found immediately in live re-testing of `create_call_asset` right after the 0.17.1 fix landed. 0.17.1 fixed `partial_failure` but left `validate_only` hard-coded into the `kwargs` dict unconditionally, missing the exact same `inspect.signature()` guard. Fixed by applying the guard to `validate_only` too, matching the pattern used for `partial_failure` (and matching `mutate()`'s already-correct handling of both parameters).
+
+### Validation
+- Found live: re-tested `create_call_asset` against a real client campaign immediately after deploying 0.17.1, confirming `partial_failure` was fixed and catching `validate_only` failing next in the same call.
+- Not run through `pytest`/`scripts/validate_local.py` in this pass (same environment constraint as 0.17.1 — no Python 3.11+ interpreter available where the fix was authored). **Run `python scripts/validate_local.py` before merging**, and re-test `create_call_asset` (or any `mutate_atomic`-backed tool) against a real account to confirm both kwargs are now handled correctly end to end.
+
 ## 0.17.1 — 2026-09-03
 
 ### Fixed
