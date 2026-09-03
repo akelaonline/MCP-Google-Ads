@@ -16,7 +16,7 @@
 
 Built and maintained by **[Alejandro José · Akela](https://github.com/akelaonline)**
 
-[![Version](https://img.shields.io/badge/version-0.17.0-111111?style=for-the-badge)](docs/RELEASE_0.17.0.md)
+[![Version](https://img.shields.io/badge/version-0.17.1-111111?style=for-the-badge)](docs/RELEASE_0.17.1.md)
 [![Tests](https://img.shields.io/badge/tests-362%2F362-16a34a?style=for-the-badge)](docs/RELEASE_0.17.0.md)
 [![Google Ads API](https://img.shields.io/badge/Google_Ads_API-v25-4285F4?style=for-the-badge&logo=googleads&logoColor=white)](https://developers.google.com/google-ads/api)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](pyproject.toml)
@@ -450,9 +450,13 @@ The goal is not to “give an AI total control.” The goal is to **give a human
 
 ---
 
-## Current release — 0.17.0
+## Current release — 0.17.1
 
-`0.17.0` is the recommended version. It adds Google Merchant Center support *(beta)* on top of 0.16.8, which remains complete and unchanged.
+`0.17.1` is the recommended version. It's a patch fix on top of 0.17.0: it fixes a production bug in `mutate_atomic()` that broke every atomic asset create+attach call (`create_call_asset`, `create_sitelink_asset`, `create_message_asset`, among others) with the error `GoogleAdsServiceClient.mutate() got an unexpected keyword argument 'partial_failure'`. Full detail in [`docs/RELEASE_0.17.1.md`](docs/RELEASE_0.17.1.md).
+
+Everything below about `0.17.0` still applies unchanged — 0.17.1 doesn't touch any functionality, it only fixes that specific bug.
+
+`0.17.0` added Google Merchant Center support *(beta)* on top of 0.16.8, which remains complete and unchanged.
 
 - Google Ads API v25.
 - Merchant Center *(beta)*: account diagnostics, product catalog, product writes and feeds, over the Merchant API.
@@ -463,7 +467,7 @@ The goal is not to “give an AI total control.” The goal is to **give a human
 - Canonical tool registration protected by regression coverage.
 - Google Ads remains live E2E validated against a real MCC (read-only, cross-customer isolation, propose/cancel, propose/confirm, durable replay). Merchant Center is local-only so far: unit tests + smoke, not yet validated against a real account.
 
-Technical details live in [`docs/RELEASE_0.17.0.md`](docs/RELEASE_0.17.0.md). The previous release, [`docs/RELEASE_0.16.8.md`](docs/RELEASE_0.16.8.md), still applies to everything outside Merchant Center.
+Merchant Center technical details live in [`docs/RELEASE_0.17.0.md`](docs/RELEASE_0.17.0.md). The previous release, [`docs/RELEASE_0.16.8.md`](docs/RELEASE_0.16.8.md), still applies to everything outside Merchant Center.
 
 Full history: [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -513,7 +517,8 @@ Full guide: [`docs/SETUP.md#troubleshooting`](docs/SETUP.md#troubleshooting).
 | [`docs/EXAMPLES.md`](docs/EXAMPLES.md) | conversations and ready-to-use queries |
 | [`docs/V25_SERVICE_COVERAGE.md`](docs/V25_SERVICE_COVERAGE.md) | service-by-service API v25 coverage |
 | [`docs/VALIDATION_CHECKLIST.md`](docs/VALIDATION_CHECKLIST.md) | validation before production |
-| [`docs/RELEASE_0.17.0.md`](docs/RELEASE_0.17.0.md) | current release |
+| [`docs/RELEASE_0.17.1.md`](docs/RELEASE_0.17.1.md) | current release |
+| [`docs/RELEASE_0.17.0.md`](docs/RELEASE_0.17.0.md) | previous release (Merchant Center) |
 | [`CHANGELOG.md`](CHANGELOG.md) | complete history |
 | [`docs/FAQ.md`](docs/FAQ.md) | frequently asked questions |
 
