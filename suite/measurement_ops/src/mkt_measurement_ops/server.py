@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from functools import lru_cache
 
 from fastmcp import FastMCP
@@ -121,6 +121,92 @@ def register_site(
 def get_site(key: str) -> dict:
     """Return one site's routing metadata."""
     return asdict(registry.get(key))
+
+
+@mcp.tool()
+def update_site_google_stack(
+    site_key: str,
+    gtm_account_id: str | None = None,
+    gtm_container_id: str | None = None,
+    ga4_property_id: str | None = None,
+    google_ads_customer_id: str | None = None,
+) -> dict:
+    """Update non-secret Google routing IDs for a registered site."""
+    site = registry.get(site_key)
+    google = replace(
+        site.google,
+        gtm_account_id=gtm_account_id if gtm_account_id is not None else site.google.gtm_account_id,
+        gtm_container_id=gtm_container_id if gtm_container_id is not None else site.google.gtm_container_id,
+        ga4_property_id=ga4_property_id if ga4_property_id is not None else site.google.ga4_property_id,
+        google_ads_customer_id=(
+            google_ads_customer_id
+            if google_ads_customer_id is not None
+            else site.google.google_ads_customer_id
+        ),
+    )
+    updated = replace(site, google=google)
+    registry.replace(updated)
+    return asdict(updated)
+
+
+@mcp.tool()
+def onboard_site_measurement(site_key: str) -> dict:
+    """Audit one live page and persist unambiguous GTM/GA4 routing discovered from actual page IDs."""
+    site = registry.get(site_key)
+    audit = _web_auditor().audit(f"https://{site.domain}", max_pages=1)
+    tracking = audit["tracking"]
+    notes: list[str] = []
+    google = site.google
+
+    observed_gtm = tracking.get("gtm_ids", [])
+    if not google.gtm_container_id:
+        if len(observed_gtm) == 1:
+            discovered = _gtm().discover_container(public_id=observed_gtm[0])
+            google = replace(
+                google,
+                gtm_account_id=discovered["account_id"],
+                gtm_container_id=discovered["container_id"],
+            )
+            notes.append(f"linked observed GTM container {discovered['public_id']}")
+        elif len(observed_gtm) > 1:
+            notes.append("multiple GTM public IDs observed; no container was auto-linked")
+        else:
+            notes.append("no GTM public ID observed; site may need a new GTM installation")
+
+    observed_ga4 = tracking.get("ga4_ids", [])
+    if not google.ga4_property_id:
+        if len(observed_ga4) == 1:
+            discovered_ga4 = _ga4_admin().discover_property_by_measurement_id(observed_ga4[0])
+            google = replace(google, ga4_property_id=discovered_ga4["property_id"])
+            notes.append(
+                f"linked observed GA4 stream {discovered_ga4['measurement_id']} "
+                f"to property {discovered_ga4['property_id']}"
+            )
+        elif len(observed_ga4) > 1:
+            notes.append("multiple GA4 Measurement IDs observed; no property was auto-linked")
+        else:
+            notes.append("no GA4 Measurement ID observed; property remains unlinked")
+
+    updated = replace(site, google=google)
+    if updated != site:
+        registry.replace(updated)
+
+    resolved_stream = None
+    if updated.google.ga4_property_id:
+        try:
+            resolved_stream = _ga4_admin().resolve_web_stream(
+                updated.google.ga4_property_id,
+                updated.domain,
+            )
+        except LookupError as exc:
+            notes.append(f"GA4 stream resolution needs review: {exc}")
+
+    return {
+        "site": asdict(updated),
+        "observed_tracking": tracking,
+        "ga4_web_stream": resolved_stream,
+        "notes": notes,
+    }
 
 
 @mcp.tool()
