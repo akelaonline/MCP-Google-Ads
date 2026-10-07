@@ -129,15 +129,6 @@ class GoogleTagManagerReadOnly:
             .execute()
         )
 
-    def quick_preview(self, account_id: str, container_id: str, workspace_id: str) -> dict:
-        return (
-            self._service.accounts()
-            .containers()
-            .workspaces()
-            .quick_preview(path=workspace_path(account_id, container_id, workspace_id))
-            .execute()
-        )
-
     def get_live_version(self, account_id: str, container_id: str) -> dict:
         return (
             self._service.accounts()
@@ -155,10 +146,12 @@ class GoogleTagManagerWriter(GoogleTagManagerReadOnly):
         self,
         service: Any,
         *,
+        preview_enabled: bool,
         writes_enabled: bool,
         publish_enabled: bool,
     ) -> None:
         super().__init__(service)
+        self._preview_enabled = preview_enabled
         self._writes_enabled = writes_enabled
         self._publish_enabled = publish_enabled
 
@@ -170,9 +163,14 @@ class GoogleTagManagerWriter(GoogleTagManagerReadOnly):
             scopes.append(PUBLISH_SCOPE)
         return cls(
             _oauth_service(scopes),
+            preview_enabled=settings.gtm_enable_preview,
             writes_enabled=settings.gtm_enable_writes,
             publish_enabled=settings.gtm_enable_publish,
         )
+
+    def _ensure_preview(self) -> None:
+        if not self._preview_enabled:
+            raise PermissionError("GTM preview is disabled; set GTM_ENABLE_PREVIEW=true to enable quick preview")
 
     def _ensure_writes(self) -> None:
         if not self._writes_enabled:
@@ -184,6 +182,16 @@ class GoogleTagManagerWriter(GoogleTagManagerReadOnly):
             raise PermissionError("GTM publish is disabled; set GTM_ENABLE_PUBLISH=true to enable production publish")
         if confirm is not True:
             raise PermissionError("GTM publish requires confirm=true")
+
+    def quick_preview(self, account_id: str, container_id: str, workspace_id: str) -> dict:
+        self._ensure_preview()
+        return (
+            self._service.accounts()
+            .containers()
+            .workspaces()
+            .quick_preview(path=workspace_path(account_id, container_id, workspace_id))
+            .execute()
+        )
 
     def create_workspace(self, account_id: str, container_id: str, name: str, description: str = "") -> dict:
         self._ensure_writes()
