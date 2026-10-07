@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 
@@ -67,7 +68,14 @@ export function pushDataLayer(payload: DataLayerPayload): void {
 """
 
 
-def build_astro_measurement_plan(*, layout_path: str = "src/layouts/Layout.astro") -> dict:
+def build_astro_measurement_plan(
+    *,
+    gtm_public_id: str,
+    layout_path: str = "src/layouts/Layout.astro",
+) -> dict:
+    if not re.fullmatch(r"GTM-[A-Z0-9]+", gtm_public_id.strip(), re.IGNORECASE):
+        raise ValueError("gtm_public_id must look like GTM-XXXXXXX")
+    gtm_public_id = gtm_public_id.strip().upper()
     changes = (
         AstroFileChange(
             path="src/components/measurement/GoogleTagManagerHead.astro",
@@ -89,7 +97,7 @@ def build_astro_measurement_plan(*, layout_path: str = "src/layouts/Layout.astro
         ),
     )
     return {
-        "environment": {"PUBLIC_GTM_ID": "GTM-XXXXXXX"},
+        "environment": {"PUBLIC_GTM_ID": gtm_public_id},
         "layout_path": layout_path,
         "layout_instruction": (
             "Import GoogleTagManagerHead and render it once inside <head>. "
