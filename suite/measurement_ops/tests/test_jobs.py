@@ -30,3 +30,35 @@ def test_job_store_preserves_preview_verification_gate(tmp_path) -> None:
     approved = store.transition(job.id, JobState.APPROVED)
 
     assert approved.state == JobState.APPROVED
+
+
+def test_atomic_publish_claim_can_only_be_taken_once(tmp_path) -> None:
+    store = JobStore(tmp_path / "jobs.db")
+    job = store.create("cambridge")
+    store.transition(job.id, JobState.AUDITED)
+    store.transition(job.id, JobState.PLANNED)
+    store.transition(job.id, JobState.PREPARED)
+    store.transition(
+        job.id,
+        JobState.PREVIEW_VERIFIED,
+        evidence={"kind": "preview_verification", "passed": True},
+    )
+    store.transition(job.id, JobState.APPROVED)
+
+    claimed = store.claim(
+        job.id,
+        expected=JobState.APPROVED,
+        target=JobState.PUBLISHING,
+    )
+    assert claimed.state == JobState.PUBLISHING
+
+    try:
+        store.claim(
+            job.id,
+            expected=JobState.APPROVED,
+            target=JobState.PUBLISHING,
+        )
+    except ValueError as exc:
+        assert "expected approved, found publishing" in str(exc)
+    else:
+        raise AssertionError("second publish claim unexpectedly succeeded")
