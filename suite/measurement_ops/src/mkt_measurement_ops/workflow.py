@@ -10,9 +10,10 @@ class JobState(StrEnum):
     AUDITED = "audited"
     PLANNED = "planned"
     PREPARED = "prepared"
-    VERIFIED = "verified"
+    PREVIEW_VERIFIED = "preview_verified"
     APPROVED = "approved"
     PUBLISHED = "published"
+    PRODUCTION_VERIFIED = "production_verified"
     FAILED = "failed"
 
 
@@ -20,10 +21,11 @@ _ALLOWED: dict[JobState, set[JobState]] = {
     JobState.CREATED: {JobState.AUDITED, JobState.FAILED},
     JobState.AUDITED: {JobState.PLANNED, JobState.FAILED},
     JobState.PLANNED: {JobState.PREPARED, JobState.FAILED},
-    JobState.PREPARED: {JobState.VERIFIED, JobState.FAILED},
-    JobState.VERIFIED: {JobState.APPROVED, JobState.FAILED},
+    JobState.PREPARED: {JobState.PREVIEW_VERIFIED, JobState.FAILED},
+    JobState.PREVIEW_VERIFIED: {JobState.APPROVED, JobState.FAILED},
     JobState.APPROVED: {JobState.PUBLISHED, JobState.FAILED},
-    JobState.PUBLISHED: set(),
+    JobState.PUBLISHED: {JobState.PRODUCTION_VERIFIED, JobState.FAILED},
+    JobState.PRODUCTION_VERIFIED: set(),
     JobState.FAILED: set(),
 }
 
@@ -38,11 +40,13 @@ class MeasurementJob:
     def transition(self, target: JobState, *, evidence: dict | None = None) -> None:
         if target not in _ALLOWED[self.state]:
             raise ValueError(f"invalid transition: {self.state.value} -> {target.value}")
-        if target == JobState.APPROVED and not self._has_verification_evidence():
-            raise ValueError("approval requires verification evidence")
+        if target == JobState.APPROVED and not self._has_passed_evidence("preview_verification"):
+            raise ValueError("approval requires passed preview-verification evidence")
+        if target == JobState.PRODUCTION_VERIFIED and not self._has_passed_evidence("production_verification"):
+            raise ValueError("production verification requires passed production-verification evidence")
         self.state = target
         if evidence is not None:
             self.evidence.append(evidence)
 
-    def _has_verification_evidence(self) -> bool:
-        return any(item.get("kind") == "verification" and item.get("passed") is True for item in self.evidence)
+    def _has_passed_evidence(self, kind: str) -> bool:
+        return any(item.get("kind") == kind and item.get("passed") is True for item in self.evidence)
