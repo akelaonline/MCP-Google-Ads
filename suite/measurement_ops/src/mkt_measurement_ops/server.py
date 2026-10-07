@@ -770,13 +770,10 @@ def prepare_gtm_job(job_id: str) -> dict:
 @mcp.tool()
 def create_measurement_version(
     job_id: str,
-    account_id: str,
-    container_id: str,
-    workspace_id: str,
     name: str,
     notes: str = "",
 ) -> dict:
-    """Create a saved GTM version only after preview verification; does not publish."""
+    """Create a saved GTM version from the job-owned workspace after preview verification."""
     job = _jobs().get(job_id)
     if job.state != JobState.PREVIEW_VERIFIED:
         raise ValueError("job must be preview_verified before creating the release version")
@@ -793,6 +790,15 @@ def create_measurement_version(
             "version_id": existing["version_id"],
             "reused": True,
         }
+    workspace = _latest_evidence(job, "gtm_workspace")
+    if workspace is None:
+        raise ValueError("job has no managed GTM workspace")
+    account_id = str(workspace.get("account_id") or "")
+    container_id = str(workspace.get("container_id") or "")
+    workspace_id = str(workspace.get("workspace_id") or "")
+    if not account_id or not container_id or not workspace_id:
+        raise ValueError("job GTM workspace evidence is incomplete")
+
     result = _gtm_writer().create_version(
         account_id,
         container_id,
@@ -853,22 +859,28 @@ def approve_measurement_job(job_id: str, confirm: bool = False) -> dict:
 @mcp.tool()
 def publish_measurement_job(
     job_id: str,
-    account_id: str,
-    container_id: str,
-    version_id: str,
     confirm: bool = False,
 ) -> dict:
-    """Publish an approved GTM version and move the durable job to published."""
+    """Publish exactly the GTM version recorded by the approved measurement job."""
     job = _jobs().get(job_id)
     if job.state != JobState.APPROVED:
         raise ValueError("job must be approved before publish")
-    saved_versions = [
-        item.get("version_id")
-        for item in job.evidence
-        if item.get("kind") == "gtm_version" and item.get("version_id")
-    ]
-    if not saved_versions or version_id not in saved_versions:
-        raise ValueError("version_id was not created and recorded by this measurement job")
+    version_evidence = _latest_evidence(job, "gtm_version")
+    if version_evidence is None or not version_evidence.get("version_id"):
+        raise ValueError("job has no saved GTM version")
+    version_id = str(version_evidence["version_id"])
+    account_id = str(version_evidence.get("account_id") or "")
+    container_id = str(version_evidence.get("container_id") or "")
+    if not account_id or not container_id:
+        raise ValueError("job GTM version evidence is missing account/container identity")
+
+    workspace = _latest_evidence(job, "gtm_workspace")
+    if workspace is None:
+        raise ValueError("job has no managed GTM workspace")
+    if str(workspace.get("account_id") or "") != account_id:
+        raise ValueError("saved version account does not match job workspace")
+    if str(workspace.get("container_id") or "") != container_id:
+        raise ValueError("saved version container does not match job workspace")
     claimed = _jobs().claim(
         job_id,
         expected=JobState.APPROVED,
