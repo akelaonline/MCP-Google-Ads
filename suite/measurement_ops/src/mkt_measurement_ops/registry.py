@@ -71,6 +71,7 @@ class SiteRegistry:
             google=GoogleStack(
                 gtm_account_id=google.get("gtm_account_id"),
                 gtm_container_id=google.get("gtm_container_id"),
+                gtm_public_id=google.get("gtm_public_id"),
                 ga4_property_id=google.get("ga4_property_id"),
                 google_ads_customer_id=google.get("google_ads_customer_id"),
             ),
