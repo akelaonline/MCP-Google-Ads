@@ -241,8 +241,12 @@ def start_measurement_job(site_key: str, max_pages: int = 5) -> dict:
     )
     opportunities = audit["opportunities"]
     goals: list[str] = []
-    if opportunities["forms"]:
+    if opportunities["lead_forms"]:
         goals.append("lead_form")
+    if opportunities["newsletter_forms"]:
+        goals.append("newsletter_signup")
+    if opportunities["signup_forms"]:
+        goals.append("sign_up")
     if opportunities["whatsapp_links"]:
         goals.append("whatsapp_click")
     if opportunities["phone_links"]:
@@ -328,8 +332,12 @@ def audit_and_plan_site(site_key: str, max_pages: int = 5) -> dict:
     audit = _web_auditor().audit(f"https://{site.domain}", max_pages=max_pages)
     opportunities = audit["opportunities"]
     goals: list[str] = []
-    if opportunities["forms"]:
+    if opportunities["lead_forms"]:
         goals.append("lead_form")
+    if opportunities["newsletter_forms"]:
+        goals.append("newsletter_signup")
+    if opportunities["signup_forms"]:
+        goals.append("sign_up")
     if opportunities["whatsapp_links"]:
         goals.append("whatsapp_click")
     if opportunities["phone_links"]:
