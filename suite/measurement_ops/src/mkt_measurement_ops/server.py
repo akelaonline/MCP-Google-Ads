@@ -96,6 +96,7 @@ def register_site(
     wordpress_endpoint: str | None = None,
     gtm_account_id: str | None = None,
     gtm_container_id: str | None = None,
+    gtm_public_id: str | None = None,
     ga4_property_id: str | None = None,
     google_ads_customer_id: str | None = None,
 ) -> dict:
@@ -110,6 +111,7 @@ def register_site(
         google=GoogleStack(
             gtm_account_id=gtm_account_id,
             gtm_container_id=gtm_container_id,
+            gtm_public_id=gtm_public_id,
             ga4_property_id=ga4_property_id,
             google_ads_customer_id=google_ads_customer_id,
         ),
@@ -129,6 +131,7 @@ def update_site_google_stack(
     site_key: str,
     gtm_account_id: str | None = None,
     gtm_container_id: str | None = None,
+    gtm_public_id: str | None = None,
     ga4_property_id: str | None = None,
     google_ads_customer_id: str | None = None,
 ) -> dict:
@@ -138,6 +141,7 @@ def update_site_google_stack(
         site.google,
         gtm_account_id=gtm_account_id if gtm_account_id is not None else site.google.gtm_account_id,
         gtm_container_id=gtm_container_id if gtm_container_id is not None else site.google.gtm_container_id,
+        gtm_public_id=gtm_public_id if gtm_public_id is not None else site.google.gtm_public_id,
         ga4_property_id=ga4_property_id if ga4_property_id is not None else site.google.ga4_property_id,
         google_ads_customer_id=(
             google_ads_customer_id
@@ -148,6 +152,46 @@ def update_site_google_stack(
     updated = replace(site, google=google)
     registry.replace(updated)
     return asdict(updated)
+
+
+@mcp.tool()
+def create_site_gtm_container(
+    site_key: str,
+    account_id: str | None = None,
+    name: str | None = None,
+    confirm: bool = False,
+) -> dict:
+    """Create a web GTM container for a site that has no mapped container."""
+    if confirm is not True:
+        raise PermissionError("creating a GTM container requires confirm=true")
+    site = registry.get(site_key)
+    if site.google.gtm_container_id or site.google.gtm_public_id:
+        raise ValueError("site already has a GTM container mapped")
+    resolved_account = (account_id or site.google.gtm_account_id or "").strip()
+    if not resolved_account:
+        raise ValueError("gtm account_id is required to create a new container")
+
+    result = _gtm_writer().create_container(
+        resolved_account,
+        name=name or f"MKT - {site.domain}",
+        domain=site.domain,
+    )
+    container_id = str(result.get("containerId") or "")
+    public_id = str(result.get("publicId") or "")
+    if not container_id or not public_id:
+        raise ValueError("GTM create_container returned incomplete identity")
+
+    updated = replace(
+        site,
+        google=replace(
+            site.google,
+            gtm_account_id=resolved_account,
+            gtm_container_id=container_id,
+            gtm_public_id=public_id,
+        ),
+    )
+    registry.replace(updated)
+    return {"site": asdict(updated), "gtm": result}
 
 
 @mcp.tool()
@@ -167,6 +211,7 @@ def onboard_site_measurement(site_key: str) -> dict:
                 google,
                 gtm_account_id=discovered["account_id"],
                 gtm_container_id=discovered["container_id"],
+                gtm_public_id=discovered["public_id"],
             )
             notes.append(f"linked observed GTM container {discovered['public_id']}")
         elif len(observed_gtm) > 1:
