@@ -52,7 +52,8 @@ function mkt_measurement_get_config() {
 	);
 }
 
-function mkt_measurement_can_manage() {
+function mkt_measurement_can_manage( $input = null ) {
+	unset( $input );
 	return current_user_can( 'manage_options' );
 }
 
