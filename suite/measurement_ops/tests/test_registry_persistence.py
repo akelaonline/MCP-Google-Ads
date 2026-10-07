@@ -55,3 +55,31 @@ def test_persistent_registry_rejects_duplicate_domain_after_reopen(tmp_path) -> 
         assert "duplicate site domain" in str(exc)
     else:
         raise AssertionError("duplicate domain was accepted")
+
+
+def test_registry_replace_persists_google_stack_update(tmp_path) -> None:
+    path = tmp_path / "measurement.db"
+    registry = SiteRegistry(db_path=path)
+    registry.add(
+        SiteTarget(
+            key="site",
+            domain="example.com",
+            platform=SitePlatform.STATIC,
+            deployment_mode=DeploymentMode.MANUAL,
+        )
+    )
+
+    registry.replace(
+        SiteTarget(
+            key="site",
+            domain="example.com",
+            platform=SitePlatform.STATIC,
+            deployment_mode=DeploymentMode.MANUAL,
+            google=GoogleStack(gtm_account_id="11", gtm_container_id="22", ga4_property_id="33"),
+        )
+    )
+
+    reopened = SiteRegistry(db_path=path).get("site")
+    assert reopened.google.gtm_account_id == "11"
+    assert reopened.google.gtm_container_id == "22"
+    assert reopened.google.ga4_property_id == "33"
