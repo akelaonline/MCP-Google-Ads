@@ -35,8 +35,10 @@ class SiteRegistry:
     def _connect(self) -> sqlite3.Connection:
         if self._db_path is None:
             raise RuntimeError("registry persistence is not configured")
-        connection = sqlite3.connect(self._db_path)
+        connection = sqlite3.connect(self._db_path, timeout=5.0)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout = 5000")
+        connection.execute("PRAGMA journal_mode = WAL")
         return connection
 
     def _init_db(self) -> None:
