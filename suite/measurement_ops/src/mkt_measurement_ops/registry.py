@@ -110,6 +110,32 @@ class SiteRegistry:
 
         self._sites[site.key] = site
 
+    def replace(self, site: SiteTarget) -> None:
+        site.validate()
+        if site.key not in self._sites:
+            raise KeyError(f"unknown site: {site.key}")
+        domain = site.domain.lower().strip()
+        if any(
+            existing.key != site.key and existing.domain.lower().strip() == domain
+            for existing in self._sites.values()
+        ):
+            raise ValueError(f"duplicate site domain: {site.domain}")
+
+        if self._db_path is not None:
+            with self._connect() as db:
+                cursor = db.execute(
+                    """
+                    UPDATE measurement_sites
+                    SET domain = ?, payload_json = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE site_key = ?
+                    """,
+                    (domain, self._serialize(site), site.key),
+                )
+                if cursor.rowcount != 1:
+                    raise KeyError(f"unknown site: {site.key}")
+
+        self._sites[site.key] = site
+
     def get(self, key: str) -> SiteTarget:
         try:
             return self._sites[key]
