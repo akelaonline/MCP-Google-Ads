@@ -65,3 +65,67 @@ def test_google_tag_install_is_idempotent() -> None:
 
     assert first["created"] == {"trigger": True, "tag": True}
     assert second["created"] == {"trigger": False, "tag": False}
+
+
+def test_provider_form_install_is_idempotent() -> None:
+    writer = _FakeWriter()
+    installer = GTMTrackingInstaller(writer)
+
+    first = installer.install_provider_form_event(
+        "1", "2", "3",
+        provider="contactform7",
+        measurement_id="G-ABC123",
+    )
+    second = installer.install_provider_form_event(
+        "1", "2", "3",
+        provider="contactform7",
+        measurement_id="G-ABC123",
+    )
+
+    assert first["created"]["listener"] is True
+    assert first["created"]["event_tag"] is True
+    assert second["created"]["listener"] is False
+    assert second["created"]["event_tag"] is False
+    assert len(writer.triggers) == 2
+    assert len(writer.tags) == 2
+
+
+def test_native_form_install_is_idempotent() -> None:
+    writer = _FakeWriter()
+    installer = GTMTrackingInstaller(writer)
+
+    first = installer.install_native_form_event(
+        "1", "2", "3",
+        measurement_id="G-ABC123",
+        form_id="contact-form",
+        page_path="/contact",
+    )
+    second = installer.install_native_form_event(
+        "1", "2", "3",
+        measurement_id="G-ABC123",
+        form_id="contact-form",
+        page_path="/contact",
+    )
+
+    assert first["created"] == {"trigger": True, "tag": True}
+    assert second["created"] == {"trigger": False, "tag": False}
+
+
+def test_existing_same_name_different_filter_fails_as_drift() -> None:
+    writer = _FakeWriter()
+    writer.triggers.append(
+        {
+            "name": "MKT - Phone Click",
+            "type": "linkClick",
+            "triggerId": "99",
+            "filter": [],
+        }
+    )
+    installer = GTMTrackingInstaller(writer)
+
+    with pytest.raises(GTMDriftError, match="configuration drift"):
+        installer.install_standard_click_event(
+            "1", "2", "3",
+            event_name="phone_click",
+            measurement_id="G-ABC123",
+        )
