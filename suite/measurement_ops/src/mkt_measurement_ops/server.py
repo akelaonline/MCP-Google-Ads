@@ -600,6 +600,19 @@ def create_measurement_version(
     job = _jobs().get(job_id)
     if job.state != JobState.PREVIEW_VERIFIED:
         raise ValueError("job must be preview_verified before creating the release version")
+    existing_versions = [
+        item
+        for item in job.evidence
+        if item.get("kind") == "gtm_version" and item.get("version_id")
+    ]
+    if existing_versions:
+        existing = existing_versions[-1]
+        return {
+            "job": JobStore.serialize(job),
+            "gtm": None,
+            "version_id": existing["version_id"],
+            "reused": True,
+        }
     result = _gtm_writer().create_version(
         account_id,
         container_id,
@@ -676,14 +689,41 @@ def publish_measurement_job(
     ]
     if not saved_versions or version_id not in saved_versions:
         raise ValueError("version_id was not created and recorded by this measurement job")
-    result = _gtm_writer().publish_version(
-        account_id,
-        container_id,
-        version_id,
-        confirm=confirm,
-    )
-    published = _jobs().transition(
+    claimed = _jobs().claim(
         job_id,
+        expected=JobState.APPROVED,
+        target=JobState.PUBLISHING,
+        evidence={
+            "kind": "publish_claim",
+            "account_id": account_id,
+            "container_id": container_id,
+            "version_id": version_id,
+        },
+    )
+    try:
+        result = _gtm_writer().publish_version(
+            account_id,
+            container_id,
+            version_id,
+            confirm=confirm,
+        )
+    except Exception as exc:
+        failed = _jobs().transition(
+            job_id,
+            JobState.FAILED,
+            evidence={
+                "kind": "publish_error",
+                "error_type": type(exc).__name__,
+                "message": str(exc)[:500],
+                "reconciliation_required": True,
+            },
+        )
+        raise RuntimeError(
+            f"GTM publish failed after job claim; job {failed.id} requires live-version reconciliation"
+        ) from exc
+
+    published = _jobs().transition(
+        claimed.id,
         JobState.PUBLISHED,
         evidence={
             "kind": "publish",
