@@ -323,7 +323,51 @@ def astro_measurement_plan(site_key: str, layout_path: str = "src/layouts/Layout
     site = registry.get(site_key)
     if site.platform != SitePlatform.ASTRO:
         raise ValueError(f"site {site_key} is not registered as Astro")
-    return build_astro_measurement_plan(layout_path=layout_path)
+    if not site.google.gtm_public_id:
+        raise ValueError(f"site {site_key} has no gtm_public_id registered")
+    return build_astro_measurement_plan(
+        gtm_public_id=site.google.gtm_public_id,
+        layout_path=layout_path,
+    )
+
+
+@mcp.tool()
+def wordpress_measurement_plan(site_key: str) -> dict:
+    """Return the exact WordPress MCP ability invocation needed to install the registered GTM container."""
+    site = registry.get(site_key)
+    if site.platform != SitePlatform.WORDPRESS:
+        raise ValueError(f"site {site_key} is not registered as WordPress")
+    if not site.wordpress_endpoint:
+        raise ValueError(f"site {site_key} has no wordpress_endpoint registered")
+    if not site.google.gtm_public_id:
+        raise ValueError(f"site {site_key} has no gtm_public_id registered")
+    return {
+        "endpoint": site.wordpress_endpoint,
+        "ability": "mkt-measurement/set-gtm-container",
+        "arguments": {
+            "gtm_container_id": site.google.gtm_public_id,
+            "enabled": True,
+            "confirm": True,
+        },
+        "precondition": "run live-site audit first and stop if an existing GTM bootstrap is already present",
+        "verification": [
+            "bridge get-config returns the same GTM public ID",
+            "live HTML contains exactly one GTM head bootstrap",
+            "live HTML contains exactly one GTM noscript iframe",
+            "web audit observes the same GTM public ID after deployment",
+        ],
+    }
+
+
+@mcp.tool()
+def site_deployment_plan(site_key: str, layout_path: str = "src/layouts/Layout.astro") -> dict:
+    """Return the platform-specific GTM installation plan without changing production."""
+    site = registry.get(site_key)
+    if site.platform == SitePlatform.WORDPRESS:
+        return wordpress_measurement_plan(site_key)
+    if site.platform == SitePlatform.ASTRO:
+        return astro_measurement_plan(site_key, layout_path)
+    raise ValueError(f"no automated deployment plan for platform {site.platform.value}")
 
 
 @mcp.tool()
