@@ -6,7 +6,7 @@ import socket
 from collections import deque
 from dataclasses import asdict, dataclass
 from functools import lru_cache
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 
 _GTM_RE = re.compile(r"\bGTM-[A-Z0-9]+\b", re.IGNORECASE)
@@ -106,6 +106,71 @@ def _providers(html: str) -> tuple[str, ...]:
     return tuple(sorted(name for name, needles in signals.items() if any(needle in lowered for needle in needles)))
 
 
+def _form_haystack(form: dict) -> str:
+    fields = form.get("fields") or []
+    pieces = [
+        str(form.get("id") or ""),
+        str(form.get("name") or ""),
+        str(form.get("action") or ""),
+        str(form.get("classes") or ""),
+        str(form.get("text") or ""),
+        " ".join(str(item) for item in form.get("buttons") or []),
+    ]
+    for field in fields:
+        pieces.extend(
+            [
+                str(field.get("type") or ""),
+                str(field.get("name") or ""),
+                str(field.get("id") or ""),
+                str(field.get("placeholder") or ""),
+                str(field.get("label") or ""),
+                str(field.get("aria_label") or ""),
+            ]
+        )
+    return " ".join(pieces).lower()
+
+
+def classify_form(form: dict) -> str:
+    """Conservative form-intent classifier; unknown forms stay 'other'."""
+    fields = form.get("fields") or []
+    field_types = {str(field.get("type") or "").lower() for field in fields}
+    field_names = {str(field.get("name") or "").lower() for field in fields}
+    haystack = _form_haystack(form)
+
+    if "search" in field_types or field_names.intersection({"s", "q", "search", "query"}):
+        return "search"
+    if re.search(r"\b(buscar|búsqueda|search)\b", haystack):
+        return "search"
+
+    has_password = "password" in field_types
+    if has_password:
+        if re.search(r"\b(registr|register|sign\s?up|crear\s+cuenta|create\s+account)\b", haystack):
+            return "signup"
+        return "login"
+
+    if re.search(r"\b(newsletter|suscrib|subscribe|mailing\s+list)\b", haystack):
+        return "newsletter"
+
+    has_email = "email" in field_types or any("email" in name or "mail" in name for name in field_names)
+    has_phone = "tel" in field_types or any(
+        token in name for name in field_names for token in ("phone", "telefono", "teléfono", "whatsapp")
+    )
+    has_message = "textarea" in field_types or any(
+        token in name for name in field_names for token in ("message", "mensaje", "consulta", "comments")
+    )
+    lead_language = bool(
+        re.search(
+            r"\b(contact|contacto|consulta|consultar|presupuesto|cotiz|quote|enquiry|inquiry|"
+            r"mensaje|message|hablar|asesor|demo|solicitar|request|enviar|send)\b",
+            haystack,
+        )
+    )
+    if (has_email or has_phone) and (has_message or lead_language):
+        return "lead"
+
+    return "other"
+
+
 class WebAuditor:
     """Read-only Chromium auditor. It never clicks or submits forms."""
 
@@ -165,7 +230,30 @@ class WebAuditor:
                             name: f.getAttribute('name'),
                             action: f.action || null,
                             method: (f.method || 'get').toLowerCase(),
-                            classes: f.className || ''
+                            classes: typeof f.className === 'string' ? f.className : '',
+                            text: (f.innerText || '').slice(0, 1500),
+                            buttons: Array.from(f.querySelectorAll('button,input[type=submit]'))
+                                .map(b => (b.innerText || b.value || b.getAttribute('aria-label') || '').trim())
+                                .filter(Boolean)
+                                .slice(0, 20),
+                            fields: Array.from(f.querySelectorAll('input,textarea,select'))
+                                .map(el => {
+                                    let label = '';
+                                    try {
+                                        const wrapping = el.closest('label');
+                                        const explicit = el.id ? f.querySelector('label[for="' + CSS.escape(el.id) + '"]') : null;
+                                        label = ((wrapping || explicit)?.innerText || '').trim();
+                                    } catch (_) {}
+                                    return {
+                                        type: (el.getAttribute('type') || el.tagName || '').toLowerCase(),
+                                        name: el.getAttribute('name'),
+                                        id: el.id || null,
+                                        placeholder: el.getAttribute('placeholder'),
+                                        aria_label: el.getAttribute('aria-label'),
+                                        label
+                                    };
+                                })
+                                .slice(0, 60)
                         }))
                     })"""
                 )
@@ -177,10 +265,17 @@ class WebAuditor:
                 email = tuple(link for link in links if link.lower().startswith("mailto:"))
                 downloads = tuple(link for link in links if _DOWNLOAD_RE.search(link))
 
+                providers_on_page = _providers(html)
+                classified_forms = []
+                for raw_form in extracted.get("forms", []):
+                    form = dict(raw_form)
+                    form["purpose"] = classify_form(form)
+                    classified_forms.append(form)
+
                 audit = PageAudit(
                     url=page.url,
                     title=str(extracted.get("title", "")),
-                    forms=tuple(extracted.get("forms", [])),
+                    forms=tuple(classified_forms),
                     whatsapp_links=whatsapp,
                     phone_links=phone,
                     email_links=email,
@@ -189,7 +284,7 @@ class WebAuditor:
                     gtm_ids=tuple(sorted(set(_GTM_RE.findall(html.upper())))),
                     ga4_ids=tuple(sorted(set(_GA4_RE.findall(html.upper())))),
                     ads_ids=tuple(sorted(set(_ADS_RE.findall(html.upper())))),
-                    form_providers=_providers(html),
+                    form_providers=providers_on_page,
                 )
                 pages.append(audit)
 
@@ -205,13 +300,37 @@ class WebAuditor:
         all_ga4 = sorted({value for item in pages for value in item.ga4_ids})
         all_ads = sorted({value for item in pages for value in item.ads_ids})
         providers = sorted({value for item in pages for value in item.form_providers})
+        form_candidates: list[dict] = []
+        for item in pages:
+            provider = item.form_providers[0] if len(item.form_providers) == 1 else None
+            for form in item.forms:
+                form_candidates.append(
+                    {
+                        "page_url": item.url,
+                        "form_id": form.get("id"),
+                        "form_name": form.get("name"),
+                        "purpose": form.get("purpose", "other"),
+                        "provider": provider,
+                    }
+                )
+        purposes = {
+            purpose: sum(1 for form in form_candidates if form["purpose"] == purpose)
+            for purpose in ("lead", "newsletter", "signup", "login", "search", "other")
+        }
 
         return {
             "start_url": start_url,
             "pages_scanned": len(pages),
             "tracking": {"gtm_ids": all_gtm, "ga4_ids": all_ga4, "ads_ids": all_ads},
             "opportunities": {
-                "forms": sum(len(item.forms) for item in pages),
+                "forms": len(form_candidates),
+                "lead_forms": purposes["lead"],
+                "newsletter_forms": purposes["newsletter"],
+                "signup_forms": purposes["signup"],
+                "login_forms": purposes["login"],
+                "search_forms": purposes["search"],
+                "other_forms": purposes["other"],
+                "form_candidates": form_candidates,
                 "whatsapp_links": sum(len(item.whatsapp_links) for item in pages),
                 "phone_links": sum(len(item.phone_links) for item in pages),
                 "email_links": sum(len(item.email_links) for item in pages),
