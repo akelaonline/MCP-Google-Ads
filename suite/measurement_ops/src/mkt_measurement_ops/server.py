@@ -5,13 +5,17 @@ from functools import lru_cache
 
 from fastmcp import FastMCP
 
+from .astro import build_astro_measurement_plan
+from .ga4 import GA4ReadOnly
 from .gtm import GoogleTagManagerReadOnly, GoogleTagManagerWriter
+from .jobs import JobStore
 from .models import DeploymentMode, GoogleStack, SitePlatform, SiteTarget
 from .planner import build_plan
 from .registry import SiteRegistry
 from .risk import classify_action, requires_confirmation
 from .settings import MeasurementSettings
 from .web_audit import WebAuditor
+from .workflow import JobState
 
 mcp = FastMCP(
     "MKT Measurement Ops",
@@ -37,6 +41,16 @@ def _gtm_writer() -> GoogleTagManagerWriter:
 @lru_cache(maxsize=1)
 def _web_auditor() -> WebAuditor:
     return WebAuditor()
+
+
+@lru_cache(maxsize=1)
+def _ga4() -> GA4ReadOnly:
+    return GA4ReadOnly.from_env()
+
+
+@lru_cache(maxsize=1)
+def _jobs() -> JobStore:
+    return JobStore.from_env()
 
 
 @mcp.tool()
@@ -101,6 +115,56 @@ def build_tracking_plan(site_key: str, goals: list[str], require_consent_audit: 
     """Build a deterministic measurement plan for a registered site."""
     registry.get(site_key)
     return build_plan(site_key, goals, require_consent_audit=require_consent_audit).to_dict()
+
+
+@mcp.tool()
+def create_measurement_job(site_key: str) -> dict:
+    """Create a durable measurement job for a registered site."""
+    registry.get(site_key)
+    return JobStore.serialize(_jobs().create(site_key))
+
+
+@mcp.tool()
+def get_measurement_job(job_id: str) -> dict:
+    """Read durable measurement-job state and evidence."""
+    return JobStore.serialize(_jobs().get(job_id))
+
+
+@mcp.tool()
+def astro_measurement_plan(site_key: str, layout_path: str = "src/layouts/Layout.astro") -> dict:
+    """Return deterministic Astro files/instructions for the registered Astro site."""
+    site = registry.get(site_key)
+    if site.platform != SitePlatform.ASTRO:
+        raise ValueError(f"site {site_key} is not registered as Astro")
+    return build_astro_measurement_plan(layout_path=layout_path)
+
+
+@mcp.tool()
+def ga4_realtime_events(property_id: str) -> dict[str, int]:
+    """Read current GA4 realtime event counts."""
+    return _ga4().realtime_events(property_id)
+
+
+@mcp.tool()
+def ga4_verify_events(property_id: str, expected_events: list[str], job_id: str | None = None) -> dict:
+    """Verify expected events in GA4 Realtime and optionally attach authoritative evidence to a job."""
+    result = _ga4().verify_events(property_id, expected_events)
+    if job_id is not None:
+        job = _jobs().get(job_id)
+        if job.state != JobState.PREPARED:
+            raise ValueError("job must be in prepared state before GA4 verification")
+        _jobs().transition(
+            job_id,
+            JobState.VERIFIED,
+            evidence={
+                "kind": "verification",
+                "source": "ga4_realtime",
+                "passed": result["passed"],
+                "property_id": property_id,
+                "checks": result["checks"],
+            },
+        )
+    return result
 
 
 @mcp.tool()
