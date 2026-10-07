@@ -27,7 +27,7 @@ mcp = FastMCP(
     ),
 )
 
-registry = SiteRegistry()
+registry = SiteRegistry.from_env()
 
 
 @lru_cache(maxsize=1)
