@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from dataclasses import dataclass
 
 
 _TRUE = {"1", "true", "yes", "on"}
+
+
+def measurement_db_path() -> Path:
+    configured = os.getenv("MEASUREMENT_OPS_DB")
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".mkt-measurement-ops" / "measurement_ops.db"
 
 
 def env_bool(name: str, default: bool = False) -> bool:
