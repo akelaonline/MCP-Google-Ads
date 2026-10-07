@@ -12,6 +12,7 @@ class JobState(StrEnum):
     PREPARED = "prepared"
     PREVIEW_VERIFIED = "preview_verified"
     APPROVED = "approved"
+    PUBLISHING = "publishing"
     PUBLISHED = "published"
     PRODUCTION_VERIFIED = "production_verified"
     FAILED = "failed"
@@ -23,7 +24,8 @@ _ALLOWED: dict[JobState, set[JobState]] = {
     JobState.PLANNED: {JobState.PREPARED, JobState.FAILED},
     JobState.PREPARED: {JobState.PREVIEW_VERIFIED, JobState.FAILED},
     JobState.PREVIEW_VERIFIED: {JobState.APPROVED, JobState.FAILED},
-    JobState.APPROVED: {JobState.PUBLISHED, JobState.FAILED},
+    JobState.APPROVED: {JobState.PUBLISHING, JobState.FAILED},
+    JobState.PUBLISHING: {JobState.PUBLISHED, JobState.FAILED},
     JobState.PUBLISHED: {JobState.PRODUCTION_VERIFIED, JobState.FAILED},
     JobState.PRODUCTION_VERIFIED: set(),
     JobState.FAILED: set(),
