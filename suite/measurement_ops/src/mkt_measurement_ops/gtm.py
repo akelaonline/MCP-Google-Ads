@@ -120,6 +120,13 @@ class GoogleTagManagerReadOnly:
             parent=workspace_path(account_id, container_id, workspace_id),
         )
 
+    def list_built_in_variables(self, account_id: str, container_id: str, workspace_id: str) -> list[dict]:
+        return self._paginate(
+            self._service.accounts().containers().workspaces().built_in_variables().list,
+            "builtInVariable",
+            parent=workspace_path(account_id, container_id, workspace_id),
+        )
+
     def get_workspace_status(self, account_id: str, container_id: str, workspace_id: str) -> dict:
         return (
             self._service.accounts()
@@ -225,6 +232,34 @@ class GoogleTagManagerWriter(GoogleTagManagerReadOnly):
             .workspaces()
             .triggers()
             .create(parent=workspace_path(account_id, container_id, workspace_id), body=body)
+            .execute()
+        )
+
+    def enable_built_in_variables(
+        self,
+        account_id: str,
+        container_id: str,
+        workspace_id: str,
+        variable_types: list[str],
+    ) -> dict:
+        self._ensure_writes()
+        requested = list(dict.fromkeys(item for item in variable_types if item))
+        if not requested:
+            return {"builtInVariable": []}
+        existing = self.list_built_in_variables(account_id, container_id, workspace_id)
+        enabled = {item.get("type") for item in existing}
+        missing = [item for item in requested if item not in enabled]
+        if not missing:
+            return {"builtInVariable": [], "alreadyEnabled": requested}
+        return (
+            self._service.accounts()
+            .containers()
+            .workspaces()
+            .built_in_variables()
+            .create(
+                parent=workspace_path(account_id, container_id, workspace_id),
+                type=missing,
+            )
             .execute()
         )
 
