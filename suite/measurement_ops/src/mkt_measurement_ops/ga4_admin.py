@@ -34,6 +34,54 @@ class GA4AdminReadOnly:
             )
         )
 
+    def list_property_summaries(self) -> list[dict]:
+        rows: list[dict] = []
+        page_token: str | None = None
+        while True:
+            kwargs: dict[str, Any] = {}
+            if page_token:
+                kwargs["pageToken"] = page_token
+            response = self._service.accountSummaries().list(**kwargs).execute()
+            for account in response.get("accountSummaries", []):
+                for prop in account.get("propertySummaries", []):
+                    rows.append(
+                        {
+                            "account": account.get("account"),
+                            "account_display_name": account.get("displayName"),
+                            "property": prop.get("property"),
+                            "property_display_name": prop.get("displayName"),
+                        }
+                    )
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                return rows
+
+    def discover_property_by_measurement_id(self, measurement_id: str) -> dict:
+        wanted = measurement_id.strip().upper()
+        if not wanted:
+            raise ValueError("measurement_id is required")
+        matches: list[dict] = []
+        for summary in self.list_property_summaries():
+            property_path = str(summary.get("property") or "")
+            property_id = property_path.split("/")[-1]
+            if not property_id:
+                continue
+            for stream in self.list_web_streams(property_id):
+                web = stream.get("webStreamData", {})
+                if str(web.get("measurementId") or "").upper() == wanted:
+                    matches.append(
+                        {
+                            **summary,
+                            "property_id": property_id,
+                            **self._normalized(stream),
+                        }
+                    )
+        if not matches:
+            raise LookupError(f"no accessible GA4 web stream matched {measurement_id!r}")
+        if len(matches) > 1:
+            raise LookupError(f"multiple accessible GA4 web streams matched {measurement_id!r}")
+        return matches[0]
+
     def list_data_streams(self, property_id: str) -> list[dict]:
         rows: list[dict] = []
         page_token: str | None = None
