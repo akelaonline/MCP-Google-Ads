@@ -5,11 +5,12 @@ from functools import lru_cache
 
 from fastmcp import FastMCP
 
-from .gtm import GoogleTagManagerReadOnly
+from .gtm import GoogleTagManagerReadOnly, GoogleTagManagerWriter
 from .models import DeploymentMode, GoogleStack, SitePlatform, SiteTarget
 from .planner import build_plan
 from .registry import SiteRegistry
 from .risk import classify_action, requires_confirmation
+from .settings import MeasurementSettings
 
 mcp = FastMCP(
     "MKT Measurement Ops",
@@ -25,6 +26,24 @@ registry = SiteRegistry()
 @lru_cache(maxsize=1)
 def _gtm() -> GoogleTagManagerReadOnly:
     return GoogleTagManagerReadOnly.from_env()
+
+
+@lru_cache(maxsize=1)
+def _gtm_writer() -> GoogleTagManagerWriter:
+    return GoogleTagManagerWriter.from_env()
+
+
+@mcp.tool()
+def measurement_capabilities() -> dict:
+    """Show active mutation capability gates without exposing credentials."""
+    settings = MeasurementSettings.from_env()
+    return {
+        "gtm_read": True,
+        "gtm_write": settings.gtm_enable_writes,
+        "gtm_publish": settings.gtm_enable_publish,
+        "publish_requires_confirm": True,
+        "site_deploy_requires_confirm": True,
+    }
 
 
 @mcp.tool()
@@ -131,6 +150,52 @@ def gtm_audit_workspace(account_id: str, container_id: str, workspace_id: str) -
         "workspace_status": status,
         "live_version": live,
     }
+
+
+@mcp.tool()
+def gtm_quick_preview(account_id: str, container_id: str, workspace_id: str) -> dict:
+    """Compile a workspace preview without publishing it."""
+    return _gtm().quick_preview(account_id, container_id, workspace_id)
+
+
+@mcp.tool()
+def gtm_create_workspace(account_id: str, container_id: str, name: str, description: str = "") -> dict:
+    """Create an isolated GTM workspace. Requires GTM_ENABLE_WRITES=true."""
+    return _gtm_writer().create_workspace(account_id, container_id, name, description)
+
+
+@mcp.tool()
+def gtm_create_version(
+    account_id: str,
+    container_id: str,
+    workspace_id: str,
+    name: str,
+    notes: str = "",
+) -> dict:
+    """Create a saved GTM container version from a verified workspace; does not publish."""
+    return _gtm_writer().create_version(
+        account_id,
+        container_id,
+        workspace_id,
+        name=name,
+        notes=notes,
+    )
+
+
+@mcp.tool()
+def gtm_publish_version(
+    account_id: str,
+    container_id: str,
+    version_id: str,
+    confirm: bool = False,
+) -> dict:
+    """Publish a GTM version live. Requires write+publish gates and confirm=true."""
+    return _gtm_writer().publish_version(
+        account_id,
+        container_id,
+        version_id,
+        confirm=confirm,
+    )
 
 
 def main() -> None:
