@@ -59,6 +59,7 @@ def measurement_capabilities() -> dict:
     settings = MeasurementSettings.from_env()
     return {
         "gtm_read": True,
+        "gtm_preview": settings.gtm_enable_preview,
         "gtm_write": settings.gtm_enable_writes,
         "gtm_publish": settings.gtm_enable_publish,
         "publish_requires_confirm": True,
@@ -125,6 +126,44 @@ def create_measurement_job(site_key: str) -> dict:
 
 
 @mcp.tool()
+def start_measurement_job(site_key: str, max_pages: int = 5) -> dict:
+    """Create a job, perform a real site audit, and derive the initial tracking plan."""
+    site = registry.get(site_key)
+    job = _jobs().create(site_key)
+    audit = _web_auditor().audit(f"https://{site.domain}", max_pages=max_pages)
+    _jobs().transition(
+        job.id,
+        JobState.AUDITED,
+        evidence={
+            "kind": "audit",
+            "pages_scanned": audit["pages_scanned"],
+            "tracking": audit["tracking"],
+            "opportunities": audit["opportunities"],
+        },
+    )
+    opportunities = audit["opportunities"]
+    goals: list[str] = []
+    if opportunities["forms"]:
+        goals.append("lead_form")
+    if opportunities["whatsapp_links"]:
+        goals.append("whatsapp_click")
+    if opportunities["phone_links"]:
+        goals.append("phone_click")
+    if opportunities["email_links"]:
+        goals.append("email_click")
+    if opportunities["download_links"]:
+        goals.append("file_download")
+    plan = build_plan(site_key, goals).to_dict()
+    _jobs().transition(job.id, JobState.PLANNED, evidence={"kind": "plan", "plan": plan})
+    return {
+        "job": JobStore.serialize(_jobs().get(job.id)),
+        "site": asdict(site),
+        "audit": audit,
+        "plan": plan,
+    }
+
+
+@mcp.tool()
 def get_measurement_job(job_id: str) -> dict:
     """Read durable measurement-job state and evidence."""
     return JobStore.serialize(_jobs().get(job_id))
@@ -147,23 +186,24 @@ def ga4_realtime_events(property_id: str) -> dict[str, int]:
 
 @mcp.tool()
 def ga4_verify_events(property_id: str, expected_events: list[str], job_id: str | None = None) -> dict:
-    """Verify expected events in GA4 Realtime and optionally attach authoritative evidence to a job."""
+    """Verify production events in GA4 Realtime after publish."""
     result = _ga4().verify_events(property_id, expected_events)
     if job_id is not None:
         job = _jobs().get(job_id)
-        if job.state != JobState.PREPARED:
-            raise ValueError("job must be in prepared state before GA4 verification")
-        _jobs().transition(
-            job_id,
-            JobState.VERIFIED,
-            evidence={
-                "kind": "verification",
-                "source": "ga4_realtime",
-                "passed": result["passed"],
-                "property_id": property_id,
-                "checks": result["checks"],
-            },
-        )
+        if job.state != JobState.PUBLISHED:
+            raise ValueError("job must be published before GA4 production verification")
+        evidence = {
+            "kind": "production_verification",
+            "source": "ga4_realtime",
+            "passed": result["passed"],
+            "property_id": property_id,
+            "checks": result["checks"],
+        }
+        if result["passed"]:
+            _jobs().transition(job_id, JobState.PRODUCTION_VERIFIED, evidence=evidence)
+        else:
+            job.evidence.append(evidence)
+            _jobs().save(job)
     return result
 
 
@@ -251,8 +291,42 @@ def gtm_audit_workspace(account_id: str, container_id: str, workspace_id: str) -
 
 @mcp.tool()
 def gtm_quick_preview(account_id: str, container_id: str, workspace_id: str) -> dict:
-    """Compile a workspace preview without publishing it."""
-    return _gtm().quick_preview(account_id, container_id, workspace_id)
+    """Compile a workspace preview. Requires GTM_ENABLE_PREVIEW=true."""
+    return _gtm_writer().quick_preview(account_id, container_id, workspace_id)
+
+
+@mcp.tool()
+def prepare_gtm_job(job_id: str, account_id: str, container_id: str, workspace_id: str) -> dict:
+    """Move a planned job to prepared only when GTM has no conflicts and quick preview compiles."""
+    job = _jobs().get(job_id)
+    if job.state != JobState.PLANNED:
+        raise ValueError("job must be in planned state before GTM preparation")
+    status = _gtm().get_workspace_status(account_id, container_id, workspace_id)
+    conflicts = status.get("mergeConflict", [])
+    if conflicts:
+        raise ValueError(f"GTM workspace has {len(conflicts)} merge conflict(s)")
+    preview = _gtm_writer().quick_preview(account_id, container_id, workspace_id)
+    if preview.get("compilerError") is True:
+        raise ValueError("GTM quick preview reported compiler errors")
+    if not preview.get("containerVersion"):
+        raise ValueError("GTM quick preview did not return a containerVersion")
+    _jobs().transition(
+        job_id,
+        JobState.PREPARED,
+        evidence={
+            "kind": "gtm_prepare",
+            "account_id": account_id,
+            "container_id": container_id,
+            "workspace_id": workspace_id,
+            "workspace_changes": len(status.get("workspaceChange", [])),
+            "compiler_error": False,
+        },
+    )
+    return {
+        "job": JobStore.serialize(_jobs().get(job_id)),
+        "workspace_status": status,
+        "preview": preview,
+    }
 
 
 @mcp.tool()
@@ -280,13 +354,73 @@ def gtm_create_version(
 
 
 @mcp.tool()
+def record_preview_verification(job_id: str, passed: bool, checks: list[str], confirm: bool = False) -> dict:
+    """Record operator/browser preview evidence. This is temporary until automated Tag Assistant preview lands."""
+    if confirm is not True:
+        raise PermissionError("recording preview verification requires confirm=true")
+    job = _jobs().get(job_id)
+    if job.state != JobState.PREPARED:
+        raise ValueError("job must be prepared before preview verification")
+    if not passed:
+        job.evidence.append({"kind": "preview_verification", "passed": False, "checks": checks})
+        _jobs().save(job)
+        return JobStore.serialize(job)
+    verified = _jobs().transition(
+        job_id,
+        JobState.PREVIEW_VERIFIED,
+        evidence={"kind": "preview_verification", "passed": True, "checks": checks},
+    )
+    return JobStore.serialize(verified)
+
+
+@mcp.tool()
+def approve_measurement_job(job_id: str, confirm: bool = False) -> dict:
+    """Approve a preview-verified job for publish."""
+    if confirm is not True:
+        raise PermissionError("job approval requires confirm=true")
+    approved = _jobs().transition(job_id, JobState.APPROVED)
+    return JobStore.serialize(approved)
+
+
+@mcp.tool()
+def publish_measurement_job(
+    job_id: str,
+    account_id: str,
+    container_id: str,
+    version_id: str,
+    confirm: bool = False,
+) -> dict:
+    """Publish an approved GTM version and move the durable job to published."""
+    job = _jobs().get(job_id)
+    if job.state != JobState.APPROVED:
+        raise ValueError("job must be approved before publish")
+    result = _gtm_writer().publish_version(
+        account_id,
+        container_id,
+        version_id,
+        confirm=confirm,
+    )
+    published = _jobs().transition(
+        job_id,
+        JobState.PUBLISHED,
+        evidence={
+            "kind": "publish",
+            "account_id": account_id,
+            "container_id": container_id,
+            "version_id": version_id,
+        },
+    )
+    return {"job": JobStore.serialize(published), "gtm": result}
+
+
+@mcp.tool()
 def gtm_publish_version(
     account_id: str,
     container_id: str,
     version_id: str,
     confirm: bool = False,
 ) -> dict:
-    """Publish a GTM version live. Requires write+publish gates and confirm=true."""
+    """Low-level publish tool. Prefer publish_measurement_job for managed work."""
     return _gtm_writer().publish_version(
         account_id,
         container_id,
