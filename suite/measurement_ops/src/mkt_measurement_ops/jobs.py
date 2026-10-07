@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 from dataclasses import asdict
 from pathlib import Path
 
+from .settings import measurement_db_path
 from .workflow import JobState, MeasurementJob
 
 
@@ -19,7 +19,7 @@ class JobStore:
 
     @classmethod
     def from_env(cls) -> "JobStore":
-        return cls(os.getenv("MEASUREMENT_OPS_DB", "./measurement_ops.db"))
+        return cls(measurement_db_path())
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=5.0)
