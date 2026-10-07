@@ -21,6 +21,7 @@ class DeploymentMode(StrEnum):
 class GoogleStack:
     gtm_account_id: str | None = None
     gtm_container_id: str | None = None
+    gtm_public_id: str | None = None
     ga4_property_id: str | None = None
     google_ads_customer_id: str | None = None
 
