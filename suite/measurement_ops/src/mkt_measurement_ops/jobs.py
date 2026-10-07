@@ -22,8 +22,10 @@ class JobStore:
         return cls(os.getenv("MEASUREMENT_OPS_DB", "./measurement_ops.db"))
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path)
+        connection = sqlite3.connect(self.path, timeout=5.0)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout = 5000")
+        connection.execute("PRAGMA journal_mode = WAL")
         return connection
 
     def _init_db(self) -> None:
@@ -82,6 +84,51 @@ class JobStore:
         job = self.get(job_id)
         job.transition(target, evidence=evidence)
         self.save(job)
+        return job
+
+    def claim(
+        self,
+        job_id: str,
+        *,
+        expected: JobState,
+        target: JobState,
+        evidence: dict | None = None,
+    ) -> MeasurementJob:
+        """Atomically claim a state transition before an external side effect."""
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT id, site_key, state, evidence_json FROM measurement_jobs WHERE id = ?",
+                (job_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"unknown measurement job: {job_id}")
+            if row["state"] != expected.value:
+                raise ValueError(
+                    f"job state claim failed: expected {expected.value}, found {row['state']}"
+                )
+            job = MeasurementJob(
+                id=row["id"],
+                site_key=row["site_key"],
+                state=JobState(row["state"]),
+                evidence=json.loads(row["evidence_json"]),
+            )
+            job.transition(target, evidence=evidence)
+            cursor = db.execute(
+                """
+                UPDATE measurement_jobs
+                SET state = ?, evidence_json = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND state = ?
+                """,
+                (
+                    job.state.value,
+                    json.dumps(job.evidence),
+                    job.id,
+                    expected.value,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise RuntimeError("measurement job claim lost a concurrency race")
         return job
 
     @staticmethod
