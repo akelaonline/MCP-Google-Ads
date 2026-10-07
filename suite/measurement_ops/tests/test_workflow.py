@@ -31,6 +31,7 @@ def test_publish_requires_preview_verification_and_approval() -> None:
         evidence={"kind": "preview_verification", "passed": True},
     )
     job.transition(JobState.APPROVED)
+    job.transition(JobState.PUBLISHING)
     job.transition(JobState.PUBLISHED)
     assert job.state == JobState.PUBLISHED
 
