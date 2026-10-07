@@ -10,6 +10,7 @@ from .ga4 import GA4ReadOnly
 from .ga4_admin import GA4AdminReadOnly
 from .gtm import GoogleTagManagerReadOnly, GoogleTagManagerWriter
 from .gtm_installer import GTMTrackingInstaller
+from .install_plan import build_installation_steps
 from .jobs import JobStore
 from .models import DeploymentMode, GoogleStack, SitePlatform, SiteTarget
 from .planner import build_plan
@@ -412,6 +413,44 @@ def _require_planned_job(job_id: str):
     return job
 
 
+def _latest_evidence(job, kind: str) -> dict | None:
+    return next(
+        (item for item in reversed(job.evidence) if item.get("kind") == kind),
+        None,
+    )
+
+
+def _job_workspace(job_id: str) -> tuple[str, str, str]:
+    job = _require_planned_job(job_id)
+    site = registry.get(job.site_key)
+    evidence = _latest_evidence(job, "gtm_workspace")
+    if evidence is None:
+        raise ValueError("job has no managed GTM workspace; call create_job_workspace first")
+    account_id = str(evidence.get("account_id") or "")
+    container_id = str(evidence.get("container_id") or "")
+    workspace_id = str(evidence.get("workspace_id") or "")
+    if not account_id or not container_id or not workspace_id:
+        raise ValueError("job GTM workspace evidence is incomplete")
+    if site.google.gtm_account_id and site.google.gtm_account_id != account_id:
+        raise ValueError("job workspace account no longer matches the registered site")
+    if site.google.gtm_container_id and site.google.gtm_container_id != container_id:
+        raise ValueError("job workspace container no longer matches the registered site")
+    return account_id, container_id, workspace_id
+
+
+def _manual_review_pending(job) -> bool:
+    plan_index = -1
+    resolved_index = -1
+    manual_required = False
+    for index, item in enumerate(job.evidence):
+        if item.get("kind") == "auto_install_plan":
+            plan_index = index
+            manual_required = bool(item.get("manual_review"))
+        elif item.get("kind") == "manual_review_resolution":
+            resolved_index = index
+    return manual_required and resolved_index < plan_index
+
+
 def _measurement_id_for_job(job_id: str, requested: str | None = None) -> str:
     job = _require_planned_job(job_id)
     if requested and requested.strip():
@@ -439,14 +478,166 @@ def _record_install_evidence(job_id: str, operation: str, result: dict) -> dict:
 
 
 @mcp.tool()
+def create_job_workspace(
+    job_id: str,
+    name: str | None = None,
+    description: str = "",
+) -> dict:
+    """Create or reuse the isolated GTM workspace owned by this planned job."""
+    job = _require_planned_job(job_id)
+    existing = _latest_evidence(job, "gtm_workspace")
+    if existing:
+        return {"job": JobStore.serialize(job), "workspace": existing, "reused": True}
+
+    site = registry.get(job.site_key)
+    account_id = site.google.gtm_account_id
+    container_id = site.google.gtm_container_id
+    if not account_id or not container_id:
+        raise ValueError("site must have gtm_account_id and gtm_container_id before workspace creation")
+
+    workspace_name = name or f"MKT Measurement - {site.key} - {job.id[:8]}"
+    result = _gtm_writer().create_workspace(
+        account_id,
+        container_id,
+        workspace_name,
+        description,
+    )
+    workspace_id = str(result.get("workspaceId") or "")
+    if not workspace_id:
+        path = str(result.get("path") or "")
+        workspace_id = path.split("/")[-1] if path else ""
+    if not workspace_id:
+        raise ValueError("GTM create_workspace returned no workspaceId")
+
+    evidence = {
+        "kind": "gtm_workspace",
+        "account_id": account_id,
+        "container_id": container_id,
+        "workspace_id": workspace_id,
+        "name": result.get("name") or workspace_name,
+    }
+    job.evidence.append(evidence)
+    _jobs().save(job)
+    return {"job": JobStore.serialize(job), "workspace": evidence, "gtm": result, "reused": False}
+
+
+@mcp.tool()
+def recommend_job_installation(job_id: str) -> dict:
+    """Convert the job audit into conservative executable steps plus explicit manual-review items."""
+    job = _require_planned_job(job_id)
+    audit = _latest_evidence(job, "audit")
+    if audit is None:
+        raise ValueError("job has no audit evidence")
+    opportunities = audit.get("opportunities") or {}
+    return build_installation_steps(opportunities)
+
+
+@mcp.tool()
+def apply_recommended_tracking(
+    job_id: str,
+    measurement_id: str | None = None,
+) -> dict:
+    """Apply only conservative typed recommendations to the job-owned GTM workspace."""
+    account_id, container_id, workspace_id = _job_workspace(job_id)
+    resolved_measurement_id = _measurement_id_for_job(job_id, measurement_id)
+    plan = recommend_job_installation(job_id)
+    results: list[dict] = []
+
+    for step in plan["steps"]:
+        kind = step["kind"]
+        if kind == "google_tag":
+            result = _gtm_installer().install_google_tag(
+                account_id,
+                container_id,
+                workspace_id,
+                tag_id=resolved_measurement_id,
+            )
+        elif kind == "standard_click":
+            result = _gtm_installer().install_standard_click_event(
+                account_id,
+                container_id,
+                workspace_id,
+                event_name=step["event_name"],
+                measurement_id=resolved_measurement_id,
+            )
+        elif kind == "native_form":
+            result = _gtm_installer().install_native_form_event(
+                account_id,
+                container_id,
+                workspace_id,
+                measurement_id=resolved_measurement_id,
+                event_name=step["event_name"],
+                form_id=step.get("form_id"),
+                page_path=step.get("page_path"),
+            )
+        elif kind == "provider_form":
+            result = _gtm_installer().install_provider_form_event(
+                account_id,
+                container_id,
+                workspace_id,
+                provider=step["provider"],
+                measurement_id=resolved_measurement_id,
+                event_name=step["event_name"],
+            )
+        else:
+            raise ValueError(f"unsupported auto-install step kind: {kind}")
+        results.append(
+            {
+                "step": step,
+                "created": result.get("created", {}),
+            }
+        )
+
+    job = _jobs().get(job_id)
+    job.evidence.append(
+        {
+            "kind": "auto_install_plan",
+            "measurement_id": resolved_measurement_id,
+            "steps": plan["steps"],
+            "manual_review": plan["manual_review"],
+            "results": results,
+        }
+    )
+    _jobs().save(job)
+    return {
+        "job": JobStore.serialize(job),
+        "measurement_id": resolved_measurement_id,
+        "results": results,
+        "manual_review": plan["manual_review"],
+    }
+
+
+@mcp.tool()
+def resolve_manual_measurement_review(
+    job_id: str,
+    resolution: str,
+    confirm: bool = False,
+) -> dict:
+    """Record an explicit resolution for install requirements that could not be safely automated."""
+    if confirm is not True:
+        raise PermissionError("manual measurement review resolution requires confirm=true")
+    job = _require_planned_job(job_id)
+    if not _manual_review_pending(job):
+        return {"job": JobStore.serialize(job), "resolved": False, "reason": "no pending manual review"}
+    if not resolution.strip():
+        raise ValueError("resolution is required")
+    job.evidence.append(
+        {
+            "kind": "manual_review_resolution",
+            "resolution": resolution.strip(),
+        }
+    )
+    _jobs().save(job)
+    return {"job": JobStore.serialize(job), "resolved": True}
+
+
+@mcp.tool()
 def gtm_install_google_tag(
     job_id: str,
-    account_id: str,
-    container_id: str,
-    workspace_id: str,
     tag_id: str | None = None,
 ) -> dict:
-    """Idempotently install the base Google tag, auto-resolving GA4 when tag_id is omitted."""
+    """Idempotently install the base Google tag into the job-owned workspace."""
+    account_id, container_id, workspace_id = _job_workspace(job_id)
     resolved_tag_id = _measurement_id_for_job(job_id, tag_id)
     result = _gtm_installer().install_google_tag(
         account_id,
@@ -460,13 +651,11 @@ def gtm_install_google_tag(
 @mcp.tool()
 def gtm_install_standard_click_event(
     job_id: str,
-    account_id: str,
-    container_id: str,
-    workspace_id: str,
     event_name: str,
     measurement_id: str | None = None,
 ) -> dict:
-    """Install a typed standard click event, auto-resolving the site's GA4 stream by default."""
+    """Install a typed standard click event into the job-owned workspace."""
+    account_id, container_id, workspace_id = _job_workspace(job_id)
     resolved_measurement_id = _measurement_id_for_job(job_id, measurement_id)
     result = _gtm_installer().install_standard_click_event(
         account_id,
@@ -481,15 +670,13 @@ def gtm_install_standard_click_event(
 @mcp.tool()
 def gtm_install_native_form_event(
     job_id: str,
-    account_id: str,
-    container_id: str,
-    workspace_id: str,
     measurement_id: str | None = None,
     event_name: str = "generate_lead",
     form_id: str | None = None,
     page_path: str | None = None,
 ) -> dict:
-    """Install a native form-submit event, auto-resolving the site's GA4 stream by default."""
+    """Install a native form-submit event into the job-owned workspace."""
+    account_id, container_id, workspace_id = _job_workspace(job_id)
     resolved_measurement_id = _measurement_id_for_job(job_id, measurement_id)
     result = _gtm_installer().install_native_form_event(
         account_id,
@@ -506,14 +693,12 @@ def gtm_install_native_form_event(
 @mcp.tool()
 def gtm_install_provider_form_event(
     job_id: str,
-    account_id: str,
-    container_id: str,
-    workspace_id: str,
     provider: str,
     measurement_id: str | None = None,
     event_name: str = "generate_lead",
 ) -> dict:
-    """Install a versioned provider listener, auto-resolving the site's GA4 stream by default."""
+    """Install a versioned provider listener into the job-owned workspace."""
+    account_id, container_id, workspace_id = _job_workspace(job_id)
     resolved_measurement_id = _measurement_id_for_job(job_id, measurement_id)
     result = _gtm_installer().install_provider_form_event(
         account_id,
@@ -529,14 +714,12 @@ def gtm_install_provider_form_event(
 @mcp.tool()
 def gtm_install_custom_event(
     job_id: str,
-    account_id: str,
-    container_id: str,
-    workspace_id: str,
     data_layer_event: str,
     ga4_event_name: str,
     measurement_id: str | None = None,
 ) -> dict:
-    """Map an existing dataLayer event to GA4, auto-resolving the site's web stream by default."""
+    """Map an existing dataLayer event to GA4 in the job-owned workspace."""
+    account_id, container_id, workspace_id = _job_workspace(job_id)
     resolved_measurement_id = _measurement_id_for_job(job_id, measurement_id)
     result = _gtm_installer().install_custom_event(
         account_id,
@@ -550,17 +733,12 @@ def gtm_install_custom_event(
 
 
 @mcp.tool()
-def gtm_quick_preview(account_id: str, container_id: str, workspace_id: str) -> dict:
-    """Compile a workspace preview. Requires GTM_ENABLE_PREVIEW=true."""
-    return _gtm_writer().quick_preview(account_id, container_id, workspace_id)
-
-
-@mcp.tool()
-def prepare_gtm_job(job_id: str, account_id: str, container_id: str, workspace_id: str) -> dict:
-    """Move a planned job to prepared only when GTM has no conflicts and quick preview compiles."""
-    job = _jobs().get(job_id)
-    if job.state != JobState.PLANNED:
-        raise ValueError("job must be in planned state before GTM preparation")
+def prepare_gtm_job(job_id: str) -> dict:
+    """Prepare only the job-owned GTM workspace after all manual requirements are resolved."""
+    job = _require_planned_job(job_id)
+    if _manual_review_pending(job):
+        raise ValueError("job has unresolved manual measurement requirements")
+    account_id, container_id, workspace_id = _job_workspace(job_id)
     status = _gtm().get_workspace_status(account_id, container_id, workspace_id)
     conflicts = status.get("mergeConflict", [])
     if conflicts:
@@ -587,12 +765,6 @@ def prepare_gtm_job(job_id: str, account_id: str, container_id: str, workspace_i
         "workspace_status": status,
         "preview": preview,
     }
-
-
-@mcp.tool()
-def gtm_create_workspace(account_id: str, container_id: str, name: str, description: str = "") -> dict:
-    """Create an isolated GTM workspace. Requires GTM_ENABLE_WRITES=true."""
-    return _gtm_writer().create_workspace(account_id, container_id, name, description)
 
 
 @mcp.tool()
