@@ -4,6 +4,8 @@ from mkt_measurement_ops.gtm_builders import (
     build_ga4_event_tag,
     build_standard_click_bundle,
     build_custom_event_trigger,
+    build_form_submit_trigger,
+    provider_listener_html,
 )
 
 
@@ -34,3 +36,39 @@ def test_ga4_event_tag_uses_event_settings_table() -> None:
 def test_custom_event_trigger_requires_name() -> None:
     with pytest.raises(ValueError, match="event_name"):
         build_custom_event_trigger(name="Lead", event_name="")
+
+
+@pytest.mark.parametrize(
+    ("provider", "signal"),
+    [
+        ("contactform7", "wpcf7mailsent"),
+        ("gravityforms", "gform_confirmation_loaded"),
+        ("wpforms", "wpformsAjaxSubmitSuccess"),
+        ("elementor", "submit_success"),
+        ("hubspot", "hsFormCallback"),
+        ("typeform", "form-submit"),
+        ("calendly", "calendly.event_scheduled"),
+    ],
+)
+def test_provider_listener_recipes_are_deterministic(provider: str, signal: str) -> None:
+    html = provider_listener_html(provider, "generate_lead")
+    assert signal in html
+    assert "generate_lead" in html
+    assert "window.dataLayer" in html
+
+
+def test_unknown_provider_fails_closed() -> None:
+    with pytest.raises(ValueError, match="unsupported form provider"):
+        provider_listener_html("mysteryforms", "generate_lead")
+
+
+def test_native_form_trigger_scopes_by_form_and_page() -> None:
+    trigger = build_form_submit_trigger(
+        name="Lead Form",
+        form_id="contact-form",
+        page_path="/contact",
+    )
+    assert trigger["type"] == "formSubmission"
+    assert len(trigger["filter"]) == 2
+    assert trigger["waitForTags"]["value"] == "false"
+    assert trigger["checkValidation"]["value"] == "false"
