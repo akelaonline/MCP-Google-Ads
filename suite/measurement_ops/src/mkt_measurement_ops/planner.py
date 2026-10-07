@@ -6,6 +6,8 @@ from enum import StrEnum
 
 class MeasurementGoal(StrEnum):
     LEAD_FORM = "lead_form"
+    NEWSLETTER_SIGNUP = "newsletter_signup"
+    SIGN_UP = "sign_up"
     WHATSAPP_CLICK = "whatsapp_click"
     PHONE_CLICK = "phone_click"
     EMAIL_CLICK = "email_click"
@@ -50,6 +52,20 @@ STANDARD_EVENTS: dict[MeasurementGoal, EventSpec] = {
         implementation=ImplementationMode.HYBRID,
         verify=("dataLayer", "ga4_hit"),
         notes="Prefer GTM-native/provider listener. Use site code only when the success state is not observable reliably.",
+    ),
+    MeasurementGoal.NEWSLETTER_SIGNUP: EventSpec(
+        goal=MeasurementGoal.NEWSLETTER_SIGNUP,
+        event_name="newsletter_signup",
+        implementation=ImplementationMode.HYBRID,
+        verify=("dataLayer", "ga4_hit"),
+        notes="Track successful newsletter subscription, never a mere submit-button click when success is observable.",
+    ),
+    MeasurementGoal.SIGN_UP: EventSpec(
+        goal=MeasurementGoal.SIGN_UP,
+        event_name="sign_up",
+        implementation=ImplementationMode.HYBRID,
+        verify=("dataLayer", "ga4_hit"),
+        notes="Use GA4 recommended sign_up only for completed account/registration flows.",
     ),
     MeasurementGoal.WHATSAPP_CLICK: EventSpec(
         goal=MeasurementGoal.WHATSAPP_CLICK,
