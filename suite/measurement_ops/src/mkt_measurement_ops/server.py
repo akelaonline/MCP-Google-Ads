@@ -11,6 +11,7 @@ from .planner import build_plan
 from .registry import SiteRegistry
 from .risk import classify_action, requires_confirmation
 from .settings import MeasurementSettings
+from .web_audit import WebAuditor
 
 mcp = FastMCP(
     "MKT Measurement Ops",
@@ -31,6 +32,11 @@ def _gtm() -> GoogleTagManagerReadOnly:
 @lru_cache(maxsize=1)
 def _gtm_writer() -> GoogleTagManagerWriter:
     return GoogleTagManagerWriter.from_env()
+
+
+@lru_cache(maxsize=1)
+def _web_auditor() -> WebAuditor:
+    return WebAuditor()
 
 
 @mcp.tool()
@@ -95,6 +101,33 @@ def build_tracking_plan(site_key: str, goals: list[str], require_consent_audit: 
     """Build a deterministic measurement plan for a registered site."""
     registry.get(site_key)
     return build_plan(site_key, goals, require_consent_audit=require_consent_audit).to_dict()
+
+
+@mcp.tool()
+def audit_site_url(url: str, max_pages: int = 5) -> dict:
+    """Read-only browser audit. Never clicks or submits forms."""
+    return _web_auditor().audit(url, max_pages=max_pages)
+
+
+@mcp.tool()
+def audit_and_plan_site(site_key: str, max_pages: int = 5) -> dict:
+    """Audit a registered site and derive a conservative standard tracking plan."""
+    site = registry.get(site_key)
+    audit = _web_auditor().audit(f"https://{site.domain}", max_pages=max_pages)
+    opportunities = audit["opportunities"]
+    goals: list[str] = []
+    if opportunities["forms"]:
+        goals.append("lead_form")
+    if opportunities["whatsapp_links"]:
+        goals.append("whatsapp_click")
+    if opportunities["phone_links"]:
+        goals.append("phone_click")
+    if opportunities["email_links"]:
+        goals.append("email_click")
+    if opportunities["download_links"]:
+        goals.append("file_download")
+    plan = build_plan(site_key, goals).to_dict()
+    return {"site": asdict(site), "audit": audit, "plan": plan}
 
 
 @mcp.tool()
