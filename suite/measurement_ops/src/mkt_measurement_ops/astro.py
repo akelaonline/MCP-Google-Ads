@@ -11,30 +11,38 @@ class AstroFileChange:
     reason: str
 
 
-def gtm_component_source() -> str:
+def gtm_head_component_source() -> str:
     return """---
 const gtmId = import.meta.env.PUBLIC_GTM_ID;
 ---
 
 {gtmId && (
-  <>
-    <script is:inline define:vars={{ gtmId }}>
-      {(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-      new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-      j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-      'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-      })(window,document,'script','dataLayer',gtmId)}
-    </script>
-    <noscript>
-      <iframe
-        src={`https://www.googletagmanager.com/ns.html?id=${gtmId}`}
-        height="0"
-        width="0"
-        style="display:none;visibility:hidden"
-        title="Google Tag Manager"
-      />
-    </noscript>
-  </>
+  <script is:inline define:vars={{ gtmId }}>
+    (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer',gtmId);
+  </script>
+)}
+"""
+
+
+def gtm_body_component_source() -> str:
+    return """---
+const gtmId = import.meta.env.PUBLIC_GTM_ID;
+---
+
+{gtmId && (
+  <noscript>
+    <iframe
+      src={`https://www.googletagmanager.com/ns.html?id=${gtmId}`}
+      height="0"
+      width="0"
+      style="display:none;visibility:hidden"
+      title="Google Tag Manager"
+    />
+  </noscript>
 )}
 """
 
@@ -62,10 +70,16 @@ export function pushDataLayer(payload: DataLayerPayload): void {
 def build_astro_measurement_plan(*, layout_path: str = "src/layouts/Layout.astro") -> dict:
     changes = (
         AstroFileChange(
-            path="src/components/measurement/GoogleTagManager.astro",
+            path="src/components/measurement/GoogleTagManagerHead.astro",
             action="create_or_replace",
-            content=gtm_component_source(),
-            reason="Managed GTM bootstrap component using PUBLIC_GTM_ID.",
+            content=gtm_head_component_source(),
+            reason="Managed GTM bootstrap script for the document head.",
+        ),
+        AstroFileChange(
+            path="src/components/measurement/GoogleTagManagerBody.astro",
+            action="create_or_replace",
+            content=gtm_body_component_source(),
+            reason="Managed GTM noscript iframe for the start of the document body.",
         ),
         AstroFileChange(
             path="src/lib/measurement.ts",
@@ -78,9 +92,10 @@ def build_astro_measurement_plan(*, layout_path: str = "src/layouts/Layout.astro
         "environment": {"PUBLIC_GTM_ID": "GTM-XXXXXXX"},
         "layout_path": layout_path,
         "layout_instruction": (
-            "Import GoogleTagManager from '../components/measurement/GoogleTagManager.astro' "
-            "using the correct relative path for the chosen layout and render it once in the global layout. "
-            "Do not add a second GTM bootstrap if the site audit already found one."
+            "Import GoogleTagManagerHead and render it once inside <head>. "
+            "Import GoogleTagManagerBody and render it once immediately after <body>. "
+            "Use the correct relative paths for the chosen global layout. "
+            "Do not install either component if the site audit already found an existing GTM bootstrap."
         ),
         "changes": [
             {
@@ -92,8 +107,9 @@ def build_astro_measurement_plan(*, layout_path: str = "src/layouts/Layout.astro
             for change in changes
         ],
         "verification": [
-            "build succeeds",
-            "exactly one GTM bootstrap is present",
+            "Astro build succeeds",
+            "exactly one GTM bootstrap script is present",
+            "exactly one GTM noscript iframe is present",
             "GTM container ID matches PUBLIC_GTM_ID",
             "browser audit sees GTM after deploy",
         ],
