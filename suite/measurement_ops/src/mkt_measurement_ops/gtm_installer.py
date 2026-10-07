@@ -23,6 +23,11 @@ def _named(rows: list[dict], name: str) -> dict | None:
     return next((row for row in rows if row.get("name") == name), None)
 
 
+def _scope_label(*parts: str | None) -> str:
+    values = [str(part).strip().replace("/", " ") for part in parts if part and str(part).strip()]
+    return " - ".join(values) if values else "All Native Forms"
+
+
 class GTMTrackingInstaller:
     """Typed, idempotent installer for the v1 standard measurement set."""
 
@@ -158,14 +163,15 @@ class GTMTrackingInstaller:
                 workspace_id,
                 ["formId"],
             )
+        scope = _scope_label(form_id, page_path)
         trigger_body = build_form_submit_trigger(
-            name=f"MKT - {event_name} Form",
+            name=f"MKT - {event_name} - {scope}",
             form_id=form_id,
             page_path=page_path,
         )
         trigger, trigger_created = self._ensure_trigger(account_id, container_id, workspace_id, trigger_body)
         tag_body = build_ga4_event_tag(
-            name=f"GA4 - Event - {event_name}",
+            name=f"GA4 - Event - {event_name} - Native - {scope}",
             measurement_id=measurement_id,
             event_name=event_name,
             firing_trigger_id=trigger["triggerId"],
@@ -195,7 +201,7 @@ class GTMTrackingInstaller:
         )
         trigger, trigger_created = self._ensure_trigger(account_id, container_id, workspace_id, trigger_body)
         tag_body = build_ga4_event_tag(
-            name=f"GA4 - Event - {ga4_event_name}",
+            name=f"GA4 - Event - {ga4_event_name} - Source - {data_layer_event}",
             measurement_id=measurement_id,
             event_name=ga4_event_name,
             firing_trigger_id=trigger["triggerId"],
