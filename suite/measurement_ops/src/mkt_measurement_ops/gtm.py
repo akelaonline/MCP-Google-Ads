@@ -127,6 +127,58 @@ class GoogleTagManagerReadOnly:
             parent=workspace_path(account_id, container_id, workspace_id),
         )
 
+    @staticmethod
+    def _domain_key(value: str) -> str:
+        raw = (value or "").strip().lower().rstrip(".")
+        if raw.startswith("https://") or raw.startswith("http://"):
+            from urllib.parse import urlparse
+
+            raw = (urlparse(raw).hostname or "").lower().rstrip(".")
+        return raw[4:] if raw.startswith("www.") else raw
+
+    def discover_container(
+        self,
+        *,
+        public_id: str | None = None,
+        domain: str | None = None,
+    ) -> dict:
+        wanted_public = (public_id or "").strip().upper()
+        wanted_domain = self._domain_key(domain or "")
+        if not wanted_public and not wanted_domain:
+            raise ValueError("public_id or domain is required")
+
+        matches: list[dict] = []
+        for account in self.list_accounts():
+            account_id = str(account.get("accountId") or account.get("path", "").split("/")[-1]).strip()
+            if not account_id:
+                continue
+            for container in self.list_containers(account_id):
+                container_public = str(container.get("publicId") or "").upper()
+                domains = [self._domain_key(item) for item in container.get("domainName", [])]
+                public_match = bool(wanted_public and container_public == wanted_public)
+                domain_match = bool(wanted_domain and wanted_domain in domains)
+                if (wanted_public and public_match) or (not wanted_public and domain_match):
+                    matches.append(
+                        {
+                            "account_id": str(container.get("accountId") or account_id),
+                            "container_id": str(container.get("containerId") or ""),
+                            "public_id": container.get("publicId"),
+                            "name": container.get("name"),
+                            "domains": container.get("domainName", []),
+                            "path": container.get("path"),
+                        }
+                    )
+
+        if not matches:
+            target = wanted_public or wanted_domain
+            raise LookupError(f"no accessible GTM container matched {target!r}")
+        if len(matches) > 1:
+            target = wanted_public or wanted_domain
+            raise LookupError(f"multiple accessible GTM containers matched {target!r}")
+        if not matches[0]["container_id"]:
+            raise LookupError("matched GTM container has no containerId")
+        return matches[0]
+
     def get_workspace_status(self, account_id: str, container_id: str, workspace_id: str) -> dict:
         return (
             self._service.accounts()
