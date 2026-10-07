@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -145,6 +146,68 @@ def build_ga4_event_tag(
         "parameter": parameters,
         "firingTriggerId": [firing_trigger_id],
     }
+
+
+def build_custom_html_tag(*, name: str, html: str, firing_trigger_id: str) -> dict:
+    if not html.strip():
+        raise ValueError("custom HTML cannot be empty")
+    return {
+        "name": sanitize_name(name),
+        "type": "html",
+        "parameter": [
+            tpl("html", html),
+            boolean("supportDocumentWrite", False),
+        ],
+        "firingTriggerId": [firing_trigger_id],
+    }
+
+
+def provider_listener_html(provider: str, event_name: str) -> str:
+    event = json.dumps(event_name)
+    scripts = {
+        "contactform7": (
+            f'<script>(function(){{window.dataLayer=window.dataLayer||[];'
+            f'document.addEventListener("wpcf7mailsent",function(e){{'
+            f'window.dataLayer.push({{event:{event},form_id:e.detail&&e.detail.contactFormId}});'
+            f'}},false);}})();</script>'
+        ),
+        "gravityforms": (
+            f'<script>(function(){{window.dataLayer=window.dataLayer||[];if(!window.jQuery)return;'
+            f'jQuery(document).on("gform_confirmation_loaded",function(e,formId){{'
+            f'window.dataLayer.push({{event:{event},form_id:formId}});}});}})();</script>'
+        ),
+        "wpforms": (
+            f'<script>(function(){{window.dataLayer=window.dataLayer||[];var fired=0;'
+            f'var push=function(el){{if(fired)return;fired=1;setTimeout(function(){{fired=0;}},50);'
+            f'window.dataLayer.push({{event:{event},form_id:el&&el.getAttribute&&el.getAttribute("data-formid")}});}};'
+            f'if(window.jQuery){{jQuery(document).on("wpformsAjaxSubmitSuccess",function(e){{push(e&&e.target);}});}}'
+            f'document.addEventListener("wpformsAjaxSubmitSuccess",function(e){{push(e&&e.target);}},false);}})();</script>'
+        ),
+        "elementor": (
+            f'<script>(function(){{window.dataLayer=window.dataLayer||[];if(!window.jQuery)return;'
+            f'jQuery(document).on("submit_success",function(){{window.dataLayer.push({{event:{event}}});}});}})();</script>'
+        ),
+        "hubspot": (
+            f'<script>(function(){{window.dataLayer=window.dataLayer||[];'
+            f'window.addEventListener("message",function(e){{var d=e&&e.data;'
+            f'if(d&&d.type==="hsFormCallback"&&d.eventName==="onFormSubmitted"){{'
+            f'window.dataLayer.push({{event:{event},hs_form_id:d.id}});}}}});}})();</script>'
+        ),
+        "typeform": (
+            f'<script>(function(){{window.dataLayer=window.dataLayer||[];'
+            f'window.addEventListener("message",function(e){{var d=e&&e.data;'
+            f'if(d&&d.type==="form-submit"){{window.dataLayer.push({{event:{event},typeform_id:d.formId}});}}}});}})();</script>'
+        ),
+        "calendly": (
+            f'<script>(function(){{window.dataLayer=window.dataLayer||[];'
+            f'window.addEventListener("message",function(e){{var d=e&&e.data;'
+            f'if(d&&d.event==="calendly.event_scheduled"){{window.dataLayer.push({{event:{event}}});}}}});}})();</script>'
+        ),
+    }
+    try:
+        return scripts[provider]
+    except KeyError as exc:
+        raise ValueError(f"unsupported form provider listener: {provider}") from exc
 
 
 STANDARD_CLICK_EVENTS: dict[str, dict[str, Any]] = {
