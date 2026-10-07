@@ -8,6 +8,7 @@ from fastmcp import FastMCP
 from .astro import build_astro_measurement_plan
 from .ga4 import GA4ReadOnly
 from .gtm import GoogleTagManagerReadOnly, GoogleTagManagerWriter
+from .gtm_installer import GTMTrackingInstaller
 from .jobs import JobStore
 from .models import DeploymentMode, GoogleStack, SitePlatform, SiteTarget
 from .planner import build_plan
@@ -36,6 +37,11 @@ def _gtm() -> GoogleTagManagerReadOnly:
 @lru_cache(maxsize=1)
 def _gtm_writer() -> GoogleTagManagerWriter:
     return GoogleTagManagerWriter.from_env()
+
+
+@lru_cache(maxsize=1)
+def _gtm_installer() -> GTMTrackingInstaller:
+    return GTMTrackingInstaller(_gtm_writer())
 
 
 @lru_cache(maxsize=1)
@@ -289,6 +295,137 @@ def gtm_audit_workspace(account_id: str, container_id: str, workspace_id: str) -
     }
 
 
+def _require_planned_job(job_id: str):
+    job = _jobs().get(job_id)
+    if job.state != JobState.PLANNED:
+        raise ValueError("job must be in planned state while installing GTM tracking")
+    return job
+
+
+def _record_install_evidence(job_id: str, operation: str, result: dict) -> dict:
+    job = _jobs().get(job_id)
+    job.evidence.append(
+        {
+            "kind": "gtm_install",
+            "operation": operation,
+            "created": result.get("created", {}),
+        }
+    )
+    _jobs().save(job)
+    return result
+
+
+@mcp.tool()
+def gtm_install_google_tag(
+    job_id: str,
+    account_id: str,
+    container_id: str,
+    workspace_id: str,
+    tag_id: str,
+) -> dict:
+    """Idempotently install the base Google tag for a planned measurement job."""
+    _require_planned_job(job_id)
+    result = _gtm_installer().install_google_tag(
+        account_id,
+        container_id,
+        workspace_id,
+        tag_id=tag_id,
+    )
+    return _record_install_evidence(job_id, "google_tag", result)
+
+
+@mcp.tool()
+def gtm_install_standard_click_event(
+    job_id: str,
+    account_id: str,
+    container_id: str,
+    workspace_id: str,
+    event_name: str,
+    measurement_id: str,
+) -> dict:
+    """Install a typed standard click event: whatsapp_click, phone_click, email_click or file_download."""
+    _require_planned_job(job_id)
+    result = _gtm_installer().install_standard_click_event(
+        account_id,
+        container_id,
+        workspace_id,
+        event_name=event_name,
+        measurement_id=measurement_id,
+    )
+    return _record_install_evidence(job_id, f"standard_click:{event_name}", result)
+
+
+@mcp.tool()
+def gtm_install_native_form_event(
+    job_id: str,
+    account_id: str,
+    container_id: str,
+    workspace_id: str,
+    measurement_id: str,
+    event_name: str = "generate_lead",
+    form_id: str | None = None,
+    page_path: str | None = None,
+) -> dict:
+    """Install a native form-submit measurement event with optional form/page scope."""
+    _require_planned_job(job_id)
+    result = _gtm_installer().install_native_form_event(
+        account_id,
+        container_id,
+        workspace_id,
+        measurement_id=measurement_id,
+        event_name=event_name,
+        form_id=form_id,
+        page_path=page_path,
+    )
+    return _record_install_evidence(job_id, f"native_form:{event_name}", result)
+
+
+@mcp.tool()
+def gtm_install_provider_form_event(
+    job_id: str,
+    account_id: str,
+    container_id: str,
+    workspace_id: str,
+    provider: str,
+    measurement_id: str,
+    event_name: str = "generate_lead",
+) -> dict:
+    """Install a versioned listener recipe for a supported AJAX/embed form provider."""
+    _require_planned_job(job_id)
+    result = _gtm_installer().install_provider_form_event(
+        account_id,
+        container_id,
+        workspace_id,
+        provider=provider,
+        measurement_id=measurement_id,
+        event_name=event_name,
+    )
+    return _record_install_evidence(job_id, f"provider_form:{provider}:{event_name}", result)
+
+
+@mcp.tool()
+def gtm_install_custom_event(
+    job_id: str,
+    account_id: str,
+    container_id: str,
+    workspace_id: str,
+    measurement_id: str,
+    data_layer_event: str,
+    ga4_event_name: str,
+) -> dict:
+    """Map an existing dataLayer event to a typed GA4 event tag."""
+    _require_planned_job(job_id)
+    result = _gtm_installer().install_custom_event(
+        account_id,
+        container_id,
+        workspace_id,
+        measurement_id=measurement_id,
+        data_layer_event=data_layer_event,
+        ga4_event_name=ga4_event_name,
+    )
+    return _record_install_evidence(job_id, f"custom_event:{data_layer_event}", result)
+
+
 @mcp.tool()
 def gtm_quick_preview(account_id: str, container_id: str, workspace_id: str) -> dict:
     """Compile a workspace preview. Requires GTM_ENABLE_PREVIEW=true."""
@@ -336,21 +473,41 @@ def gtm_create_workspace(account_id: str, container_id: str, name: str, descript
 
 
 @mcp.tool()
-def gtm_create_version(
+def create_measurement_version(
+    job_id: str,
     account_id: str,
     container_id: str,
     workspace_id: str,
     name: str,
     notes: str = "",
 ) -> dict:
-    """Create a saved GTM container version from a verified workspace; does not publish."""
-    return _gtm_writer().create_version(
+    """Create a saved GTM version only after preview verification; does not publish."""
+    job = _jobs().get(job_id)
+    if job.state != JobState.PREVIEW_VERIFIED:
+        raise ValueError("job must be preview_verified before creating the release version")
+    result = _gtm_writer().create_version(
         account_id,
         container_id,
         workspace_id,
         name=name,
         notes=notes,
     )
+    container_version = result.get("containerVersion", result)
+    version_id = container_version.get("containerVersionId") if isinstance(container_version, dict) else None
+    if not version_id:
+        raise ValueError("GTM create_version returned no containerVersionId")
+    job.evidence.append(
+        {
+            "kind": "gtm_version",
+            "account_id": account_id,
+            "container_id": container_id,
+            "workspace_id": workspace_id,
+            "version_id": version_id,
+            "name": name,
+        }
+    )
+    _jobs().save(job)
+    return {"job": JobStore.serialize(job), "gtm": result, "version_id": version_id}
 
 
 @mcp.tool()
@@ -375,9 +532,12 @@ def record_preview_verification(job_id: str, passed: bool, checks: list[str], co
 
 @mcp.tool()
 def approve_measurement_job(job_id: str, confirm: bool = False) -> dict:
-    """Approve a preview-verified job for publish."""
+    """Approve a preview-verified, versioned job for publish."""
     if confirm is not True:
         raise PermissionError("job approval requires confirm=true")
+    job = _jobs().get(job_id)
+    if not any(item.get("kind") == "gtm_version" and item.get("version_id") for item in job.evidence):
+        raise ValueError("job must have a saved GTM version before approval")
     approved = _jobs().transition(job_id, JobState.APPROVED)
     return JobStore.serialize(approved)
 
@@ -394,6 +554,13 @@ def publish_measurement_job(
     job = _jobs().get(job_id)
     if job.state != JobState.APPROVED:
         raise ValueError("job must be approved before publish")
+    saved_versions = [
+        item.get("version_id")
+        for item in job.evidence
+        if item.get("kind") == "gtm_version" and item.get("version_id")
+    ]
+    if not saved_versions or version_id not in saved_versions:
+        raise ValueError("version_id was not created and recorded by this measurement job")
     result = _gtm_writer().publish_version(
         account_id,
         container_id,
@@ -411,22 +578,6 @@ def publish_measurement_job(
         },
     )
     return {"job": JobStore.serialize(published), "gtm": result}
-
-
-@mcp.tool()
-def gtm_publish_version(
-    account_id: str,
-    container_id: str,
-    version_id: str,
-    confirm: bool = False,
-) -> dict:
-    """Low-level publish tool. Prefer publish_measurement_job for managed work."""
-    return _gtm_writer().publish_version(
-        account_id,
-        container_id,
-        version_id,
-        confirm=confirm,
-    )
 
 
 def main() -> None:
