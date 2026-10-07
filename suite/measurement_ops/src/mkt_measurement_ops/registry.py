@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
 
 from .models import DeploymentMode, GoogleStack, SitePlatform, SiteTarget
+from .settings import measurement_db_path
 
 
 class SiteRegistry:
@@ -30,7 +30,7 @@ class SiteRegistry:
 
     @classmethod
     def from_env(cls) -> "SiteRegistry":
-        return cls(db_path=os.getenv("MEASUREMENT_OPS_DB", "./measurement_ops.db"))
+        return cls(db_path=measurement_db_path())
 
     def _connect(self) -> sqlite3.Connection:
         if self._db_path is None:
