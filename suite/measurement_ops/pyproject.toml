@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mkt-measurement-ops"
+version = "0.1.0"
+description = "Measurement Operations orchestration for GTM, GA4, Google Ads and managed websites."
+requires-python = ">=3.11"
+dependencies = [
+  "fastmcp>=2.12,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+  "ruff>=0.8,<1",
+]
+
+[project.scripts]
+mkt-measurement-ops = "mkt_measurement_ops.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mkt_measurement_ops"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
