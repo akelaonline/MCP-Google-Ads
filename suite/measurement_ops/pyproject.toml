@@ -9,6 +9,8 @@ description = "Measurement Operations orchestration for GTM, GA4, Google Ads and
 requires-python = ">=3.11"
 dependencies = [
   "fastmcp>=2.12,<3",
+  "google-api-python-client>=2.150,<3",
+  "google-auth>=2.35,<3",
 ]
 
 [project.optional-dependencies]
