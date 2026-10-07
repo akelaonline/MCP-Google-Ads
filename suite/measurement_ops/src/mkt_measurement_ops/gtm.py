@@ -252,6 +252,26 @@ class GoogleTagManagerWriter(GoogleTagManagerReadOnly):
             .execute()
         )
 
+    def create_container(
+        self,
+        account_id: str,
+        *,
+        name: str,
+        domain: str,
+    ) -> dict:
+        self._ensure_writes()
+        body = {
+            "name": name,
+            "usageContext": ["web"],
+            "domainName": [domain],
+        }
+        return (
+            self._service.accounts()
+            .containers()
+            .create(parent=account_path(account_id), body=body)
+            .execute()
+        )
+
     def create_workspace(self, account_id: str, container_id: str, name: str, description: str = "") -> dict:
         self._ensure_writes()
         body = {"name": name}
