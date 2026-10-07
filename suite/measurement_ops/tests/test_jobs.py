@@ -16,7 +16,7 @@ def test_job_store_survives_reopen(tmp_path) -> None:
     assert restored.evidence == [{"kind": "audit", "pages": 4}]
 
 
-def test_job_store_preserves_verification_gate(tmp_path) -> None:
+def test_job_store_preserves_preview_verification_gate(tmp_path) -> None:
     store = JobStore(tmp_path / "jobs.db")
     job = store.create("cambridge")
     store.transition(job.id, JobState.AUDITED)
@@ -24,8 +24,8 @@ def test_job_store_preserves_verification_gate(tmp_path) -> None:
     store.transition(job.id, JobState.PREPARED)
     store.transition(
         job.id,
-        JobState.VERIFIED,
-        evidence={"kind": "verification", "passed": True, "checks": ["ga4_hit"]},
+        JobState.PREVIEW_VERIFIED,
+        evidence={"kind": "preview_verification", "passed": True, "checks": ["gtm_preview"]},
     )
     approved = store.transition(job.id, JobState.APPROVED)
 
