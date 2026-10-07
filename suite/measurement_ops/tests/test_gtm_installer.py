@@ -129,3 +129,54 @@ def test_existing_same_name_different_filter_fails_as_drift() -> None:
             event_name="phone_click",
             measurement_id="G-ABC123",
         )
+
+
+def test_multiple_native_forms_can_share_same_ga4_event_without_name_collision() -> None:
+    writer = _FakeWriter()
+    installer = GTMTrackingInstaller(writer)
+
+    installer.install_native_form_event(
+        "1", "2", "3",
+        measurement_id="G-ABC123",
+        event_name="generate_lead",
+        form_id="contact-form",
+    )
+    installer.install_native_form_event(
+        "1", "2", "3",
+        measurement_id="G-ABC123",
+        event_name="generate_lead",
+        form_id="quote-form",
+    )
+
+    assert len(writer.triggers) == 2
+    assert len(writer.tags) == 2
+    assert writer.tags[0]["name"] != writer.tags[1]["name"]
+    assert all(
+        any(
+            parameter.get("key") == "eventName" and parameter.get("value") == "generate_lead"
+            for parameter in tag["parameter"]
+        )
+        for tag in writer.tags
+    )
+
+
+def test_different_data_layer_sources_can_map_to_same_ga4_event() -> None:
+    writer = _FakeWriter()
+    installer = GTMTrackingInstaller(writer)
+
+    installer.install_custom_event(
+        "1", "2", "3",
+        measurement_id="G-ABC123",
+        data_layer_event="contact_success",
+        ga4_event_name="generate_lead",
+    )
+    installer.install_custom_event(
+        "1", "2", "3",
+        measurement_id="G-ABC123",
+        data_layer_event="booking_success",
+        ga4_event_name="generate_lead",
+    )
+
+    assert len(writer.triggers) == 2
+    assert len(writer.tags) == 2
+    assert writer.tags[0]["name"] != writer.tags[1]["name"]
