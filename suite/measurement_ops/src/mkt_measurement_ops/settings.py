@@ -16,12 +16,14 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class MeasurementSettings:
+    gtm_enable_preview: bool = False
     gtm_enable_writes: bool = False
     gtm_enable_publish: bool = False
 
     @classmethod
     def from_env(cls) -> "MeasurementSettings":
         return cls(
+            gtm_enable_preview=env_bool("GTM_ENABLE_PREVIEW", False),
             gtm_enable_writes=env_bool("GTM_ENABLE_WRITES", False),
             gtm_enable_publish=env_bool("GTM_ENABLE_PUBLISH", False),
         )
