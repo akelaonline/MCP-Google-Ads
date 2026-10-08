@@ -43,6 +43,7 @@ def test_job_is_not_complete_until_production_verification() -> None:
         evidence={"kind": "preview_verification", "passed": True},
     )
     job.transition(JobState.APPROVED)
+    job.transition(JobState.PUBLISHING)
     job.transition(JobState.PUBLISHED)
     job.transition(
         JobState.PRODUCTION_VERIFIED,
