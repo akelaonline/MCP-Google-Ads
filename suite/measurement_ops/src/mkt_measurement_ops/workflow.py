@@ -44,7 +44,14 @@ class MeasurementJob:
             raise ValueError(f"invalid transition: {self.state.value} -> {target.value}")
         if target == JobState.APPROVED and not self._has_passed_evidence("preview_verification"):
             raise ValueError("approval requires passed preview-verification evidence")
-        if target == JobState.PRODUCTION_VERIFIED and not self._has_passed_evidence("production_verification"):
+        # The evidence for this transition must be checked *before* committing
+        # either the new state or the evidence. Earlier/replayed evidence must
+        # never silently certify a fresh production verification.
+        if target == JobState.PRODUCTION_VERIFIED and not (
+            isinstance(evidence, dict)
+            and evidence.get("kind") == "production_verification"
+            and evidence.get("passed") is True
+        ):
             raise ValueError("production verification requires passed production-verification evidence")
         self.state = target
         if evidence is not None:
