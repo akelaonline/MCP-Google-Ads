@@ -78,7 +78,23 @@ and GA4.
 Only an authorized user can grant/revoke access. To revoke the OAuth grant,
 use Google Account's third-party connections/security settings.
 
-## 4. First real API smoke (separate from website audits)
+## 4. Local readiness check (NO network calls)
+
+From the Mac, before using any real Google API:
+
+```bash
+export GTM_ENABLE_PREVIEW=false
+export GTM_ENABLE_WRITES=false
+export GTM_ENABLE_PUBLISH=false
+python scripts/doctor_readonly.py
+```
+
+The command prints a sanitized JSON status, without paths or secrets, and
+never calls Google. It returns exit 0 only if both GTM and GA4 grants are
+configured correctly and all mutation/preview gates are disabled. The status
+`google_api_tested: false` remains false even when local preflight passes.
+
+## 5. First real API smoke (separate from website audits)
 
 On the same local Mac/user profile that holds the OAuth grants, run:
 
@@ -98,7 +114,7 @@ resources, run browser audits or simulate conversions.
 A pass means **basic API connectivity**, not that a particular container,
 property, workspace, site or event is correctly configured.
 
-## 5. Run read-only E2E (Issue #15)
+## 6. Run read-only E2E (Issue #15)
 
 Before invoking the MCP:
 ```bash
