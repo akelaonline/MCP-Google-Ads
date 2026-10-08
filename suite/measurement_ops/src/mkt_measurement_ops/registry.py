@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from threading import Lock
 from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
@@ -147,3 +148,34 @@ class SiteRegistry:
 
     def list(self) -> list[SiteTarget]:
         return sorted(self._sites.values(), key=lambda site: site.key)
+
+
+class LazySiteRegistry:
+    """Delay opening SQLite until a registry operation actually needs it.
+
+    Importing the MCP server (including during pytest collection) must never
+    create or open a user's default measurement database.
+    """
+
+    def __init__(self) -> None:
+        self._instance: SiteRegistry | None = None
+        self._lock = Lock()
+
+    def _get(self) -> SiteRegistry:
+        if self._instance is None:
+            with self._lock:
+                if self._instance is None:
+                    self._instance = SiteRegistry.from_env()
+        return self._instance
+
+    def add(self, site: SiteTarget) -> None:
+        self._get().add(site)
+
+    def replace(self, site: SiteTarget) -> None:
+        self._get().replace(site)
+
+    def get(self, key: str) -> SiteTarget:
+        return self._get().get(key)
+
+    def list(self) -> list[SiteTarget]:
+        return self._get().list()
