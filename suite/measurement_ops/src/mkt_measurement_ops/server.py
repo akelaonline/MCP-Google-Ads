@@ -7,7 +7,7 @@ from fastmcp import FastMCP
 
 from .astro import build_astro_measurement_plan
 from .ga4 import GA4ReadOnly
-from .ga4_admin import GA4AdminReadOnly
+from .ga4_admin import GA4AdminReadOnly, _host
 from .gtm import GoogleTagManagerReadOnly, GoogleTagManagerWriter
 from .gtm_installer import GTMTrackingInstaller
 from .install_plan import build_installation_steps
@@ -224,11 +224,18 @@ def onboard_site_measurement(site_key: str) -> dict:
     if not google.ga4_property_id:
         if len(observed_ga4) == 1:
             discovered_ga4 = _ga4_admin().discover_property_by_measurement_id(observed_ga4[0])
-            google = replace(google, ga4_property_id=discovered_ga4["property_id"])
-            notes.append(
-                f"linked observed GA4 stream {discovered_ga4['measurement_id']} "
-                f"to property {discovered_ga4['property_id']}"
-            )
+            stream_domain = _host(str(discovered_ga4.get("default_uri") or ""))
+            if stream_domain != _host(site.domain):
+                notes.append(
+                    "observed GA4 stream belongs to another registered domain; "
+                    "property was not auto-linked"
+                )
+            else:
+                google = replace(google, ga4_property_id=discovered_ga4["property_id"])
+                notes.append(
+                    f"linked observed GA4 stream {discovered_ga4['measurement_id']} "
+                    f"to property {discovered_ga4['property_id']}"
+                )
         elif len(observed_ga4) > 1:
             notes.append("multiple GA4 Measurement IDs observed; no property was auto-linked")
         else:
