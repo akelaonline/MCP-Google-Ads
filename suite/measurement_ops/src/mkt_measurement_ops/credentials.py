@@ -15,6 +15,7 @@ from typing import Any
 
 GTM_READONLY_SCOPE = "https://www.googleapis.com/auth/tagmanager.readonly"
 GA4_READONLY_SCOPE = "https://www.googleapis.com/auth/analytics.readonly"
+GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 _PROVIDER_SCOPES = {
     "gtm": GTM_READONLY_SCOPE,
@@ -74,8 +75,10 @@ def _file_is_configured(provider: str) -> bool:
 
 def _validate_credential_data(payload: dict[str, Any], provider: str) -> None:
     required = {"client_id", "client_secret", "refresh_token", "token_uri"}
-    if any(not payload.get(key) for key in required):
+    if any(not isinstance(payload.get(key), str) or not payload.get(key) for key in required):
         raise ValueError("OAuth credential file is missing required fields")
+    if payload["token_uri"] != GOOGLE_TOKEN_URI:
+        raise ValueError("OAuth token endpoint must be Google's official token URI")
     scopes = payload.get("scopes") or []
     if not isinstance(scopes, list) or set(scopes) != {required_scope(provider)}:
         raise ValueError("OAuth credential scopes do not match the expected read-only provider scope")
@@ -130,7 +133,7 @@ def load_readonly_credentials(provider: str) -> Any:
     return Credentials(
         token=None,
         refresh_token=fields["refresh_token"],
-        token_uri="https://oauth2.googleapis.com/token",
+        token_uri=GOOGLE_TOKEN_URI,
         client_id=fields["client_id"],
         client_secret=fields["client_secret"],
         scopes=[required_scope(provider)],
