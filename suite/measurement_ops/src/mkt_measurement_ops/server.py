@@ -598,16 +598,16 @@ def _job_workspace(job_id: str) -> tuple[str, str, str]:
 
 
 def _manual_review_pending(job) -> bool:
-    plan_index = -1
-    resolved_index = -1
-    manual_required = False
-    for index, item in enumerate(job.evidence):
-        if item.get("kind") == "auto_install_plan":
-            plan_index = index
-            manual_required = bool(item.get("manual_review"))
-        elif item.get("kind") == "manual_review_resolution":
-            resolved_index = index
-    return manual_required and resolved_index < plan_index
+    audit = _latest_evidence(job, "audit")
+    if audit is None:
+        return True
+    plan = build_installation_steps(
+        audit.get("opportunities") or {},
+        tracking=audit.get("tracking"),
+    )
+    if not plan["manual_review"]:
+        return False
+    return not any(item.get("kind") == "manual_review_resolution" for item in job.evidence)
 
 
 def _measurement_id_for_job(job_id: str, requested: str | None = None) -> str:
@@ -882,6 +882,13 @@ def prepare_gtm_job(job_id: str) -> dict:
     job = _require_planned_job(job_id)
     if _manual_review_pending(job):
         raise ValueError("job has unresolved manual measurement requirements")
+    has_install_evidence = any(
+        item.get("kind") == "gtm_install"
+        or (item.get("kind") == "auto_install_plan" and item.get("results"))
+        for item in job.evidence
+    )
+    if not has_install_evidence:
+        raise ValueError("job has no recorded GTM installation; refusing empty-workspace publish")
     account_id, container_id, workspace_id = _job_workspace(job_id)
     status = _gtm().get_workspace_status(account_id, container_id, workspace_id)
     conflicts = status.get("mergeConflict", [])
