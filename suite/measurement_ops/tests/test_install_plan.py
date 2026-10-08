@@ -1,25 +1,27 @@
 from mkt_measurement_ops.install_plan import build_installation_steps
 
 
-def test_standard_clicks_become_typed_steps() -> None:
+def test_only_standard_non_download_clicks_auto_install() -> None:
     plan = build_installation_steps(
         {
             "whatsapp_links": 2,
             "phone_links": 1,
-            "email_links": 0,
+            "email_links": 1,
             "download_links": 3,
             "form_candidates": [],
         }
     )
-
     events = [step.get("event_name") for step in plan["steps"]]
     assert "whatsapp_click" in events
     assert "phone_click" in events
-    assert "file_download" in events
-    assert plan["manual_review"] == []
+    assert "email_click" in events
+    assert "file_download" not in events
+    assert plan["manual_review"][0]["reason"] == (
+        "verify_ga4_enhanced_measurement_to_avoid_duplicate_events"
+    )
 
 
-def test_lead_form_with_stable_id_is_safe_native_step() -> None:
+def test_lead_with_stable_id_still_requires_success_validation() -> None:
     plan = build_installation_steps(
         {
             "form_candidates": [
@@ -32,55 +34,41 @@ def test_lead_form_with_stable_id_is_safe_native_step() -> None:
             ]
         }
     )
+    assert not any(step["kind"] == "native_form" for step in plan["steps"])
+    assert plan["manual_review"][0]["event_name"] == "generate_lead"
+    assert plan["manual_review"][0]["reason"] == (
+        "success_signal_must_be_verified_before_install"
+    )
 
-    step = next(item for item in plan["steps"] if item["kind"] == "native_form")
-    assert step["event_name"] == "generate_lead"
-    assert step["form_id"] == "contact-form"
 
-
-def test_unscoped_form_on_multi_form_page_requires_manual_review() -> None:
+def test_search_and_login_forms_never_become_auto_conversions() -> None:
     plan = build_installation_steps(
         {
             "form_candidates": [
-                {
-                    "page_url": "https://example.com/",
-                    "form_id": None,
-                    "purpose": "lead",
-                    "provider": None,
-                },
-                {
-                    "page_url": "https://example.com/",
-                    "form_id": None,
-                    "purpose": "search",
-                    "provider": None,
-                },
+                {"purpose": "login", "page_url": "https://example.com/login"},
+                {"purpose": "search", "page_url": "https://example.com"},
             ]
         }
     )
+    assert plan["steps"] == [{"kind": "google_tag"}]
+    assert plan["manual_review"] == []
 
-    assert not any(step["kind"] == "native_form" for step in plan["steps"])
-    assert plan["manual_review"][0]["reason"] == "no_stable_form_id_and_multiple_forms_on_page"
 
-
-def test_ambiguous_provider_forms_do_not_auto_install() -> None:
+def test_provider_forms_require_success_signal_validation() -> None:
     plan = build_installation_steps(
         {
             "form_candidates": [
                 {
-                    "page_url": "https://example.com/a",
+                    "page_url": "https://example.com/contact",
                     "form_id": "1",
                     "purpose": "lead",
                     "provider": "contactform7",
-                },
-                {
-                    "page_url": "https://example.com/b",
-                    "form_id": "2",
-                    "purpose": "lead",
-                    "provider": "contactform7",
-                },
+                }
             ]
         }
     )
-
     assert not any(step["kind"] == "provider_form" for step in plan["steps"])
-    assert len(plan["manual_review"]) == 2
+    assert plan["manual_review"][0]["provider"] == "contactform7"
+    assert plan["manual_review"][0]["reason"] == (
+        "success_signal_must_be_verified_before_install"
+    )
