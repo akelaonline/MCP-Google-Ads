@@ -12,6 +12,9 @@ WordPress or Astro URL. This is a read-only integration test, **not a rollout**.
 3. The Google APIs and OAuth consent are configured for the exact requested
    readonly scopes. A Google Ads refresh token is **not automatically** valid for
    Tag Manager or Analytics; use separately consented credentials.
+   Preferred bootstrap: **[desktop OAuth setup](OAUTH_READONLY_SETUP.md)**.
+   Two private OAuth JSON files can replace the legacy six environment secrets.
+   The loopback flow runs on the actual Mac with a local browser, not the cloud VM.
 4. The server remains local stdio; do not expose HTTP without authentication.
 5. The browser auditor must run in a restricted-network sandbox; its URL checks
    alone are not complete SSRF protection.
@@ -36,7 +39,15 @@ For GA4, create a readonly refresh token with
 `GA4_GOOGLE_CLIENT_ID`, `GA4_GOOGLE_CLIENT_SECRET`,
 `GA4_GOOGLE_REFRESH_TOKEN`.
 
-Load these through a secure secret mechanism; do not commit `.env`.
+Alternatively, prefer the local browser helper in
+`docs/OAUTH_READONLY_SETUP.md`. It writes provider-specific read-only JSON files
+with private filesystem permissions and loads them automatically:
+
+- `~/.mkt-measurement-ops/oauth/gtm-readonly.json`
+- `~/.mkt-measurement-ops/oauth/ga4-readonly.json`
+
+Load legacy env grants through a secure secret mechanism if used; never commit
+`.env` and never paste token material into a chat.
 
 ## Read-only acceptance sequence
 
