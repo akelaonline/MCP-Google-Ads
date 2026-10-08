@@ -190,6 +190,12 @@ def provider_listener_html(provider: str, event_name: str) -> str:
         "hubspot": (
             f'<script>(function(){{window.dataLayer=window.dataLayer||[];'
             f'window.addEventListener("message",function(e){{var d=e&&e.data;'
+            f'var u;try{{u=new URL(e.origin);}}catch(_){{return;}}'
+            f'if(u.protocol!=="https:"||!(u.hostname==="calendly.com"||u.hostname.endsWith(".calendly.com")))return;'
+            f'var u;try{{u=new URL(e.origin);}}catch(_){{return;}}'
+            f'if(u.protocol!=="https:"||!(u.hostname==="typeform.com"||u.hostname.endsWith(".typeform.com")))return;'
+            f'var u;try{{u=new URL(e.origin);}}catch(_){{return;}}'
+            f'if(u.protocol!=="https:"||!(u.hostname==="hsforms.com"||u.hostname.endsWith(".hsforms.com")||u.hostname==="hubspot.com"||u.hostname.endsWith(".hubspot.com")))return;'
             f'if(d&&d.type==="hsFormCallback"&&d.eventName==="onFormSubmitted"){{'
             f'window.dataLayer.push({{event:{event},hs_form_id:d.id}});}}}});}})();</script>'
         ),
