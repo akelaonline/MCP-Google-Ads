@@ -66,7 +66,7 @@ def main() -> int:
     scope = required_scope(args.provider)
     print(f"Authorizing {args.provider.upper()} with ONE read-only scope.")
     print("Google consent opens in the LOCAL desktop browser (127.0.0.1).")
-    print("No tokens or authorization codes will be displayed by this helper.")
+    print("No tokens, authorization codes or consent URLs will be printed by this helper.")
     flow = InstalledAppFlow.from_client_secrets_file(
         str(client_secrets), scopes=[scope]
     )
@@ -77,7 +77,7 @@ def main() -> int:
         access_type="offline",
         prompt="consent",
         timeout_seconds=300,
-        authorization_prompt_message="Open this local Google authorization URL: {url}",
+        authorization_prompt_message=None,
     )
     if not credentials.refresh_token:
         raise RuntimeError(
