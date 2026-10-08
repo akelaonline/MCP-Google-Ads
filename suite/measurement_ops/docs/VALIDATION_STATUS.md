@@ -89,6 +89,19 @@ authored through GitHub, but the full local validation suite cannot be run
 here. The historical 118/118 GREEN at `49c5fbd` does not certify the
 new code. Do not enable write/publish gates or merge this PR on that basis.
 
+## 2026-10-08: OAuth desktop console-privacy regression
+
+The installed-app helper no longer prints Google consent URLs to the
+terminal. The browser opens locally through the official loopback flow, and a
+new network-free test replaces the Google OAuth flow with a fake provider to
+verify read-only scope, loopback host, no console URL and no token output.
+
+This is a **code change after the last historical GREEN**, not a passed
+integration test. The current branch still requires a full offline gate in the
+isolated developer worktree, followed by explicit user consent and the real
+read-only Google API smoke. No user OAuth credentials have been accessed or
+created in the authoring environment.
+
 ## Required latest-head validation
 
 Use a separate, clean worktree and isolated virtual environment. Do not change
