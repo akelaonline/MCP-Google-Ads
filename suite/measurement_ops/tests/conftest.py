@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Isolate even test-module imports from the real Measurement Ops database."""
+
+from __future__ import annotations
 
 import os
 import tempfile
