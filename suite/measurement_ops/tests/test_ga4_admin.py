@@ -92,3 +92,13 @@ def test_data_stream_pagination() -> None:
 
     assert len(rows) == 2
     assert service._properties._streams.calls[1]["pageToken"] == "next"
+
+
+
+def test_single_web_stream_must_match_supplied_domain() -> None:
+    service = _Service([
+        {"dataStreams": [_web("properties/123/dataStreams/1", "G-ONE", "https://other.com")]}
+    ])
+    admin = GA4AdminReadOnly(service)
+    with pytest.raises(LookupError, match="no GA4 web stream matches"):
+        admin.resolve_web_stream("123", "example.com")
