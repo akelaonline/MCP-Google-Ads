@@ -180,3 +180,62 @@ def test_different_data_layer_sources_can_map_to_same_ga4_event() -> None:
     assert len(writer.triggers) == 2
     assert len(writer.tags) == 2
     assert writer.tags[0]["name"] != writer.tags[1]["name"]
+
+
+
+def test_existing_google_tag_with_other_name_is_reused_without_orphan_trigger() -> None:
+    writer = _FakeWriter()
+    writer.tags.append(
+        {
+            "name": "Human configured Google tag",
+            "type": "googtag",
+            "tagId": "7",
+            "parameter": [{"type": "template", "key": "tagId", "value": "G-ABC123"}],
+            "firingTriggerId": ["2147479553"],
+        }
+    )
+    result = GTMTrackingInstaller(writer).install_google_tag(
+        "1", "2", "3", tag_id="G-ABC123"
+    )
+    assert result["reused_by_google_tag_id"] is True
+    assert result["created"] == {"tag": False, "trigger": False}
+    assert len(writer.tags) == 1
+    assert writer.triggers == []
+
+
+def test_existing_google_tag_with_wrong_trigger_is_blocked() -> None:
+    writer = _FakeWriter()
+    writer.tags.append(
+        {
+            "name": "Human configured Google tag",
+            "type": "googtag",
+            "parameter": [{"type": "template", "key": "tagId", "value": "G-ABC123"}],
+            "firingTriggerId": ["not-all-pages"],
+        }
+    )
+    with pytest.raises(GTMDriftError, match="All Pages"):
+        GTMTrackingInstaller(writer).install_google_tag(
+            "1", "2", "3", tag_id="G-ABC123"
+        )
+
+
+def test_multiple_google_tags_with_same_google_id_are_blocked() -> None:
+    writer = _FakeWriter()
+    writer.tags = [
+        {
+            "name": "Tag 1",
+            "type": "googtag",
+            "parameter": [{"key": "tagId", "value": "G-ABC123"}],
+            "firingTriggerId": ["2147479553"],
+        },
+        {
+            "name": "Tag 2",
+            "type": "googtag",
+            "parameter": [{"key": "tagId", "value": "G-ABC123"}],
+            "firingTriggerId": ["2147479553"],
+        },
+    ]
+    with pytest.raises(GTMDriftError, match="multiple base Google tags"):
+        GTMTrackingInstaller(writer).install_google_tag(
+            "1", "2", "3", tag_id="G-ABC123"
+        )
