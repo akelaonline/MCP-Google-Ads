@@ -15,6 +15,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+oauth = [
+  "google-auth-oauthlib>=1.2,<2",
+]
 web = [
   "playwright>=1.50,<2",
 ]
