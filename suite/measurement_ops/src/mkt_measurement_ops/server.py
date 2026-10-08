@@ -355,7 +355,7 @@ def wordpress_measurement_plan(site_key: str) -> dict:
         "arguments": {
             "gtm_container_id": site.google.gtm_public_id,
             "enabled": True,
-            "confirm": True,
+            "confirm": False,
         },
         "precondition": "run live-site audit first and stop if an existing GTM bootstrap is already present",
         "verification": [
@@ -700,6 +700,11 @@ def apply_recommended_tracking(
     account_id, container_id, workspace_id = _job_workspace(job_id)
     resolved_measurement_id = _measurement_id_for_job(job_id, measurement_id)
     plan = recommend_job_installation(job_id)
+    if any(
+        item.get("reason") == "existing_ga4_page_installation_may_duplicate_base_tag"
+        for item in plan["manual_review"]
+    ):
+        raise ValueError("possible duplicate GA4 bootstrap requires review before GTM writes")
     results: list[dict] = []
 
     for step in plan["steps"]:
@@ -827,36 +832,16 @@ def gtm_install_standard_click_event(
 
 
 @mcp.tool()
-def gtm_install_native_form_event(
-    job_id: str,
-    measurement_id: str | None = None,
-    event_name: str = "generate_lead",
-    form_id: str | None = None,
-    page_path: str | None = None,
-) -> dict:
-    """Install a native form-submit event into the job-owned workspace."""
-    account_id, container_id, workspace_id = _job_workspace(job_id)
-    resolved_measurement_id = _measurement_id_for_job(job_id, measurement_id)
-    result = _gtm_installer().install_native_form_event(
-        account_id,
-        container_id,
-        workspace_id,
-        measurement_id=resolved_measurement_id,
-        event_name=event_name,
-        form_id=form_id,
-        page_path=page_path,
-    )
-    return _record_install_evidence(job_id, f"native_form:{event_name}", result)
-
-
-@mcp.tool()
 def gtm_install_provider_form_event(
     job_id: str,
     provider: str,
     measurement_id: str | None = None,
     event_name: str = "generate_lead",
+    success_signal_confirmed: bool = False,
 ) -> dict:
-    """Install a versioned provider listener into the job-owned workspace."""
+    """Install provider success callback only after its runtime semantics were verified."""
+    if success_signal_confirmed is not True:
+        raise PermissionError("provider conversion requires verified success callback confirmation")
     account_id, container_id, workspace_id = _job_workspace(job_id)
     resolved_measurement_id = _measurement_id_for_job(job_id, measurement_id)
     result = _gtm_installer().install_provider_form_event(
