@@ -34,7 +34,7 @@ A site record maps:
 
 - domain and platform;
 - deployment mode;
-- GTM account/container;
+- GTM account/container and public `GTM-XXXX` ID;
 - GA4 property;
 - Google Ads customer;
 - Astro/Git repository or WordPress endpoint.
@@ -53,6 +53,7 @@ CREATED
   -> PREPARED
   -> PREVIEW_VERIFIED
   -> APPROVED
+  -> PUBLISHING (atomic claim)
   -> PUBLISHED
   -> PRODUCTION_VERIFIED
 ```
@@ -97,14 +98,20 @@ Implemented typed installs:
 - `whatsapp_click`;
 - `phone_click`;
 - `email_click`;
-- `file_download`;
-- native form-submit tracking;
+- `file_download` (manual until Enhanced Measurement duplicates are ruled out);
 - existing dataLayer custom events;
 - deterministic listener recipes for CF7, Gravity Forms, WPForms, Elementor,
-  HubSpot, Typeform and Calendly.
+  HubSpot, Typeform and Calendly (manual success-signal confirmation required).
 
-Re-running an installer reuses its canonical resources. Same-name resources
-with incompatible configuration fail as drift rather than being overwritten.
+**Automatic application is limited to a Google tag and straightforward link
+clicks**, provided a live-page GA4 installation has not already been detected.
+Forms are always flagged for confirmation of a genuine success callback;
+native form-submit is intentionally not exposed as a conversion-creation tool.
+
+Re-running an installer reuses its canonical resources. An existing base Google
+tag is also reused by Google ID (even if a human gave it another name), and
+duplicate IDs / same-name incompatible resources fail as drift instead of
+creating duplicates.
 
 ### GA4
 
@@ -112,8 +119,12 @@ The Admin API provider resolves a registered property's web data stream and
 Measurement ID from the site's domain. Measurement IDs therefore do not need to
 be entered manually during normal installation.
 
-The Data API provider checks GA4 Realtime `eventName` / `eventCount` after
-publish. A job is not complete until production verification passes.
+The Data API provider reads GA4 Realtime `eventName` / `eventCount` after
+publish. **These are aggregate counts, not causal proof of a specific test.**
+The workflow therefore requires operator-attested production browser/network
+checks bound to the registered domain, GTM public ID and GA4 Measurement ID
+before Realtime may finish a job. That attestation is **not autonomous proof**.
+A job cannot be marked complete from unrelated GA4 traffic alone.
 
 ### WordPress
 
@@ -124,7 +135,9 @@ It exposes controlled abilities for reading/configuring the bridge-managed GTM
 container, requires `manage_options` and `confirm=true` for changes, and does
 not expose arbitrary PHP/theme editing.
 
-It inserts GTM independently from the active theme.
+It inserts GTM independently from the active theme. Deployment plans return
+`confirm=false` by default; an administrator must explicitly approve the
+ability mutation after checking for an existing site-side GTM installation.
 
 ### Astro
 
@@ -149,6 +162,13 @@ Actual repository mutation/deploy remains a separate provider step.
 7. Publish requires preview verification, explicit job approval, the publish
    environment gate and `confirm=true`.
 8. Production success means runtime verification, not merely API success.
+9. Every managed GTM write derives account/container/workspace from the job's
+   persisted identity rather than accepting arbitrary per-call target IDs.
+10. An empty or unreviewed job cannot advance into preview verification.
+11. Do not infer a successful lead from a form submission attempt.
+12. Browser SSRF URL screening is defense in depth, not a replacement for
+    isolating the auditor in a restricted-network sandbox. DNS rebinding,
+    browser traffic, and third-party scripts require deployment hardening.
 
 ## Local validation
 
@@ -188,8 +208,8 @@ register site
   -> saved GTM version
   -> explicit approval
   -> deploy / publish
-  -> production browser verification
-  -> GA4 Realtime verification
+  -> operator-attested browser/network verification (matching site + events)
+  -> GA4 Realtime corroboration
 ```
 
 No pilot is complete at "tag created".
