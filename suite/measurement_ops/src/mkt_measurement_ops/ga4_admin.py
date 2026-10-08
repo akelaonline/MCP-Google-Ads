@@ -118,10 +118,9 @@ class GA4AdminReadOnly:
                 return self._normalized(matches[0])
             if len(matches) > 1:
                 raise LookupError(f"multiple GA4 web streams match domain {domain!r}")
-            if len(streams) > 1:
-                raise LookupError(
-                    f"no GA4 web stream matches {domain!r}; property has {len(streams)} web streams"
-                )
+            raise LookupError(
+                f"no GA4 web stream matches {domain!r}; property has {len(streams)} web streams"
+            )
 
         if len(streams) != 1:
             raise LookupError(
