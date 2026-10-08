@@ -165,6 +165,43 @@ def build_custom_html_tag(*, name: str, html: str, firing_trigger_id: str) -> di
 def provider_listener_html(provider: str, event_name: str) -> str:
     event = json.dumps(event_name)
     message_origins = {
+        "hubspot": ("hsforms.com", "hubspot.com"),
+        "typeform": ("typeform.com",),
+        "calendly": ("calendly.com",),
+    }
+    guards: dict[str, str] = {}
+    for key, domains in message_origins.items():
+        checks = "||".join(
+            f"u.hostname==={json.dumps(domain)}||u.hostname.endsWith({json.dumps('.' + domain)})"
+            for domain in domains
+        )
+        guards[key] = (
+            'var u;try{u=new URL(e.origin);}catch(_){return;}'
+            f'if(u.protocol!=="https:"||!({checks}))return;'
+        )
+    scripts = {
+        "contactform7": (
+            f'<script>(function(){{window.dataLayer=window.dataLayer||[];'
+            f'document.addEventListener("wpcf7mailsent",function(e){{'
+            f'window.dataLayer.push({{event:{event},form_id:e.detail&&e.detail.contactFormId}});'
+            f'}},false);}})();</script>'
+        ),
+        "gravityforms": (
+            f'<script>(function(){{window.dataLayer=window.dataLayer||[];if(!window.jQuery)return;'
+            f'jQuery(document).on("gform_confirmation_loaded",function(e,formId){{'
+            f'window.dataLayer.push({{event:{event},form_id:formId}});}});}})();</script>'
+        ),
+        "wpforms": (
+            f'<script>(function(){{window.dataLayer=window.dataLayer||[];var fired=0;'
+            f'var push=function(el){{if(fired)return;fired=1;setTimeout(function(){{fired=0;}},50);'
+            f'window.dataLayer.push({{event:{event},form_id:el&&el.getAttribute&&el.getAttribute("data-formid")}});}};'
+            f'if(window.jQuery){{jQuery(document).on("wpformsAjaxSubmitSuccess",function(e){{push(e&&e.target);}});}}'
+            f'document.addEventListener("wpformsAjaxSubmitSuccess",function(e){{push(e&&e.target);}},false);}})();</script>'
+        ),
+        "elementor": (
+            f'<script>(function(){{window.dataLayer=window.dataLayer||[];if(!window.jQuery)return;'
+            f'jQuery(document).on("submit_success",function(){{window.dataLayer.push({{event:{event}}});}});}})();</script>'
+        ),
         "hubspot": (
             f'<script>(function(){{window.dataLayer=window.dataLayer||[];'
             f'window.addEventListener("message",function(e){{var d=e&&e.data;'
