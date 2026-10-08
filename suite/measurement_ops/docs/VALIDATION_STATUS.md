@@ -53,6 +53,27 @@ hermetic. It did not test Google APIs.
 **Do not label the changed branch GREEN until the complete script is rerun
 against the newest commit.** A full end-to-end release is even further away.
 
+## New read-only OAuth onboarding (current HEAD also untested)
+
+After the hermeticity changes, Measurement Ops gained:
+
+- `src/mkt_measurement_ops/credentials.py`: segregated GTM/GA4 read-only
+  OAuth grants in owner-only files, strict scope validation, no token logging.
+- `scripts/authorize_readonly.py`: per-provider Desktop OAuth browser
+  consent flow on the actual local Mac; **cannot run transparently in the
+  isolated remote VM**.
+- `scripts/smoke_readonly.py --confirm-readonly`: opt-in, real Google API
+  calls limited to GTM accounts.list and GA4 accountSummaries.list; only
+  sanitized counts are printed.
+- Tests of read-only scopes, private file modes, separate credentials, and
+  explicit network-call intent.
+- Providers load the per-provider private files, with a legacy env fallback.
+
+**No OAuth grants have been created, no Google API smoke executed, and no
+customer resources modified.** Run the full offline validation on this newest
+HEAD before initiating a real read-only connection. See
+`docs/OAUTH_READONLY_SETUP.md` and Issue #15 for the approved workflow.
+
 ## Required latest-head validation
 
 Use a separate, clean worktree and isolated virtual environment. Do not change
