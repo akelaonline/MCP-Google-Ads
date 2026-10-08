@@ -90,7 +90,7 @@ def build_form_submit_trigger(
 
 def build_google_tag(*, name: str, tag_id: str, firing_trigger_id: str) -> dict:
     tag_id = tag_id.strip()
-    if not re.match(r"^(G|GT|AW)-[A-Z0-9-]+$", tag_id, re.IGNORECASE):
+    if not re.fullmatch(r"(?:G|GT|AW)-[A-Z0-9-]+", tag_id, re.IGNORECASE):
         raise ValueError("tag_id must be a Google tag ID such as G-XXXX, GT-XXXX or AW-XXXX")
     return {
         "name": sanitize_name(name),
@@ -108,10 +108,10 @@ def build_ga4_event_tag(
     firing_trigger_id: str,
     event_parameters: list[dict[str, str]] | None = None,
 ) -> dict:
-    if not re.match(r"^G-[A-Z0-9]+$", measurement_id.strip(), re.IGNORECASE):
+    if not re.fullmatch(r"G-[A-Z0-9]+", measurement_id.strip(), re.IGNORECASE):
         raise ValueError("measurement_id must look like G-XXXXXXXXXX")
-    if not event_name.strip():
-        raise ValueError("event_name is required")
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,39}", event_name.strip()):
+        raise ValueError("GA4 event_name must be 1-40 letters, digits or underscores, starting with a letter")
 
     parameters: list[dict[str, Any]] = [
         {"type": "tagReference", "key": "measurementId", "value": ""},
@@ -163,6 +163,8 @@ def build_custom_html_tag(*, name: str, html: str, firing_trigger_id: str) -> di
 
 
 def provider_listener_html(provider: str, event_name: str) -> str:
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,39}", event_name):
+        raise ValueError("unsafe or invalid provider event_name")
     event = json.dumps(event_name)
     message_origins = {
         "hubspot": ("hsforms.com", "hubspot.com"),
