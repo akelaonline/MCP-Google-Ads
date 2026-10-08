@@ -72,3 +72,21 @@ def test_native_form_trigger_scopes_by_form_and_page() -> None:
     assert len(trigger["filter"]) == 2
     assert trigger["waitForTags"]["value"] == "false"
     assert trigger["checkValidation"]["value"] == "false"
+
+
+
+@pytest.mark.parametrize("provider", ["hubspot", "typeform", "calendly"])
+def test_message_provider_rejects_untrusted_origin(provider: str) -> None:
+    html = provider_listener_html(provider, "generate_lead")
+    assert "e.origin" in html
+    assert 'u.protocol!=="https:"' in html
+    assert f"{provider if provider != 'hubspot' else 'hsforms'}.com" in html
+
+
+@pytest.mark.parametrize(
+    "event_name",
+    ["</script><script>alert(1)</script>", "bad event", "1bad", "x" * 41],
+)
+def test_provider_listener_rejects_injection_and_invalid_ga4_events(event_name: str) -> None:
+    with pytest.raises(ValueError, match="invalid provider event_name"):
+        provider_listener_html("contactform7", event_name)
