@@ -5,9 +5,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from importlib.metadata import version
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+EXPECTED_RUFF = "0.8.6"
 WORDPRESS_PLUGIN = ROOT / "wordpress" / "mkt-measurement-bridge" / "mkt-measurement-bridge.php"
 
 
@@ -17,6 +19,14 @@ def run(*args: str, env: dict[str, str] | None = None) -> None:
 
 
 def main() -> int:
+    print(f"Python: {sys.version.split()[0]}", flush=True)
+    actual_ruff = version("ruff")
+    print(f"Ruff: {actual_ruff} (expected {EXPECTED_RUFF})", flush=True)
+    if actual_ruff != EXPECTED_RUFF:
+        raise RuntimeError(
+            f"unexpected Ruff {actual_ruff}; install project dev dependencies "
+            f"to use the pinned Ruff {EXPECTED_RUFF}"
+        )
     run(sys.executable, "-m", "compileall", "-q", "src", "tests", "scripts")
     run(sys.executable, "-m", "ruff", "check", "src", "tests", "scripts")
     run(sys.executable, "-m", "pytest", "-q")
