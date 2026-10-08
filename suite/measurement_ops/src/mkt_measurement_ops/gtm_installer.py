@@ -4,8 +4,8 @@ from typing import Any
 
 from .gtm import GoogleTagManagerWriter
 from .gtm_builders import (
-    build_ga4_event_tag,
     build_custom_event_trigger,
+    build_ga4_event_tag,
     build_custom_html_tag,
     build_form_submit_trigger,
     build_google_tag,
@@ -20,7 +20,19 @@ class GTMDriftError(RuntimeError):
 
 
 def _named(rows: list[dict], name: str) -> dict | None:
-    return next((row for row in rows if row.get("name") == name), None)
+    matches = [row for row in rows if row.get("name") == name]
+    if len(matches) > 1:
+        raise GTMDriftError(f"multiple GTM resources have name {name!r}")
+    return matches[0] if matches else None
+
+
+def _tag_identity(tag: dict) -> str | None:
+    if tag.get("type") != "googtag":
+        return None
+    return next(
+        (item.get("value") for item in tag.get("parameter", []) if item.get("key") == "tagId"),
+        None,
+    )
 
 
 def _scope_label(*parts: str | None) -> str:
@@ -90,6 +102,32 @@ class GTMTrackingInstaller:
         *,
         tag_id: str,
     ) -> dict:
+        # A pre-existing Google tag may have been created by a human under a
+        # different name. Reuse it by immutable Google ID before creating a
+        # trigger, so we do not create duplicate loaders or orphan triggers.
+        existing_tags = self.client.list_tags(account_id, container_id, workspace_id)
+        matching = [tag for tag in existing_tags if _tag_identity(tag) == tag_id]
+        if len(matching) > 1:
+            raise GTMDriftError(f"multiple base Google tags already target {tag_id}")
+        if matching:
+            tag = matching[0]
+            trigger_ids = set(tag.get("firingTriggerId", []))
+            trigger_rows = self.client.list_triggers(account_id, container_id, workspace_id)
+            all_pages_ids = {
+                str(row.get("triggerId"))
+                for row in trigger_rows
+                if row.get("type") == "pageview" and not row.get("filter")
+            }
+            all_pages_ids.add("2147479553")  # GTM built-in All Pages trigger.
+            if not trigger_ids.intersection(all_pages_ids):
+                raise GTMDriftError(f"existing Google tag {tag_id} does not fire on All Pages")
+            return {
+                "trigger": None,
+                "tag": tag,
+                "created": {"trigger": False, "tag": False},
+                "reused_by_google_tag_id": True,
+            }
+
         trigger_body = build_pageview_trigger()
         trigger, trigger_created = self._ensure_trigger(account_id, container_id, workspace_id, trigger_body)
         tag_body = build_google_tag(
