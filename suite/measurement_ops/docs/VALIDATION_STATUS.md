@@ -1,5 +1,53 @@
 # Measurement Ops v0.1 — Validation status
 
+## Most recent independent offline gate: 49c5fbd (GREEN, 2026-10-07)
+
+Reported by the independent developer from a clean isolated Linux/aarch64 worktree
+at commit `49c5fbd03b692ba30d95d0ff2216172b25dce7d9`:
+
+| Check | Result |
+| --- | --- |
+| Python | 3.12.14 |
+| Ruff | 0.8.6, PASS |
+| pytest | **118 passed, 0 failed** |
+| Measurement ID isolation regressions | 4/4 passed |
+| Package imports | PASS, v0.1.0 |
+| MCP tools | 38 registered |
+| WordPress PHP syntax | PASS, PHP 8.1.2 |
+| GTM mutation gates | preview, writes and publish: false |
+| Real GTM/GA4 API E2E | **NOT RUN: no dedicated read-only OAuth tokens** |
+| Browser network-isolation sandbox | Not certified |
+
+**Important qualification:** the gate passed with a writable isolated HOME. An
+initial gate attempt uncovered import-time creation of the real user's SQLite
+registry in `~/.mkt-measurement-ops` during pytest collection. That is a genuine
+test isolation bug, not an OAuth or Google API error. The E2E was not executed.
+
+## New fix: hermetic test runner + lazy registry (CURRENT HEAD RETEST REQUIRED)
+
+After the 49c5fbd GREEN, code changed again:
+
+- `server.py` now constructs a `LazySiteRegistry`, not `SiteRegistry.from_env()` at
+  module import. SQLite is opened only on the first site registry operation.
+- `tests/conftest.py` sets a throwaway SQLite DB **before** pytest imports
+  test modules, and restores the prior environment on teardown.
+- `scripts/validate_local.py` isolates HOME and MEASUREMENT_OPS_DB for **all**
+  subprocesses, not only the module import step. Provider OAuth variables are
+  withheld from the offline gate and all GTM mutation gates are forced false.
+- `tests/test_import_isolation.py` checks the default HOME is not written by
+  importing the MCP server and the lazy registry creates DB only on first use.
+
+**The latest PR HEAD has NOT YET passed the full offline validation.**
+Re-run `python scripts/validate_local.py` on the latest branch SHA, including
+PHP lint. Don't report 118/118 as the test result for the new code.
+
+The 2026-10-07 E2E issue #15 remains **BLOCKED** because the test environment
+lacks dedicated GTM and GA4 read-only credentials, an authorized test site and
+certified browser-network isolation. Do not use Google Ads OAuth tokens as a
+substitute, and do not paste secrets into GitHub or chat.
+
+---
+
 ## Offline test gate: GREEN on a pinned historical SHA
 
 External developer report, executed in an **isolated Linux aarch64 VM worktree** on
