@@ -45,6 +45,8 @@ def main() -> int:
             "GA4_GOOGLE_CLIENT_ID",
             "GA4_GOOGLE_CLIENT_SECRET",
             "GA4_GOOGLE_REFRESH_TOKEN",
+            "GTM_GOOGLE_CREDENTIALS_FILE",
+            "GA4_GOOGLE_CREDENTIALS_FILE",
             "GOOGLE_APPLICATION_CREDENTIALS",
         ):
             env.pop(key, None)
