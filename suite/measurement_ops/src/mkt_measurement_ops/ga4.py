@@ -1,37 +1,14 @@
 from __future__ import annotations
 
-import os
 from typing import Any
+
+from .credentials import load_readonly_credentials
 
 ANALYTICS_READONLY_SCOPE = "https://www.googleapis.com/auth/analytics.readonly"
 
 
 def _oauth_credentials():
-    client_id = os.getenv("GA4_GOOGLE_CLIENT_ID")
-    client_secret = os.getenv("GA4_GOOGLE_CLIENT_SECRET")
-    refresh_token = os.getenv("GA4_GOOGLE_REFRESH_TOKEN")
-    missing = [
-        name
-        for name, value in (
-            ("GA4_GOOGLE_CLIENT_ID", client_id),
-            ("GA4_GOOGLE_CLIENT_SECRET", client_secret),
-            ("GA4_GOOGLE_REFRESH_TOKEN", refresh_token),
-        )
-        if not value
-    ]
-    if missing:
-        raise RuntimeError(f"missing GA4 OAuth configuration: {', '.join(missing)}")
-
-    from google.oauth2.credentials import Credentials
-
-    return Credentials(
-        token=None,
-        refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=client_id,
-        client_secret=client_secret,
-        scopes=[ANALYTICS_READONLY_SCOPE],
-    )
+    return load_readonly_credentials("ga4")
 
 
 class GA4ReadOnly:
