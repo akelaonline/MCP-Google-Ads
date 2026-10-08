@@ -18,6 +18,7 @@ from .registry import SiteRegistry
 from .risk import classify_action, requires_confirmation
 from .settings import MeasurementSettings
 from .web_audit import WebAuditor
+from .verification import validated_browser_attestation
 from .workflow import JobState
 
 mcp = FastMCP(
@@ -386,20 +387,82 @@ def ga4_realtime_events(property_id: str) -> dict[str, int]:
     return _ga4().realtime_events(property_id)
 
 
+def _job_expected_events(job) -> list[str]:
+    plan = _latest_evidence(job, "plan")
+    if plan is None:
+        raise ValueError("job has no audited measurement plan")
+    return sorted({
+        item["event_name"]
+        for item in plan.get("plan", {}).get("events", [])
+        if item.get("event_name")
+    })
+
+
+@mcp.tool()
+def record_production_browser_attestation(
+    job_id: str,
+    page_url: str,
+    observed_gtm_public_id: str,
+    observed_measurement_id: str,
+    observed_network_events: list[str],
+    consent_checked: bool,
+    confirm: bool = False,
+) -> dict:
+    """Record operator-attested browser/network QA after publish; not autonomous proof."""
+    if confirm is not True:
+        raise PermissionError("recording production browser QA requires confirm=true")
+    job = _jobs().get(job_id)
+    if job.state != JobState.PUBLISHED:
+        raise ValueError("job must be published before production browser attestation")
+    site = registry.get(job.site_key)
+    property_id = site.google.ga4_property_id
+    if not property_id:
+        raise ValueError("site has no registered GA4 property")
+    stream = _ga4_admin().resolve_web_stream(property_id, site.domain)
+    evidence = validated_browser_attestation(
+        site_domain=site.domain,
+        page_url=page_url,
+        registered_gtm_public_id=site.google.gtm_public_id or "",
+        observed_gtm_public_id=observed_gtm_public_id,
+        expected_measurement_id=stream["measurement_id"],
+        observed_measurement_id=observed_measurement_id,
+        expected_events=_job_expected_events(job),
+        observed_network_events=observed_network_events,
+        consent_checked=consent_checked,
+    )
+    job.evidence.append(evidence)
+    _jobs().save(job)
+    return {"job": JobStore.serialize(job), "evidence": evidence}
+
+
 @mcp.tool()
 def ga4_verify_events(property_id: str, expected_events: list[str], job_id: str | None = None) -> dict:
-    """Verify production events in GA4 Realtime after publish."""
-    result = _ga4().verify_events(property_id, expected_events)
+    """Read aggregate GA4 Realtime counts; managed jobs also require prior browser-side QA."""
     if job_id is not None:
         job = _jobs().get(job_id)
         if job.state != JobState.PUBLISHED:
             raise ValueError("job must be published before GA4 production verification")
+        site = registry.get(job.site_key)
+        if not site.google.ga4_property_id or property_id != site.google.ga4_property_id:
+            raise ValueError("GA4 property does not match the registered job site")
+        planned = _job_expected_events(job)
+        if sorted(set(expected_events)) != planned:
+            raise ValueError("GA4 verification must include every expected event in the job plan")
+        attestation = _latest_evidence(job, "production_browser_attestation")
+        if not attestation or attestation.get("passed") is not True:
+            raise ValueError("browser-side production QA is required before GA4 completion")
+        if sorted(attestation.get("verified_events", [])) != planned:
+            raise ValueError("browser attestation does not cover the complete job plan")
+
+    result = _ga4().verify_events(property_id, expected_events)
+    if job_id is not None:
         evidence = {
             "kind": "production_verification",
-            "source": "ga4_realtime",
+            "source": "ga4_realtime_plus_operator_browser_attestation",
             "passed": result["passed"],
             "property_id": property_id,
             "checks": result["checks"],
+            "automation_level": "operator_attested",
         }
         if result["passed"]:
             _jobs().transition(job_id, JobState.PRODUCTION_VERIFIED, evidence=evidence)
@@ -951,6 +1014,9 @@ def publish_measurement_job(
     confirm: bool = False,
 ) -> dict:
     """Publish exactly the GTM version recorded by the approved measurement job."""
+    if confirm is not True:
+        raise PermissionError("publish requires confirm=true before claiming the job")
+    _gtm_writer()._ensure_publish(confirm)
     job = _jobs().get(job_id)
     if job.state != JobState.APPROVED:
         raise ValueError("job must be approved before publish")
@@ -970,6 +1036,8 @@ def publish_measurement_job(
         raise ValueError("saved version account does not match job workspace")
     if str(workspace.get("container_id") or "") != container_id:
         raise ValueError("saved version container does not match job workspace")
+    if str(workspace.get("workspace_id") or "") != str(version_evidence.get("workspace_id") or ""):
+        raise ValueError("saved version workspace does not match job workspace")
     claimed = _jobs().claim(
         job_id,
         expected=JobState.APPROVED,
