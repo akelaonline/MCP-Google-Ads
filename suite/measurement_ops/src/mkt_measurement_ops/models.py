@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ipaddress
+import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -42,6 +44,22 @@ class SiteTarget:
             raise ValueError("site key is required")
         if not self.domain.strip():
             raise ValueError("domain is required")
+        # Registry domains are hostnames, never arbitrary URLs or destinations.
+        domain = self.domain.strip()
+        hostname_pattern = (
+            r"(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+"
+            r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$"
+        )
+        if not re.fullmatch(hostname_pattern, domain):
+            raise ValueError("domain must be a bare public DNS hostname without URL, port or path")
+        if domain.lower().endswith((".local", ".internal", ".localhost", ".invalid")):
+            raise ValueError("private DNS suffixes are not allowed")
+        try:
+            ipaddress.ip_address(domain)
+        except ValueError:
+            pass
+        else:
+            raise ValueError("site domain cannot be an IP address")
         if self.platform == SitePlatform.ASTRO and self.deployment_mode == DeploymentMode.GITHUB:
             if not self.repository:
                 raise ValueError("Astro/GitHub sites require repository")
