@@ -47,7 +47,7 @@ class SiteTarget:
         # Registry domains are hostnames, never arbitrary URLs or destinations.
         domain = self.domain.strip()
         hostname_pattern = (
-            r"(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+"
+            r"(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
             r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$"
         )
         if not re.fullmatch(hostname_pattern, domain):
