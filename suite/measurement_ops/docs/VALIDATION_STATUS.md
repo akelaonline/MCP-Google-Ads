@@ -74,6 +74,21 @@ customer resources modified.** Run the full offline validation on this newest
 HEAD before initiating a real read-only connection. See
 `docs/OAUTH_READONLY_SETUP.md` and Issue #15 for the approved workflow.
 
+## Additional OAuth safety changes — HEAD retest still required
+
+The read-only OAuth integration now validates Google-issued token endpoint
+`https://oauth2.googleapis.com/token` and allows only Google's documented
+authorization endpoints for Desktop client JSON. Added regression cases for
+unauthorized OAuth endpoints, elevated scopes, private file permissions and
+malformed client types. Added `scripts/doctor_readonly.py` for a **zero-network
+preflight**, distinct from the explicitly confirmed live read-only smoke.
+
+**No real OAuth credentials are present in this authoring environment; no
+authenticated GTM/GA4 API requests have been executed.** These commits were
+authored through GitHub, but the full local validation suite cannot be run
+here. The historical 118/118 GREEN at `49c5fbd` does not certify the
+new code. Do not enable write/publish gates or merge this PR on that basis.
+
 ## Required latest-head validation
 
 Use a separate, clean worktree and isolated virtual environment. Do not change
