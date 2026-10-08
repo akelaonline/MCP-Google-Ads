@@ -611,16 +611,18 @@ def _manual_review_pending(job) -> bool:
 
 
 def _measurement_id_for_job(job_id: str, requested: str | None = None) -> str:
+    """Resolve from the job's registered GA4 property; never trust a cross-site override."""
     job = _require_planned_job(job_id)
-    if requested and requested.strip():
-        return requested.strip()
     site = registry.get(job.site_key)
     property_id = site.google.ga4_property_id
     if not property_id:
         raise ValueError(
-            f"site {site.key} has no GA4 property registered; set ga4_property_id or pass measurement_id"
+            f"site {site.key} has no GA4 property registered; complete GA4 onboarding before installing tags"
         )
-    return _ga4_admin().resolve_web_stream(property_id, site.domain)["measurement_id"]
+    resolved = _ga4_admin().resolve_web_stream(property_id, site.domain)["measurement_id"]
+    if requested is not None and requested.strip().upper() != resolved.upper():
+        raise ValueError("requested Measurement ID does not match the registered site's GA4 web stream")
+    return resolved
 
 
 def _record_install_evidence(job_id: str, operation: str, result: dict) -> dict:
