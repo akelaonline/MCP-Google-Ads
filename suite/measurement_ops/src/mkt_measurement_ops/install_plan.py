@@ -8,10 +8,21 @@ _PURPOSE_EVENT = {
 }
 
 
-def build_installation_steps(opportunities: dict) -> dict:
+def build_installation_steps(opportunities: dict, *, tracking: dict | None = None) -> dict:
     """Conservative install planner: never auto-report unverified conversions."""
-    steps: list[dict] = [{"kind": "google_tag"}]
+    steps: list[dict] = []
     manual: list[dict] = []
+
+    if (tracking or {}).get("ga4_ids"):
+        manual.append(
+            {
+                "kind": "google_tag",
+                "reason": "existing_ga4_page_installation_may_duplicate_base_tag",
+                "observed_measurement_ids": sorted(set(tracking["ga4_ids"])),
+            }
+        )
+    else:
+        steps.append({"kind": "google_tag"})
 
     for key, event_name in (
         ("whatsapp_links", "whatsapp_click"),
