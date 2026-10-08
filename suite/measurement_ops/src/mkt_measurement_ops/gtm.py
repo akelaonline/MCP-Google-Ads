@@ -4,6 +4,7 @@ import os
 from collections.abc import Callable
 from typing import Any
 
+from .credentials import load_readonly_credentials
 from .settings import MeasurementSettings
 
 READONLY_SCOPE = "https://www.googleapis.com/auth/tagmanager.readonly"
@@ -29,32 +30,42 @@ def version_path(account_id: str, container_id: str, version_id: str) -> str:
 
 
 def _oauth_service(scopes: list[str]) -> Any:
-    client_id = os.getenv("GTM_GOOGLE_CLIENT_ID")
-    client_secret = os.getenv("GTM_GOOGLE_CLIENT_SECRET")
-    refresh_token = os.getenv("GTM_GOOGLE_REFRESH_TOKEN")
-    missing = [
-        name
-        for name, value in (
-            ("GTM_GOOGLE_CLIENT_ID", client_id),
-            ("GTM_GOOGLE_CLIENT_SECRET", client_secret),
-            ("GTM_GOOGLE_REFRESH_TOKEN", refresh_token),
-        )
-        if not value
-    ]
-    if missing:
-        raise RuntimeError(f"missing GTM OAuth configuration: {', '.join(missing)}")
-
-    from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
 
-    credentials = Credentials(
-        token=None,
-        refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=client_id,
-        client_secret=client_secret,
-        scopes=scopes,
-    )
+    if scopes == [READONLY_SCOPE]:
+        # Read-only grants are stored independently and are never promoted
+        # into writer credentials by changing the capability flags.
+        credentials = load_readonly_credentials("gtm")
+    else:
+        # Privileged GTM OAuth is a separate future E2E and deliberately
+        # still requires explicitly configured legacy variables.
+        client_id = os.getenv("GTM_GOOGLE_CLIENT_ID")
+        client_secret = os.getenv("GTM_GOOGLE_CLIENT_SECRET")
+        refresh_token = os.getenv("GTM_GOOGLE_REFRESH_TOKEN")
+        missing = [
+            name
+            for name, value in (
+                ("GTM_GOOGLE_CLIENT_ID", client_id),
+                ("GTM_GOOGLE_CLIENT_SECRET", client_secret),
+                ("GTM_GOOGLE_REFRESH_TOKEN", refresh_token),
+            )
+            if not value
+        ]
+        if missing:
+            raise RuntimeError(
+                "privileged GTM OAuth is not configured; "
+                f"missing {', '.join(missing)}"
+            )
+        from google.oauth2.credentials import Credentials
+
+        credentials = Credentials(
+            token=None,
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=scopes,
+        )
     return build("tagmanager", "v2", credentials=credentials, cache_discovery=False)
 
 
