@@ -6,6 +6,7 @@ from functools import lru_cache
 from fastmcp import FastMCP
 
 from .astro import build_astro_measurement_plan
+from .credentials import credential_configuration_status
 from .ga4 import GA4ReadOnly
 from .ga4_admin import GA4AdminReadOnly, _host
 from .gtm import GoogleTagManagerReadOnly, GoogleTagManagerWriter
@@ -78,6 +79,9 @@ def measurement_capabilities() -> dict:
         "gtm_publish": settings.gtm_enable_publish,
         "publish_requires_confirm": True,
         "site_deploy_requires_confirm": True,
+        # Means configuration present only, NOT that Google authorization
+        # or any API request has been verified in real time.
+        **credential_configuration_status(),
     }
 
 
