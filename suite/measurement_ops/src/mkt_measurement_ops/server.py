@@ -688,7 +688,7 @@ def recommend_job_installation(job_id: str) -> dict:
     if audit is None:
         raise ValueError("job has no audit evidence")
     opportunities = audit.get("opportunities") or {}
-    return build_installation_steps(opportunities)
+    return build_installation_steps(opportunities, tracking=audit.get("tracking"))
 
 
 @mcp.tool()
