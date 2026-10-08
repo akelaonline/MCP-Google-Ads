@@ -102,3 +102,25 @@ def test_existing_legacy_env_configuration_is_recognized(tmp_path, monkeypatch) 
     monkeypatch.setenv("GTM_GOOGLE_CLIENT_SECRET", "test-secret")
     monkeypatch.setenv("GTM_GOOGLE_REFRESH_TOKEN", "test-refresh")
     assert credential_configuration_status()["gtm_readonly_configured"] is True
+
+
+
+def test_oauth_refresh_endpoint_cannot_be_overridden(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    payload = json.loads(_credentials(GTM_READONLY_SCOPE))
+    payload["token_uri"] = "https://attacker.example/oauth/token"
+    with pytest.raises(ValueError, match="official token URI"):
+        save_readonly_credentials("gtm", json.dumps(payload))
+
+
+def test_oauth_file_with_custom_refresh_endpoint_is_rejected_on_load(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = save_readonly_credentials("gtm", _credentials(GTM_READONLY_SCOPE))
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    payload["token_uri"] = "https://attacker.example/refresh"
+    target.write_text(json.dumps(payload), encoding="utf-8")
+    target.chmod(0o600)
+    with pytest.raises(ValueError, match="official token URI"):
+        load_readonly_credentials("gtm")
