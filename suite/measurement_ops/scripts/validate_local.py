@@ -27,13 +27,34 @@ def main() -> int:
             f"unexpected Ruff {actual_ruff}; install project dev dependencies "
             f"to use the pinned Ruff {EXPECTED_RUFF}"
         )
-    run(sys.executable, "-m", "compileall", "-q", "src", "tests", "scripts")
-    run(sys.executable, "-m", "ruff", "check", "src", "tests", "scripts")
-    run(sys.executable, "-m", "pytest", "-q")
-
+    # Every subprocess, *including pytest collection*, runs with an isolated
+    # database and HOME. Never open or create the user's real registry while
+    # checking code. The pytest conftest adds protection for standalone pytest.
     with tempfile.TemporaryDirectory(prefix="measurement-ops-validate-") as tmp:
+        isolation = Path(tmp)
+        home = isolation / "home"
+        home.mkdir()
         env = dict(os.environ)
-        env["MEASUREMENT_OPS_DB"] = str(Path(tmp) / "measurement_ops.db")
+        env["HOME"] = str(home)
+        env["XDG_CACHE_HOME"] = str(isolation / "cache")
+        env["MEASUREMENT_OPS_DB"] = str(isolation / "measurement_ops.db")
+        for key in (
+            "GTM_GOOGLE_CLIENT_ID",
+            "GTM_GOOGLE_CLIENT_SECRET",
+            "GTM_GOOGLE_REFRESH_TOKEN",
+            "GA4_GOOGLE_CLIENT_ID",
+            "GA4_GOOGLE_CLIENT_SECRET",
+            "GA4_GOOGLE_REFRESH_TOKEN",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+        ):
+            env.pop(key, None)
+        env["GTM_ENABLE_PREVIEW"] = "false"
+        env["GTM_ENABLE_WRITES"] = "false"
+        env["GTM_ENABLE_PUBLISH"] = "false"
+
+        run(sys.executable, "-m", "compileall", "-q", "src", "tests", "scripts", env=env)
+        run(sys.executable, "-m", "ruff", "check", "src", "tests", "scripts", env=env)
+        run(sys.executable, "-m", "pytest", "-q", env=env)
         run(
             sys.executable,
             "-c",
@@ -47,14 +68,14 @@ def main() -> int:
             env=env,
         )
 
-    if WORDPRESS_PLUGIN.exists():
-        php = shutil.which("php")
-        if not php:
-            raise RuntimeError(
-                "PHP lint required but PHP is not installed; "
-                "cannot declare the WordPress-inclusive validation GREEN"
-            )
-        run(php, "-l", str(WORDPRESS_PLUGIN))
+        if WORDPRESS_PLUGIN.exists():
+            php = shutil.which("php")
+            if not php:
+                raise RuntimeError(
+                    "PHP lint required but PHP is not installed; "
+                    "cannot declare the WordPress-inclusive validation GREEN"
+                )
+            run(php, "-l", str(WORDPRESS_PLUGIN), env=env)
 
     print("MEASUREMENT OPS LOCAL VALIDATION GREEN")
     return 0
