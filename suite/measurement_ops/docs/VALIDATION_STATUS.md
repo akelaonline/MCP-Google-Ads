@@ -1,122 +1,101 @@
 # Measurement Ops v0.1 — Validation status
 
-## Most recent independent offline gate: 49c5fbd (GREEN, 2026-10-07)
+## Current status (2026-10-07)
 
-Reported by the independent developer from a clean isolated Linux/aarch64 worktree
-at commit `49c5fbd03b692ba30d95d0ff2216172b25dce7d9`:
+- PR #14: **draft**. No changes to the production Google Ads MCP or `main`.
+- Issue #15: authenticated read-only GTM/GA4 E2E **blocked** because dedicated
+  OAuth tokens, explicitly authorized test site/property/container, and a
+  certified restricted-network browser sandbox are not yet available.
+- **Offline validation GREEN only for the historical HEADs below.**
+  Hermeticity fixes after `49c5fbd` require a new validation run on current HEAD.
 
-| Check | Result |
-| --- | --- |
-| Python | 3.12.14 |
-| Ruff | 0.8.6, PASS |
-| pytest | **118 passed, 0 failed** |
-| Measurement ID isolation regressions | 4/4 passed |
-| Package imports | PASS, v0.1.0 |
-| MCP tools | 38 registered |
-| WordPress PHP syntax | PASS, PHP 8.1.2 |
-| GTM mutation gates | preview, writes and publish: false |
-| Real GTM/GA4 API E2E | **NOT RUN: no dedicated read-only OAuth tokens** |
-| Browser network-isolation sandbox | Not certified |
+## Independently reported offline results
 
-**Important qualification:** the gate passed with a writable isolated HOME. An
-initial gate attempt uncovered import-time creation of the real user's SQLite
-registry in `~/.mkt-measurement-ops` during pytest collection. That is a genuine
-test isolation bug, not an OAuth or Google API error. The E2E was not executed.
+| Item | Earlier tested SHA | Latest verified historical SHA |
+| --- | --- | --- |
+| Commit | `5555a1e43bbfaef941e866152a325bbabbfae904` | `49c5fbd03b692ba30d95d0ff2216172b25dce7d9` |
+| Environment | Isolated Linux aarch64 VM | Isolated Linux aarch64 VM |
+| Python | 3.12.14 | 3.12.14 |
+| Ruff | 0.8.6 PASS | 0.8.6 PASS |
+| pytest | 114 passed | **118 passed** |
+| GA4 Measurement ID isolation tests | Not yet added | **4/4 PASS** |
+| MCP import/tools | PASS; 38 tools | PASS; 38 tools |
+| WordPress PHP lint | PHP 8.1.2 PASS | PHP 8.1.2 PASS |
+| GTM preview/writes/publish | false / false / false | false / false / false |
 
-## New fix: hermetic test runner + lazy registry (CURRENT HEAD RETEST REQUIRED)
+These are *external developer reports*, not independent executions by the
+PR authoring environment. Original full raw logs were not committed.
 
-After the 49c5fbd GREEN, code changed again:
+### Hidden prerequisite revealed during the latest test
 
-- `server.py` now constructs a `LazySiteRegistry`, not `SiteRegistry.from_env()` at
-  module import. SQLite is opened only on the first site registry operation.
-- `tests/conftest.py` sets a throwaway SQLite DB **before** pytest imports
-  test modules, and restores the prior environment on teardown.
-- `scripts/validate_local.py` isolates HOME and MEASUREMENT_OPS_DB for **all**
-  subprocesses, not only the module import step. Provider OAuth variables are
-  withheld from the offline gate and all GTM mutation gates are forced false.
-- `tests/test_import_isolation.py` checks the default HOME is not written by
-  importing the MCP server and the lazy registry creates DB only on first use.
+The first `49c5fbd` gate attempt failed with `Errno 28` because importing
+`server.py` during pytest collection immediately called
+`SiteRegistry.from_env()`, creating/opening the real user's
+`~/.mkt-measurement-ops/measurement_ops.db` while the user's HOME was full.
 
-**The latest PR HEAD has NOT YET passed the full offline validation.**
-Re-run `python scripts/validate_local.py` on the latest branch SHA, including
-PHP lint. Don't report 118/118 as the test result for the new code.
+A rerun with writable `HOME=/tmp/mops-home` passed all 118 tests. This
+established the offline pass **and** exposed that test collection was not
+hermetic. It did not test Google APIs.
 
-The 2026-10-07 E2E issue #15 remains **BLOCKED** because the test environment
-lacks dedicated GTM and GA4 read-only credentials, an authorized test site and
-certified browser-network isolation. Do not use Google Ads OAuth tokens as a
-substitute, and do not paste secrets into GitHub or chat.
+## Subsequent hermeticity changes: MUST RETEST
 
----
+- `server.registry` now holds a `LazySiteRegistry`. Importing the MCP server
+  no longer creates or opens the default user's SQLite database.
+- `tests/conftest.py` selects a disposable SQLite database before test module
+  collection, and restores the prior environment on pytest shutdown.
+- `scripts/validate_local.py` uses an isolated temporary HOME, cache and DB
+  for **compileall, Ruff, pytest, module imports and PHP lint**, rather than
+  only isolating its final import step. Google API credentials are withheld
+  from those processes; GTM preview/writes/publish gates are forced false.
+- `tests/test_import_isolation.py` provides regressions for import side
+  effects and delayed registry initialization.
 
-## Offline test gate: GREEN on a pinned historical SHA
+**Do not label the changed branch GREEN until the complete script is rerun
+against the newest commit.** A full end-to-end release is even further away.
 
-External developer report, executed in an **isolated Linux aarch64 VM worktree** on
-commit `5555a1e43bbfaef941e866152a325bbabbfae904`.
+## Required latest-head validation
 
-| Gate | Reported result |
-| --- | --- |
-| Git tree | Worktree clean and files verified against pinned commit |
-| Python | 3.12.14 in isolated `/tmp` venv |
-| `compileall` | PASS |
-| Ruff | 0.8.6, all checks passed |
-| pytest | **114 passed, 0 failed** |
-| Workflow regression | 9/9 |
-| Package/server imports | PASS, `mkt_measurement_ops` v0.1.0 |
-| MCP tools | 38 registered |
-| WordPress PHP syntax | PASS, PHP 8.1.2 |
-| GTM PREVIEW / WRITES / PUBLISH | All false |
-| Production changes | None |
-
-The report is provided by the external developer; raw local command logs are
-not attached here and the authoring environment has not independently executed
-the full suite. PHP was installed with verified Ubuntu package signatures
-and package SHA256s in the Linux VM. The result is an **offline test result**,
-not an end-to-end tracking certification.
-
-## Important: this branch has newer code
-
-After that validated SHA, a PR review found a cross-customer measurement risk:
-the installer could accept a caller-supplied GA4 Measurement ID without ensuring
-it matched the job site's registered GA4 property.
-
-The branch now requires a registered GA4 property and verifies that every
-Measurement ID override equals the actual web stream for the registered domain.
-Regression tests in `tests/test_measurement_id_isolation.py` cover matching ID,
-cross-customer rejection, missing property, and empty override.
-
-**The prior 114/114 result must not be represented as covering this new HEAD.**
-A fresh run of `python scripts/validate_local.py` on the current PR head is required.
-
-## Commands: re-test current PR head
-
-Use a clean, separate worktree of `origin/feature/measurement-ops-v0.1` and
-Python 3.11+. Do not modify the production Ads checkout.
+Use a separate, clean worktree and isolated virtual environment. Do not change
+the production Ads checkout.
 
 ```bash
+git fetch origin
+git switch --detach origin/feature/measurement-ops-v0.1
 cd suite/measurement_ops
 python -m pip install -e ".[dev,web]"
 python -m playwright install chromium
-export GTM_ENABLE_PREVIEW=false
-export GTM_ENABLE_WRITES=false
-export GTM_ENABLE_PUBLISH=false
 git rev-parse HEAD
 python scripts/validate_local.py
 ```
 
-PHP must be available: the validator intentionally refuses to print GREEN if
-WordPress bridge lint is skipped. The suite's `ruff==0.8.6` pin is mandatory.
+Before any destructive checkout/reset, verify the worktree is clean.
+The validator requires `ruff==0.8.6` and a working `php -l`. Only
+`MEASUREMENT OPS LOCAL VALIDATION GREEN` plus exit code 0 on the current
+HEAD counts as a complete offline gate. Tests must not create or touch the
+normal `~/.mkt-measurement-ops` database. No secrets go into logs.
 
-## Still not covered by offline GREEN
+## Authenticated E2E blocker (Issue #15)
 
-- Official GTM API v2 authenticated discovery, pagination and account access.
-- OAuth refresh-token scope adequacy for readonly / preview / writes / publish.
-- GA4 Admin stream-domain matching and Data API realtime in a real account.
-- WordPress plugin behavior on an actual WordPress 6.9+ install with Abilities API.
-- Astro build / preview / deployment in an actual project.
-- Event attribution, real consent, true success-only form tracking, duplication QA.
-- Browser-auditor restricted-network isolation / DNS rebinding resistance.
-- Publish concurrency, reconciliation and rollback against real GTM.
-- Cross-account mutations and end-to-end release lifecycle.
+The developer checked read-only local capabilities with Google mutation flags
+false. `gtm_list_accounts` failed closed with the missing configuration error
+**before attempting a network call**. With no GTM/GA4 OAuth tokens, no API
+result exists: account IDs, containers, streams, permissions and events are
+**unknown**, not failed or verified.
 
-Keep PR #14 as draft until the real pilots pass. **No GTM publish, production
-site deploy or Ads mutations** are authorized by the offline test result.
+E2E requires dedicated OAuth grants for `tagmanager.readonly` and
+`analytics.readonly`; an explicitly approved GTM container, GA4 property
+and test hostname; and restricted-network sandboxing for the browser auditor.
+The Google Ads OAuth token does not substitute for these grants.
+
+Use `docs/E2E_READONLY_RUNBOOK.md` only after latest-head offline GREEN.
+No publish, customer-site deploy or Ads mutation is authorized.
+
+## Beyond read-only E2E
+
+Still unverified: real GTM API contracts and scopes; real GA4 Admin/Data
+permissions; WordPress 6.9+ bridge/Abilities API behavior; Astro build/deploy;
+true successful-form conversion tracking; consent and deduplication;
+browser SSRF defense under restricted-network conditions; publish
+reconciliation/concurrency and rollback. These are separate release gates.
+
+**Keep PR #14 draft until staged WordPress and Astro pilots succeed.**
