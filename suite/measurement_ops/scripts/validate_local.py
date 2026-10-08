@@ -47,11 +47,14 @@ def main() -> int:
             env=env,
         )
 
-    php = shutil.which("php")
-    if php and WORDPRESS_PLUGIN.exists():
+    if WORDPRESS_PLUGIN.exists():
+        php = shutil.which("php")
+        if not php:
+            raise RuntimeError(
+                "PHP lint required but PHP is not installed; "
+                "cannot declare the WordPress-inclusive validation GREEN"
+            )
         run(php, "-l", str(WORDPRESS_PLUGIN))
-    else:
-        print("PHP lint skipped (php executable not available)", flush=True)
 
     print("MEASUREMENT OPS LOCAL VALIDATION GREEN")
     return 0
