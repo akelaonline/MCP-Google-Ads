@@ -14,7 +14,7 @@ from .install_plan import build_installation_steps
 from .jobs import JobStore
 from .models import DeploymentMode, GoogleStack, SitePlatform, SiteTarget
 from .planner import build_plan
-from .registry import SiteRegistry
+from .registry import LazySiteRegistry
 from .risk import classify_action, requires_confirmation
 from .settings import MeasurementSettings
 from .web_audit import WebAuditor
@@ -29,7 +29,7 @@ mcp = FastMCP(
     ),
 )
 
-registry = SiteRegistry.from_env()
+registry = LazySiteRegistry()
 
 
 @lru_cache(maxsize=1)
