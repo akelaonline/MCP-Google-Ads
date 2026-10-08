@@ -78,7 +78,27 @@ and GA4.
 Only an authorized user can grant/revoke access. To revoke the OAuth grant,
 use Google Account's third-party connections/security settings.
 
-## 4. Run read-only E2E (Issue #15)
+## 4. First real API smoke (separate from website audits)
+
+On the same local Mac/user profile that holds the OAuth grants, run:
+
+```bash
+export GTM_ENABLE_PREVIEW=false
+export GTM_ENABLE_WRITES=false
+export GTM_ENABLE_PUBLISH=false
+python scripts/smoke_readonly.py --confirm-readonly
+```
+
+This **does make authenticated read-only Google API calls**:
+`GTM accounts.list` and `GA4 accountSummaries.list`. The command outputs
+only resource counts and a pass/fail message, not account/customer IDs,
+tokens, or any tracking data. It does not register sites, mutate Google
+resources, run browser audits or simulate conversions.
+
+A pass means **basic API connectivity**, not that a particular container,
+property, workspace, site or event is correctly configured.
+
+## 5. Run read-only E2E (Issue #15)
 
 Before invoking the MCP:
 ```bash
