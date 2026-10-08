@@ -164,50 +164,27 @@ def build_custom_html_tag(*, name: str, html: str, firing_trigger_id: str) -> di
 
 def provider_listener_html(provider: str, event_name: str) -> str:
     event = json.dumps(event_name)
-    scripts = {
-        "contactform7": (
-            f'<script>(function(){{window.dataLayer=window.dataLayer||[];'
-            f'document.addEventListener("wpcf7mailsent",function(e){{'
-            f'window.dataLayer.push({{event:{event},form_id:e.detail&&e.detail.contactFormId}});'
-            f'}},false);}})();</script>'
-        ),
-        "gravityforms": (
-            f'<script>(function(){{window.dataLayer=window.dataLayer||[];if(!window.jQuery)return;'
-            f'jQuery(document).on("gform_confirmation_loaded",function(e,formId){{'
-            f'window.dataLayer.push({{event:{event},form_id:formId}});}});}})();</script>'
-        ),
-        "wpforms": (
-            f'<script>(function(){{window.dataLayer=window.dataLayer||[];var fired=0;'
-            f'var push=function(el){{if(fired)return;fired=1;setTimeout(function(){{fired=0;}},50);'
-            f'window.dataLayer.push({{event:{event},form_id:el&&el.getAttribute&&el.getAttribute("data-formid")}});}};'
-            f'if(window.jQuery){{jQuery(document).on("wpformsAjaxSubmitSuccess",function(e){{push(e&&e.target);}});}}'
-            f'document.addEventListener("wpformsAjaxSubmitSuccess",function(e){{push(e&&e.target);}},false);}})();</script>'
-        ),
-        "elementor": (
-            f'<script>(function(){{window.dataLayer=window.dataLayer||[];if(!window.jQuery)return;'
-            f'jQuery(document).on("submit_success",function(){{window.dataLayer.push({{event:{event}}});}});}})();</script>'
-        ),
+    message_origins = {
         "hubspot": (
             f'<script>(function(){{window.dataLayer=window.dataLayer||[];'
             f'window.addEventListener("message",function(e){{var d=e&&e.data;'
-            f'var u;try{{u=new URL(e.origin);}}catch(_){{return;}}'
-            f'if(u.protocol!=="https:"||!(u.hostname==="calendly.com"||u.hostname.endsWith(".calendly.com")))return;'
-            f'var u;try{{u=new URL(e.origin);}}catch(_){{return;}}'
-            f'if(u.protocol!=="https:"||!(u.hostname==="typeform.com"||u.hostname.endsWith(".typeform.com")))return;'
-            f'var u;try{{u=new URL(e.origin);}}catch(_){{return;}}'
-            f'if(u.protocol!=="https:"||!(u.hostname==="hsforms.com"||u.hostname.endsWith(".hsforms.com")||u.hostname==="hubspot.com"||u.hostname.endsWith(".hubspot.com")))return;'
+            f'{guards["hubspot"]}'
             f'if(d&&d.type==="hsFormCallback"&&d.eventName==="onFormSubmitted"){{'
             f'window.dataLayer.push({{event:{event},hs_form_id:d.id}});}}}});}})();</script>'
         ),
         "typeform": (
             f'<script>(function(){{window.dataLayer=window.dataLayer||[];'
             f'window.addEventListener("message",function(e){{var d=e&&e.data;'
-            f'if(d&&d.type==="form-submit"){{window.dataLayer.push({{event:{event},typeform_id:d.formId}});}}}});}})();</script>'
+            f'{guards["typeform"]}'
+            f'if(d&&d.type==="form-submit"){{'
+            f'window.dataLayer.push({{event:{event},typeform_id:d.formId}});}}}});}})();</script>'
         ),
         "calendly": (
             f'<script>(function(){{window.dataLayer=window.dataLayer||[];'
             f'window.addEventListener("message",function(e){{var d=e&&e.data;'
-            f'if(d&&d.event==="calendly.event_scheduled"){{window.dataLayer.push({{event:{event}}});}}}});}})();</script>'
+            f'{guards["calendly"]}'
+            f'if(d&&d.event==="calendly.event_scheduled"){{'
+            f'window.dataLayer.push({{event:{event}}});}}}});}})();</script>'
         ),
     }
     try:
