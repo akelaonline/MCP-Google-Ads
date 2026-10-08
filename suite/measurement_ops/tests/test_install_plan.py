@@ -72,3 +72,16 @@ def test_provider_forms_require_success_signal_validation() -> None:
     assert plan["manual_review"][0]["reason"] == (
         "success_signal_must_be_verified_before_install"
     )
+
+
+
+def test_existing_ga4_page_tag_blocks_automatic_base_google_tag() -> None:
+    plan = build_installation_steps(
+        {"whatsapp_links": 1, "form_candidates": []},
+        tracking={"ga4_ids": ["G-ABC123"]},
+    )
+    assert not any(step["kind"] == "google_tag" for step in plan["steps"])
+    assert any(step.get("event_name") == "whatsapp_click" for step in plan["steps"])
+    assert plan["manual_review"][0]["reason"] == (
+        "existing_ga4_page_installation_may_duplicate_base_tag"
+    )
