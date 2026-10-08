@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 from mkt_measurement_ops.credentials import (
+    GOOGLE_TOKEN_URI,
     default_credential_path,
     required_scope,
     save_readonly_credentials,
@@ -22,8 +23,16 @@ def _validate_desktop_client(path: Path) -> None:
         raise ValueError("client secrets must be a regular JSON file")
     payload = json.loads(path.read_text(encoding="utf-8"))
     installed = payload.get("installed") if isinstance(payload, dict) else None
-    if not isinstance(installed, dict) or not installed.get("client_id"):
+    if not isinstance(installed, dict) or not installed.get("client_id") or not installed.get("client_secret"):
         raise ValueError("Google Cloud OAuth client must have application type Desktop app")
+    allowed_google_authorization_urls = {
+        "https://accounts.google.com/o/oauth2/auth",
+        "https://accounts.google.com/o/oauth2/v2/auth",
+    }
+    if installed.get("auth_uri") not in allowed_google_authorization_urls:
+        raise ValueError("Desktop OAuth authorization URL must point to Google")
+    if installed.get("token_uri") != GOOGLE_TOKEN_URI:
+        raise ValueError("Desktop OAuth token URL must point to Google's official endpoint")
 
 
 def main() -> int:
