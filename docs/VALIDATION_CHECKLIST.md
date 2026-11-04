@@ -1,8 +1,8 @@
-# Google Ads MCP 0.16.3 production validation checklist
+# Google Ads MCP 0.17.2 production validation checklist
 
 Use this checklist after updating the local server from GitHub and before treating a specific deployment as production-validated.
 
-The purpose is to verify both functionality and the safety boundaries added in the v0.16 series, including the 0.16.1 startup/isolation hotfix, the 0.16.2 fixture/tool-registration cleanup, and the 0.16.3 Ruff/pytest cleanup.
+The purpose is to verify both functionality and the safety boundaries added in the v0.16 series, plus the Merchant Center surface (0.17.0) and the `mutate_atomic()` hotfixes (0.17.1/0.17.2).
 
 ## 1. Install and local validation gate
 
@@ -15,14 +15,14 @@ python scripts/validate_local.py
 
 The validator runs the isolated smoke test, Ruff, and the complete pytest suite with the same Python interpreter. It also prints the exact Git commit and dependency versions.
 
-Expected release version: `0.16.3`.
+Expected release version: `0.17.2`.
 
 A successful gate ends with:
 
 ```text
 LOCAL VALIDATION GREEN
 validated commit: <sha>
-validated version: 0.16.3
+validated version: 0.17.2
 ```
 
 The smoke test must construct FastMCP without duplicate-tool warnings, verify canonical PMax/ConversionValueRule tool ownership, and pass nested protobuf map/list MCC isolation.

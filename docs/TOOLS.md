@@ -1,4 +1,4 @@
-# Tool reference — v0.16 / Google Ads API v25
+# Tool reference — v0.17 / Google Ads API v25
 
 This file is the **living operator index** for Google Ads MCP. It intentionally stays compact so it can remain current as the tool surface grows.
 
@@ -314,7 +314,7 @@ In read-only mode, list/audit/cancel remain available, while propose/confirm pat
 ## Detailed references
 
 - [`V25_SERVICE_COVERAGE.md`](V25_SERVICE_COVERAGE.md) — service-level coverage contract
-- [`RELEASE_0.16.0.md`](RELEASE_0.16.0.md) — 0.16 release details and validation status
+- [`RELEASE_0.17.2.md`](RELEASE_0.17.2.md) — current release details and validation status
 - [`SAFETY.md`](SAFETY.md) — approval, isolation, audit and replay policy
 - [`SETUP.md`](SETUP.md) — installation, OAuth, MCC and production configuration
 - [`AGENCY_TOOLS.md`](AGENCY_TOOLS.md) — agency administration workflows

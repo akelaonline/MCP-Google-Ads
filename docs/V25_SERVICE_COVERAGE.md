@@ -1,6 +1,6 @@
 # Google Ads API v25 service coverage
 
-This document is the coverage contract for **Google Ads MCP 0.16.0**.
+This document is the coverage contract for **Google Ads MCP 0.17.2**.
 
 The source of truth is the official Google Ads API v25 service reference. Coverage
 is counted at the Google service surface, not by trying to reproduce the Google

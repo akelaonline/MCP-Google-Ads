@@ -1,4 +1,4 @@
-# FAQ — Google Ads MCP v0.16
+# FAQ — Google Ads MCP v0.17
 
 ## What does this MCP do?
 
@@ -180,4 +180,4 @@ It is an additional regression guard; the full local test suite and live E2E val
 - [`SAFETY.md`](SAFETY.md) — confirmation, risk, audit and isolation
 - [`TOOLS.md`](TOOLS.md) — operator index
 - [`V25_SERVICE_COVERAGE.md`](V25_SERVICE_COVERAGE.md) — service coverage contract
-- [`RELEASE_0.16.0.md`](RELEASE_0.16.0.md) — current release details
+- [`RELEASE_0.17.2.md`](RELEASE_0.17.2.md) — current release details
