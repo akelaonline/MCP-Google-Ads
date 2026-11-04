@@ -150,9 +150,13 @@ def register(mcp, ctx: AppContext) -> None:
         path = Path(video_file_path).expanduser().resolve()
         if not path.exists() or not path.is_file():
             raise ValueError("video_file_path must point to an existing regular file.")
-        file_size = path.stat().st_size
+        file_probe = path.stat()
+        file_size = file_probe.st_size
         if file_size <= 0:
             raise ValueError("video_file_path is empty.")
+        # Fingerprint captured at proposal time; re-verified at confirm time so
+        # a swapped/replaced file is never uploaded after human approval.
+        file_sig = (file_probe.st_size, file_probe.st_mtime_ns, file_probe.st_ino)
 
         raw = ctx.client.raw
         privacy_name, privacy_value = _privacy(raw, video_privacy)
@@ -177,6 +181,12 @@ def register(mcp, ctx: AppContext) -> None:
 
             from google.ads.googleads.errors import GoogleAdsException
 
+            probe = path.stat()
+            if (probe.st_size, probe.st_mtime_ns, probe.st_ino) != file_sig:
+                raise GoogleAdsMcpError(
+                    "video_file_path changed between proposal and confirmation; "
+                    "the file may have been replaced. Re-propose the upload."
+                )
             try:
                 upload_method = service.create_you_tube_video_upload
                 with path.open("rb") as stream:
@@ -232,27 +242,30 @@ def register(mcp, ctx: AppContext) -> None:
         video_description: str | None = None,
         video_privacy: str | None = None,
     ) -> dict:
-        """Propose updating supported metadata on a video uploaded through this API."""
+        """Propose updating video privacy on an upload (the only mutable field)."""
         customer, resource = _resource(
             ctx, customer_id, you_tube_video_upload_resource_name
         )
-        if video_title is None and video_description is None and video_privacy is None:
-            raise ValueError("Provide at least one field to update.")
+        if video_title is not None:
+            raise ValueError(
+                "video_title is immutable after creation; the Google Ads API "
+                "does not allow updating it."
+            )
+        if video_description is not None:
+            raise ValueError(
+                "video_description is immutable after creation; the Google Ads "
+                "API does not allow updating it."
+            )
+        if video_privacy is None:
+            raise ValueError(
+                "Provide video_privacy — the only field the API allows updating."
+            )
 
         raw = ctx.client.raw
         request = raw.get_type("UpdateYouTubeVideoUploadRequest")
         upload = request.you_tube_video_upload
         upload.resource_name = resource
         paths: list[str] = []
-        if video_title is not None:
-            title = str(video_title).strip()
-            if not title:
-                raise ValueError("video_title must not be empty when supplied.")
-            upload.video_title = title
-            paths.append("video_title")
-        if video_description is not None:
-            upload.video_description = str(video_description)
-            paths.append("video_description")
         privacy_name = None
         if video_privacy is not None:
             privacy_name, privacy_value = _privacy(raw, video_privacy)

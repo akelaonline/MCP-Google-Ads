@@ -2,6 +2,20 @@
 
 Google Ads MCP follows Semantic Versioning. Detailed release notes for production releases live in `docs/RELEASE_X.Y.Z.md`.
 
+## 0.18.0 — 2026-11-04
+
+### Changed
+- **Google Ads API v26** — `google-ads>=34.0.0,<36.0.0` (validated on 35.0.0); `GOOGLE_ADS_API_VERSION = "v26"`.
+- **Tokenless auth** — `GOOGLE_ADS_DEVELOPER_TOKEN` now optional (Google sunset 2026-09-09); omitted from the client config when unset, forwarded verbatim when a legacy install provides it.
+- YouTube upload migrated to `ResumableUploadSession` (v26 signature) with a version-aware fallback for <=v25; file fingerprint (size/mtime/inode) re-verified between proposal and confirmation.
+- `update_youtube_video_upload` rejects immutable `video_title`/`video_description` at proposal time; only `video_privacy` is updatable.
+- Ruff pinned to `==0.17.3`; stale doc targets corrected.
+
+### Added
+- `check_local_services_eligibility` — read-only v26 Local Services eligibility RPC (463rd tool).
+- `docs/TOKENLESS_AUTH_VALIDATION.md` authorized read-only live-validation runbook; `docs/RELEASE_0.18.0.md`.
+- Tests: v26 platform-services contracts, YouTube propose->confirm upload lifecycle, tokenless/legacy auth matrix. Suite: 382/382.
+
 ## 0.17.2 — 2026-09-03
 
 ### Fixed
