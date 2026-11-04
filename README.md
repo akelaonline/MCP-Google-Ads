@@ -453,6 +453,124 @@ El objetivo no es “darle control total a una IA”. El objetivo es **darle her
 
 ---
 
-## Versión actual — 0.18.0
+## Versión actual — 0.17.2
 
-`0.18.0` es la versión recomendada: migra a **Google Ads API v26** (`google-ads>=34,<36`), hace opcional el Developer Token tras su retiro oficial (2026-09-09), migra la subida de YouTube a `ResumableUploadSession` y endurece la propuesta→confirmación de uploads. Detalle completo en [`docs/RELEASE_0.18.0.md`](docs/RELEASE_0.18.0.md).
+`0.18.0` es una **release candidate validada offline** — aún no validada en producción ni recomendada para reemplazar instalaciones activas. Migra a **Google Ads API v26** (`google-ads>=34,<36`), hace opcional el Developer Token tras su retiro oficial (2026-09-09), migra la subida de YouTube a `ResumableUploadSession` y endurece la propuesta→confirmación de uploads. Detalle en [`docs/RELEASE_0.18.0.md`](docs/RELEASE_0.18.0.md). `0.17.2` sigue siendo la referencia histórica estable ([`docs/RELEASE_0.17.2.md`](docs/RELEASE_0.17.2.md)).
+
+Todo lo que sigue abajo sobre `0.17.0` sigue vigente sin cambios — 0.17.1 no toca ninguna funcionalidad, solo corrige ese bug puntual.
+
+`0.17.0` sumó soporte para Google Merchant Center *(beta)* sobre la base 0.16.8, que sigue completa y sin cambios.
+
+- Google Ads API v25.
+- Merchant Center *(beta)*: diagnóstico de cuenta, catálogo de productos, altas/bajas y feeds, vía Merchant API.
+- Smoke aislado verde (56 módulos de tools).
+- Ruff limpio.
+- **362/362 pytest** (16 nuevos de Merchant Center).
+- Cero duplicate-tool warnings.
+- Registro canónico de tools blindado por regresión.
+- Google Ads sigue E2E validado contra una MCC real (read-only, aislamiento cross-customer, propose/cancel, propose/confirm, durable replay). Merchant Center todavía es solo local: unit tests + smoke, sin validar aún contra una cuenta real.
+
+El detalle técnico de Merchant Center vive en [`docs/RELEASE_0.17.0.md`](docs/RELEASE_0.17.0.md). El release anterior, [`docs/RELEASE_0.16.8.md`](docs/RELEASE_0.16.8.md), sigue vigente para todo lo que no es Merchant Center.
+
+Historial completo: [`CHANGELOG.md`](CHANGELOG.md).
+
+---
+
+## Actualizar una instalación existente
+
+No reemplaces tu `.env`, audit DB ni encryption key.
+
+```bash
+cd MCP-Google-Ads
+git fetch origin
+git pull --ff-only origin main
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+python scripts/validate_local.py
+```
+
+Procedimiento completo: [`docs/UPDATE_LOCAL.md`](docs/UPDATE_LOCAL.md).
+
+---
+
+## Troubleshooting rápido
+
+| Problema | Qué revisar primero |
+|---|---|
+| `ModuleNotFoundError: google_ads_mcp` | Claude está usando otro Python; apuntá a `.venv/bin/python` absoluto |
+| No aparecen cuentas | OAuth / API habilitada y nivel de acceso del proyecto Cloud / Login Customer ID |
+| `USER_PERMISSION_DENIED` | permisos de la identidad OAuth y MCC correcto |
+| Una escritura no ejecuta | probablemente está `pending_confirmation` — es el comportamiento esperado |
+| Todo write da error read-only | revisar `GOOGLE_ADS_MCP_READ_ONLY=true` |
+| Customer bloqueado | revisar allowlist; no la amplíes sin validar qué cuenta querés autorizar |
+| Pending no sobrevive restart | persistir `audit.db` y la misma key Fernet |
+
+Guía completa: [`docs/SETUP.md#troubleshooting`](docs/SETUP.md#troubleshooting).
+
+---
+
+## Documentación
+
+| Documento | Para qué sirve |
+|---|---|
+| [`docs/SETUP.md`](docs/SETUP.md) | instalación, credenciales, OAuth, troubleshooting |
+| [`docs/CLIENTS.md`](docs/CLIENTS.md) | Claude Desktop, Claude Code y otros clientes MCP |
+| [`docs/TOOLS.md`](docs/TOOLS.md) | índice operativo de tools |
+| [`docs/SAFETY.md`](docs/SAFETY.md) | confirmaciones, riesgos, aislamiento y auditoría |
+| [`docs/EXAMPLES.md`](docs/EXAMPLES.md) | conversaciones y consultas listas para usar |
+| [`docs/V25_SERVICE_COVERAGE.md`](docs/V25_SERVICE_COVERAGE.md) | cobertura servicio por servicio de API v25 |
+| [`docs/VALIDATION_CHECKLIST.md`](docs/VALIDATION_CHECKLIST.md) | validación antes de producción |
+| [`docs/RELEASE_0.18.0.md`](docs/RELEASE_0.18.0.md) | release candidate (offline) |
+| [`docs/RELEASE_0.17.1.md`](docs/RELEASE_0.17.1.md) | release anterior (primera mitad del fix de mutate_atomic) |
+| [`docs/RELEASE_0.17.0.md`](docs/RELEASE_0.17.0.md) | release anterior (Merchant Center) |
+| [`CHANGELOG.md`](CHANGELOG.md) | historial completo |
+| [`docs/FAQ.md`](docs/FAQ.md) | preguntas frecuentes |
+
+---
+
+## Sobre Akela
+
+<div align="center">
+
+### Alejandro José · Akela
+
+**AI Products · WordPress Engineering · SEO Automation · Marketing Technology**
+
+Construyo software práctico donde se cruzan **IA, marketing, publicidad, analytics, automatización y operación real**.
+
+[![MDE](https://img.shields.io/badge/Marketing_Digital_Experience-AI_Consulting-111111?style=for-the-badge&logo=openai&logoColor=white)](https://marketingdigitalexperience.com)
+[![MKT](https://img.shields.io/badge/MKT_Marketing_Digital-Agency-4285F4?style=for-the-badge&logo=googleads&logoColor=white)](https://mktmarketingdigital.com)
+[![GitHub](https://img.shields.io/badge/GitHub-akelaonline-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/akelaonline)
+
+**[Instagram @akelaonline](https://www.instagram.com/akelaonline/)** · **[alejandro@mktmarketingdigital.com](mailto:alejandro@mktmarketingdigital.com)**
+
+> **Build useful things. Ship them. Learn from production.**
+
+Si este proyecto te ahorra tiempo, una ⭐ al repo ayuda a que más gente lo encuentre.
+
+</div>
+
+---
+
+## Scope
+
+Este MCP cubre **Google Ads API**, no todos los productos adyacentes de Google.
+
+- Merchant Center feed/catalog editing corresponde a Merchant API.
+- Google Business Profile es otra superficie.
+- Servicios beta/allowlisted siguen requiriendo elegibilidad de Google.
+- `ReservationService` no es público y no se simula.
+
+---
+
+## Contribuir
+
+Contribuciones y issues son bienvenidos: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+Regla principal: **ninguna write tool debe saltarse la safety layer**.
+
+---
+
+## Licencia
+
+MIT © 2026 **Alejandro José · Akela**. Ver [`LICENSE`](LICENSE).

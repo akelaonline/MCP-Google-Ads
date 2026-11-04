@@ -7,6 +7,7 @@ Python client, so this MCP tool accepts a file path that exists on the MCP host.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from google.protobuf import field_mask_pb2
@@ -154,8 +155,15 @@ def register(mcp, ctx: AppContext) -> None:
         file_size = file_probe.st_size
         if file_size <= 0:
             raise ValueError("video_file_path is empty.")
-        # Fingerprint captured at proposal time; re-verified at confirm time so
-        # a swapped/replaced file is never uploaded after human approval.
+        # Fingerprint captured at proposal time and re-verified against the
+        # actually-opened descriptor at confirm time, so a swapped/replaced
+        # file is never uploaded after human approval. This is a stat-level
+        # check (size/mtime/inode), not a content hash — it reliably detects
+        # replacement, truncation and rewrites but does not prove byte-level
+        # identity against a determined attacker who preserves metadata. A
+        # SHA-256 of the file would close that gap at O(file size) read cost;
+        # deliberately not enabled because uploads routinely handle large
+        # video files and the human-confirmation window is short.
         file_sig = (file_probe.st_size, file_probe.st_mtime_ns, file_probe.st_ino)
 
         raw = ctx.client.raw
@@ -181,15 +189,22 @@ def register(mcp, ctx: AppContext) -> None:
 
             from google.ads.googleads.errors import GoogleAdsException
 
-            probe = path.stat()
-            if (probe.st_size, probe.st_mtime_ns, probe.st_ino) != file_sig:
-                raise GoogleAdsMcpError(
-                    "video_file_path changed between proposal and confirmation; "
-                    "the file may have been replaced. Re-propose the upload."
-                )
             try:
                 upload_method = service.create_you_tube_video_upload
                 with path.open("rb") as stream:
+                    # Verify the descriptor we actually opened (fstat on the
+                    # live fd), closing the stat()->open() swap window.
+                    probe = os.fstat(stream.fileno())
+                    if (
+                        probe.st_size,
+                        probe.st_mtime_ns,
+                        probe.st_ino,
+                    ) != file_sig:
+                        raise GoogleAdsMcpError(
+                            "video_file_path changed between proposal and "
+                            "confirmation; the file may have been replaced. "
+                            "Re-propose the upload."
+                        )
                     if "stream" in inspect.signature(upload_method).parameters:
                         # google-ads <=34 / API <=v25: single-call media upload.
                         response = upload_method(

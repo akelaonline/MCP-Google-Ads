@@ -12,7 +12,7 @@
 
 ### Operate Google Ads from Claude — don't just read it.
 
-**Self-hosted read/write MCP server for Google Ads API v26 with human confirmation, audit logging, MCC isolation, and durable pending actions.**
+**Self-hosted read/write MCP server for Google Ads API v25 with human confirmation, audit logging, MCC isolation, and durable pending actions.**
 
 Built and maintained by **[Alejandro José · Akela](https://github.com/akelaonline)**
 
@@ -37,7 +37,7 @@ Built and maintained by **[Alejandro José · Akela](https://github.com/akelaonl
 
 ## What this is
 
-**Google Ads MCP** is a [Model Context Protocol](https://modelcontextprotocol.io) server that connects Claude —or any compatible MCP client— to **Google Ads API v26** for real account operations.
+**Google Ads MCP** is a [Model Context Protocol](https://modelcontextprotocol.io) server that connects Claude —or any compatible MCP client— to **Google Ads API v25** for real account operations.
 
 It is not designed as another dashboard. It is built for the day-to-day work of agencies and performance teams from a conversation:
 
@@ -92,7 +92,7 @@ flowchart LR
     U[You] --> C[Claude / MCP Client]
     C --> M[Google Ads MCP\nlocal / self-hosted]
     M --> R{Read or write?}
-    R -->|Read| G[Google Ads API v26]
+    R -->|Read| G[Google Ads API v25]
     R -->|Write| S[Safety Layer]
     S --> P[Preview + pending_action_id]
     P --> H{Confirm?}
@@ -452,6 +452,124 @@ The goal is not to “give an AI total control.” The goal is to **give a human
 
 ---
 
-## Current release — 0.18.0
+## Current release — 0.17.2
 
-`0.18.0` is the recommended version: migrates to **Google Ads API v26** (`google-ads>=34,<36`), makes the Developer Token optional after its official sunset (2026-09-09), migrates YouTube uploads to `ResumableUploadSession`, and hardens upload proposal->confirmation. Full detail in [`docs/RELEASE_0.18.0.md`](docs/RELEASE_0.18.0.md).
+`0.18.0` is an **offline-validated release candidate** — not yet production-validated and not recommended to replace working installs. It migrates to **Google Ads API v26** (`google-ads>=34,<36`), makes the Developer Token optional after its official sunset (2026-09-09), migrates YouTube uploads to `ResumableUploadSession`, and hardens upload proposal->confirmation. Detail in [`docs/RELEASE_0.18.0.md`](docs/RELEASE_0.18.0.md). `0.17.2` remains the stable historical reference ([`docs/RELEASE_0.17.2.md`](docs/RELEASE_0.17.2.md)).
+
+Everything below about `0.17.0` still applies unchanged — 0.17.1 doesn't touch any functionality, it only fixes that specific bug.
+
+`0.17.0` added Google Merchant Center support *(beta)* on top of 0.16.8, which remains complete and unchanged.
+
+- Google Ads API v25.
+- Merchant Center *(beta)*: account diagnostics, product catalog, product writes and feeds, over the Merchant API.
+- Isolated smoke green (56 tool modules).
+- Ruff clean.
+- **362/362 pytest** (16 new Merchant Center tests).
+- Zero duplicate-tool warnings.
+- Canonical tool registration protected by regression coverage.
+- Google Ads remains live E2E validated against a real MCC (read-only, cross-customer isolation, propose/cancel, propose/confirm, durable replay). Merchant Center is local-only so far: unit tests + smoke, not yet validated against a real account.
+
+Merchant Center technical details live in [`docs/RELEASE_0.17.0.md`](docs/RELEASE_0.17.0.md). The previous release, [`docs/RELEASE_0.16.8.md`](docs/RELEASE_0.16.8.md), still applies to everything outside Merchant Center.
+
+Full history: [`CHANGELOG.md`](CHANGELOG.md).
+
+---
+
+## Updating an existing installation
+
+Do not replace your `.env`, audit DB, or encryption key.
+
+```bash
+cd MCP-Google-Ads
+git fetch origin
+git pull --ff-only origin main
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+python scripts/validate_local.py
+```
+
+Full procedure: [`docs/UPDATE_LOCAL.md`](docs/UPDATE_LOCAL.md).
+
+---
+
+## Quick troubleshooting
+
+| Problem | Check first |
+|---|---|
+| `ModuleNotFoundError: google_ads_mcp` | Claude is using another Python; point to absolute `.venv/bin/python` |
+| No accounts appear | OAuth / API enabled + access level on the Cloud project / Login Customer ID |
+| `USER_PERMISSION_DENIED` | OAuth identity permissions and correct MCC |
+| A write does not execute | it is probably `pending_confirmation` — expected behavior |
+| Every write is blocked | check `GOOGLE_ADS_MCP_READ_ONLY=true` |
+| Customer blocked | check allowlist; do not widen it without validating the intended account |
+| Pending action disappears after restart | persist `audit.db` and the same Fernet key |
+
+Full guide: [`docs/SETUP.md#troubleshooting`](docs/SETUP.md#troubleshooting).
+
+---
+
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| [`docs/SETUP.md`](docs/SETUP.md) | installation, credentials, OAuth, troubleshooting |
+| [`docs/CLIENTS.md`](docs/CLIENTS.md) | Claude Desktop, Claude Code and other MCP clients |
+| [`docs/TOOLS.md`](docs/TOOLS.md) | operational tool index |
+| [`docs/SAFETY.md`](docs/SAFETY.md) | confirmations, risks, isolation and audit |
+| [`docs/EXAMPLES.md`](docs/EXAMPLES.md) | conversations and ready-to-use queries |
+| [`docs/V25_SERVICE_COVERAGE.md`](docs/V25_SERVICE_COVERAGE.md) | service-by-service API v25 coverage |
+| [`docs/VALIDATION_CHECKLIST.md`](docs/VALIDATION_CHECKLIST.md) | validation before production |
+| [`docs/RELEASE_0.18.0.md`](docs/RELEASE_0.18.0.md) | release candidate (offline) |
+| [`docs/RELEASE_0.17.1.md`](docs/RELEASE_0.17.1.md) | previous release (first half of the mutate_atomic fix) |
+| [`docs/RELEASE_0.17.0.md`](docs/RELEASE_0.17.0.md) | previous release (Merchant Center) |
+| [`CHANGELOG.md`](CHANGELOG.md) | complete history |
+| [`docs/FAQ.md`](docs/FAQ.md) | frequently asked questions |
+
+---
+
+## About Akela
+
+<div align="center">
+
+### Alejandro José · Akela
+
+**AI Products · WordPress Engineering · SEO Automation · Marketing Technology**
+
+I build practical software where **AI, marketing, advertising, analytics, automation, and real operations** meet.
+
+[![MDE](https://img.shields.io/badge/Marketing_Digital_Experience-AI_Consulting-111111?style=for-the-badge&logo=openai&logoColor=white)](https://marketingdigitalexperience.com)
+[![MKT](https://img.shields.io/badge/MKT_Marketing_Digital-Agency-4285F4?style=for-the-badge&logo=googleads&logoColor=white)](https://mktmarketingdigital.com)
+[![GitHub](https://img.shields.io/badge/GitHub-akelaonline-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/akelaonline)
+
+**[Instagram @akelaonline](https://www.instagram.com/akelaonline/)** · **[alejandro@mktmarketingdigital.com](mailto:alejandro@mktmarketingdigital.com)**
+
+> **Build useful things. Ship them. Learn from production.**
+
+If this project saves you time, a ⭐ helps more people find it.
+
+</div>
+
+---
+
+## Scope
+
+This MCP covers **Google Ads API**, not every adjacent Google product.
+
+- Merchant Center feed/catalog editing belongs to Merchant API.
+- Google Business Profile is a separate surface.
+- Beta/allowlisted services still require Google eligibility.
+- `ReservationService` is not public and is not faked.
+
+---
+
+## Contributing
+
+Contributions and issues are welcome: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+Main rule: **no write tool may bypass the safety layer**.
+
+---
+
+## License
+
+MIT © 2026 **Alejandro José · Akela**. See [`LICENSE`](LICENSE).
