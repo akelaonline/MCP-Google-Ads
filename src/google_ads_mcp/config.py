@@ -42,7 +42,7 @@ def _customer_id_set(name: str) -> frozenset[str]:
 
 @dataclass(frozen=True)
 class Settings:
-    developer_token: str
+    developer_token: str | None
     client_id: str
     client_secret: str
     refresh_token: str
@@ -67,12 +67,17 @@ class Settings:
     def google_ads_yaml_dict(self) -> dict:
         """Config dict in the shape google-ads-python's GoogleAdsClient expects."""
         cfg = {
-            "developer_token": self.developer_token,
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "refresh_token": self.refresh_token,
             "use_proto_plus": True,
         }
+        # Developer tokens were sunset by Google on 2026-09-09. Keep forwarding
+        # one only when a legacy installation still provides it; the key is
+        # omitted entirely on tokenless setups because google-ads<32 rejected
+        # configs whose developer_token key was merely present-but-empty.
+        if self.developer_token:
+            cfg["developer_token"] = self.developer_token
         if self.login_customer_id:
             cfg["login_customer_id"] = normalize_customer_id(self.login_customer_id)
         return cfg
@@ -117,7 +122,7 @@ def load_settings() -> Settings:
     )
 
     return Settings(
-        developer_token=os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
+        developer_token=os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN") or None,
         client_id=os.environ.get("GOOGLE_ADS_CLIENT_ID", ""),
         client_secret=os.environ.get("GOOGLE_ADS_CLIENT_SECRET", ""),
         refresh_token=os.environ.get("GOOGLE_ADS_REFRESH_TOKEN", ""),
