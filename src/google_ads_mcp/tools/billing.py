@@ -45,7 +45,7 @@ def _try_parse(value: str, fmt: str) -> bool:
         # Format-only validation: Google Ads billing timestamps are naive,
         # customer-local values (no UTC offset), so an aware datetime here
         # would be wrong, not safer.
-        datetime.strptime(value, fmt)  # noqa: DTZ007
+        datetime.strptime(value, fmt)
         return True
     except ValueError:
         return False

@@ -1,4 +1,4 @@
-# Examples — Google Ads MCP v0.16
+# Examples — Google Ads MCP v0.17
 
 These examples show the intended operator flow. Normal writes are proposals by default; confirm them explicitly before live execution.
 
@@ -247,4 +247,4 @@ See also:
 - [`SAFETY.md`](SAFETY.md)
 - [`SETUP.md`](SETUP.md)
 - [`V25_SERVICE_COVERAGE.md`](V25_SERVICE_COVERAGE.md)
-- [`RELEASE_0.16.0.md`](RELEASE_0.16.0.md)
+- [`RELEASE_0.17.2.md`](RELEASE_0.17.2.md)
