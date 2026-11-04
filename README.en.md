@@ -12,13 +12,13 @@
 
 ### Operate Google Ads from Claude — don't just read it.
 
-**Self-hosted read/write MCP server for Google Ads API v25 with human confirmation, audit logging, MCC isolation, and durable pending actions.**
+**Self-hosted read/write MCP server for Google Ads API v26 with human confirmation, audit logging, MCC isolation, and durable pending actions.**
 
 Built and maintained by **[Alejandro José · Akela](https://github.com/akelaonline)**
 
 [![Version](https://img.shields.io/badge/version-0.17.2-111111?style=for-the-badge)](docs/RELEASE_0.17.2.md)
 [![Tests](https://img.shields.io/badge/tests-362%2F362-16a34a?style=for-the-badge)](docs/RELEASE_0.17.0.md)
-[![Google Ads API](https://img.shields.io/badge/Google_Ads_API-v25-4285F4?style=for-the-badge&logo=googleads&logoColor=white)](https://developers.google.com/google-ads/api)
+[![Google Ads API](https://img.shields.io/badge/Google_Ads_API-v26-4285F4?style=for-the-badge&logo=googleads&logoColor=white)](https://developers.google.com/google-ads/api)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](pyproject.toml)
 [![MIT](https://img.shields.io/badge/license-MIT-black?style=for-the-badge)](LICENSE)
 
@@ -37,7 +37,7 @@ Built and maintained by **[Alejandro José · Akela](https://github.com/akelaonl
 
 ## What this is
 
-**Google Ads MCP** is a [Model Context Protocol](https://modelcontextprotocol.io) server that connects Claude —or any compatible MCP client— to **Google Ads API v25** for real account operations.
+**Google Ads MCP** is a [Model Context Protocol](https://modelcontextprotocol.io) server that connects Claude —or any compatible MCP client— to **Google Ads API v26** for real account operations.
 
 It is not designed as another dashboard. It is built for the day-to-day work of agencies and performance teams from a conversation:
 
@@ -92,7 +92,7 @@ flowchart LR
     U[You] --> C[Claude / MCP Client]
     C --> M[Google Ads MCP\nlocal / self-hosted]
     M --> R{Read or write?}
-    R -->|Read| G[Google Ads API v25]
+    R -->|Read| G[Google Ads API v26]
     R -->|Write| S[Safety Layer]
     S --> P[Preview + pending_action_id]
     P --> H{Confirm?}
@@ -460,7 +460,7 @@ Everything below about `0.17.0` still applies unchanged — 0.17.1 doesn't touch
 
 `0.17.0` added Google Merchant Center support *(beta)* on top of 0.16.8, which remains complete and unchanged.
 
-- Google Ads API v25.
+- Google Ads API v26.
 - Merchant Center *(beta)*: account diagnostics, product catalog, product writes and feeds, over the Merchant API.
 - Isolated smoke green (56 tool modules).
 - Ruff clean.

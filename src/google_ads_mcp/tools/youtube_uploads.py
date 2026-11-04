@@ -1,4 +1,4 @@
-"""YouTube video upload lifecycle for Google Ads API v25.
+"""YouTube video upload lifecycle for Google Ads API v26.
 
 The Google Ads API can upload videos directly to a Google-managed YouTube
 channel or an advertiser-owned channel. Upload streaming is supported by the
@@ -173,15 +173,25 @@ def register(mcp, ctx: AppContext) -> None:
         service = ctx.client.service("YouTubeVideoUploadService")
 
         def execute():
+            import inspect
+
             from google.ads.googleads.errors import GoogleAdsException
 
             try:
+                upload_method = service.create_you_tube_video_upload
                 with path.open("rb") as stream:
-                    response = service.create_you_tube_video_upload(
-                        stream=stream,
-                        request=request,
-                        retry=None,
-                    )
+                    if "stream" in inspect.signature(upload_method).parameters:
+                        # google-ads <=34 / API <=v25: single-call media upload.
+                        response = upload_method(
+                            stream=stream,
+                            request=request,
+                            retry=None,
+                        )
+                    else:
+                        # API v26: create returns a ResumableUploadSession; the
+                        # bytes are sent through session.upload() separately.
+                        session = upload_method(request=request, retry=None)
+                        response = session.upload(stream, size=file_size)
             except GoogleAdsException as ex:
                 raise GoogleAdsMcpError(format_google_ads_exception(ex)) from ex
             except OSError as ex:

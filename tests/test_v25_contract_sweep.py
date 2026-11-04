@@ -16,7 +16,7 @@ from pathlib import Path
 from google.ads.googleads.client import GoogleAdsClient
 from google.oauth2.credentials import Credentials
 
-from google_ads_mcp.client import _mutate_method_name
+from google_ads_mcp.client import GOOGLE_ADS_API_VERSION, _mutate_method_name
 
 _SRC = Path(__file__).resolve().parents[1] / "src" / "google_ads_mcp"
 
@@ -46,7 +46,7 @@ def _client() -> GoogleAdsClient:
     return GoogleAdsClient(
         credentials=Credentials(token="contract-token"),
         developer_token="contract-developer-token",
-        version="v25",
+        version=GOOGLE_ADS_API_VERSION,
         use_proto_plus=True,
     )
 

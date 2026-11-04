@@ -18,7 +18,7 @@ Creado y mantenido por **[Alejandro José · Akela](https://github.com/akelaonli
 
 [![Versión](https://img.shields.io/badge/versión-0.17.2-111111?style=for-the-badge)](docs/RELEASE_0.17.2.md)
 [![Tests](https://img.shields.io/badge/tests-362%2F362-16a34a?style=for-the-badge)](docs/RELEASE_0.17.0.md)
-[![Google Ads API](https://img.shields.io/badge/Google_Ads_API-v25-4285F4?style=for-the-badge&logo=googleads&logoColor=white)](https://developers.google.com/google-ads/api)
+[![Google Ads API](https://img.shields.io/badge/Google_Ads_API-v26-4285F4?style=for-the-badge&logo=googleads&logoColor=white)](https://developers.google.com/google-ads/api)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](pyproject.toml)
 [![MIT](https://img.shields.io/badge/license-MIT-black?style=for-the-badge)](LICENSE)
 
@@ -37,7 +37,7 @@ Creado y mantenido por **[Alejandro José · Akela](https://github.com/akelaonli
 
 ## Qué es
 
-**Google Ads MCP** es un servidor [Model Context Protocol](https://modelcontextprotocol.io) que conecta Claude —o cualquier cliente MCP compatible— con la **Google Ads API v25** para trabajar sobre cuentas reales.
+**Google Ads MCP** es un servidor [Model Context Protocol](https://modelcontextprotocol.io) que conecta Claude —o cualquier cliente MCP compatible— con la **Google Ads API v26** para trabajar sobre cuentas reales.
 
 No está pensado como un dashboard más. Está pensado para hacer el trabajo cotidiano de una agencia o un equipo de performance desde una conversación:
 

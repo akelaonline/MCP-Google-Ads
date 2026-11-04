@@ -1,4 +1,4 @@
-"""Compatibility helpers for campaign creation against Google Ads API v25."""
+"""Compatibility helpers for campaign creation against Google Ads API v26."""
 
 from __future__ import annotations
 

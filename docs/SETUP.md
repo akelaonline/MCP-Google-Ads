@@ -1,6 +1,6 @@
 # Setup
 
-This guide configures Google Ads MCP **0.17.2** for Google Ads API v25.
+This guide configures Google Ads MCP **0.17.2** for Google Ads API v26.
 
 > **Validation target:** use `0.17.2`. Do not replace a working production MCP with `0.17.0` or `0.17.1` — both contain `mutate_atomic()` crashes fixed in `0.17.2`. Run the local validation gate first; see `RELEASE_0.17.2.md`.
 
@@ -333,7 +333,7 @@ That is Google-side eligibility, not a missing MCP tool. See `V25_SERVICE_COVERA
 
 ## API version policy
 
-The code explicitly requests Google Ads API `v25`. Major API upgrades require contract review because fields, enums and services can be removed or reshaped.
+The code explicitly requests Google Ads API `v26`. Major API upgrades require contract review because fields, enums and services can be removed or reshaped.
 
 See:
 

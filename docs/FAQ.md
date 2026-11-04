@@ -89,7 +89,7 @@ v0.16 recursively checks customer-scoped resource references in mutation payload
 
 The deliberate exception is real manager/client linking. That path may reference a second Google Ads customer only when the second customer also passes the deployment allowlist.
 
-## Which Google Ads API version does v0.16 target?
+## Which Google Ads API version does this MCP target?
 
 Google Ads API **v25**. The project explicitly requests `v25` and pins the Google Ads Python client to the tested 31.x line instead of floating to a future default API version.
 

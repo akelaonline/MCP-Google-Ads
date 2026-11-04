@@ -12,6 +12,7 @@ import pytest
 from google.ads.googleads.client import GoogleAdsClient
 from google.oauth2.credentials import Credentials
 
+from google_ads_mcp.client import GOOGLE_ADS_API_VERSION
 from google_ads_mcp.tools import assets_extended, campaigns, conversions, targeting
 
 
@@ -46,7 +47,7 @@ def _raw_client() -> GoogleAdsClient:
     return GoogleAdsClient(
         credentials=Credentials(token="contract-token"),
         developer_token="contract-developer-token",
-        version="v25",
+        version=GOOGLE_ADS_API_VERSION,
         use_proto_plus=True,
     )
 
