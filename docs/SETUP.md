@@ -7,10 +7,17 @@ This guide configures Google Ads MCP **0.17.2** for Google Ads API v25.
 ## Requirements
 
 - Python 3.11+
-- Google Ads Developer Token
+- A Google Cloud project with the Google Ads API enabled. Since Google sunset
+  developer tokens on 2026-09-09, API access levels live on the Cloud project
+  that owns your OAuth client: **Test** (15,000 ops/day on test accounts),
+  **Explorer** (2,880 ops/day on production accounts, automated approval in
+  most cases), then **Basic**/**Standard** for higher-volume applications. See
+  Google's [developer token migration guide](https://developers.google.com/google-ads/api/docs/api-policy/developer-token).
 - Google Cloud OAuth 2.0 Desktop client
 - OAuth refresh token with the `adwords` scope
 - Optional MCC login customer ID when operating child accounts through a manager
+- Optional legacy `GOOGLE_ADS_DEVELOPER_TOKEN` — ignored by Google's servers,
+  kept only so existing `.env` files keep working unchanged
 
 Some Google services additionally require Google allowlisting/product eligibility. See `V25_SERVICE_COVERAGE.md`.
 
@@ -43,12 +50,17 @@ Expected version:
 Add to `.env`:
 
 ```dotenv
-GOOGLE_ADS_DEVELOPER_TOKEN=
 GOOGLE_ADS_CLIENT_ID=
 GOOGLE_ADS_CLIENT_SECRET=
 GOOGLE_ADS_REFRESH_TOKEN=
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=
 ```
+
+`GOOGLE_ADS_DEVELOPER_TOKEN` is optional: leave it empty or omit it for new
+installs. When a legacy installation still provides it, the MCP forwards it
+verbatim and Google's servers simply ignore it — no existing `.env` needs to
+change. When unset or empty, the MCP omits `developer_token` from the client
+configuration entirely (the google-ads SDK stopped requiring it in 32.0.0).
 
 `GOOGLE_ADS_LOGIN_CUSTOMER_ID` is normally the MCC customer ID when the OAuth identity reaches client accounts through a manager. Customer IDs may be copied in dashed display form; the MCP normalizes them.
 
@@ -298,6 +310,14 @@ The MCP host is usually launching the wrong Python:
 ### Authentication / `USER_PERMISSION_DENIED`
 
 Verify credentials and, for MCC access, `GOOGLE_ADS_LOGIN_CUSTOMER_ID`.
+
+On tokenless installs this error usually means the **Google Cloud project**
+behind your OAuth client lacks sufficient API access, not a missing developer
+token. Check, in order: the Google Ads API is *enabled* in the project; the
+project's access level covers the target account type (Test-level only reaches
+test accounts — production accounts require Explorer or higher); and the OAuth
+client ID/secret really belong to that project. Re-adding a legacy developer
+token will not fix an access-level problem.
 
 ### `outside GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS`
 

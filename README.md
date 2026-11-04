@@ -176,10 +176,11 @@ Necesitás:
 
 - Python **3.11+**;
 - acceso a una cuenta Google Ads;
-- **Developer Token** de Google Ads;
+- un **proyecto Google Cloud** con la Google Ads API habilitada — el nivel de acceso a la API vive en el proyecto desde que Google descontinuó los Developer Tokens el 2026-09-09;
 - OAuth 2.0 Client ID / Client Secret;
 - Refresh Token con scope de Google Ads;
-- opcionalmente un **Login Customer ID** si trabajás con MCC.
+- opcionalmente un **Login Customer ID** si trabajás con MCC;
+- opcionalmente un **Developer Token** legado (los servidores de Google ya lo ignoran; sólo se conserva por compatibilidad con instalaciones anteriores).
 
 La guía detallada de credenciales está en [`docs/SETUP.md`](docs/SETUP.md).
 
@@ -210,12 +211,13 @@ cp .env.example .env
 Completá como mínimo:
 
 ```dotenv
-GOOGLE_ADS_DEVELOPER_TOKEN=
 GOOGLE_ADS_CLIENT_ID=
 GOOGLE_ADS_CLIENT_SECRET=
 GOOGLE_ADS_REFRESH_TOKEN=
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=
 ```
+
+`GOOGLE_ADS_DEVELOPER_TOKEN` es opcional y puede quedar vacío (ver [`docs/SETUP.md`](docs/SETUP.md)).
 
 Para producción con varias cuentas, agregá una allowlist explícita:
 
@@ -496,7 +498,7 @@ Procedimiento completo: [`docs/UPDATE_LOCAL.md`](docs/UPDATE_LOCAL.md).
 | Problema | Qué revisar primero |
 |---|---|
 | `ModuleNotFoundError: google_ads_mcp` | Claude está usando otro Python; apuntá a `.venv/bin/python` absoluto |
-| No aparecen cuentas | OAuth / Developer Token / Login Customer ID |
+| No aparecen cuentas | OAuth / API habilitada y nivel de acceso del proyecto Cloud / Login Customer ID |
 | `USER_PERMISSION_DENIED` | permisos de la identidad OAuth y MCC correcto |
 | Una escritura no ejecuta | probablemente está `pending_confirmation` — es el comportamiento esperado |
 | Todo write da error read-only | revisar `GOOGLE_ADS_MCP_READ_ONLY=true` |

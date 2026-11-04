@@ -176,10 +176,11 @@ You need:
 
 - Python **3.11+**;
 - access to a Google Ads account;
-- a Google Ads **Developer Token**;
+- a **Google Cloud project** with the Google Ads API enabled — API access levels live on the project since Google sunset developer tokens on 2026-09-09;
 - OAuth 2.0 Client ID / Client Secret;
 - a Refresh Token with Google Ads scope;
-- optionally a **Login Customer ID** when using an MCC.
+- optionally a **Login Customer ID** when using an MCC;
+- optionally a legacy **Developer Token** (Google's servers now ignore it; kept only for backward compatibility).
 
 Full credential walkthrough: [`docs/SETUP.md`](docs/SETUP.md).
 
@@ -210,12 +211,13 @@ cp .env.example .env
 Configure at least:
 
 ```dotenv
-GOOGLE_ADS_DEVELOPER_TOKEN=
 GOOGLE_ADS_CLIENT_ID=
 GOOGLE_ADS_CLIENT_SECRET=
 GOOGLE_ADS_REFRESH_TOKEN=
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=
 ```
+
+`GOOGLE_ADS_DEVELOPER_TOKEN` is optional and may stay empty (see [`docs/SETUP.md`](docs/SETUP.md)).
 
 For production with several accounts, use an explicit allowlist:
 
@@ -495,7 +497,7 @@ Full procedure: [`docs/UPDATE_LOCAL.md`](docs/UPDATE_LOCAL.md).
 | Problem | Check first |
 |---|---|
 | `ModuleNotFoundError: google_ads_mcp` | Claude is using another Python; point to absolute `.venv/bin/python` |
-| No accounts appear | OAuth / Developer Token / Login Customer ID |
+| No accounts appear | OAuth / API enabled + access level on the Cloud project / Login Customer ID |
 | `USER_PERMISSION_DENIED` | OAuth identity permissions and correct MCC |
 | A write does not execute | it is probably `pending_confirmation` — expected behavior |
 | Every write is blocked | check `GOOGLE_ADS_MCP_READ_ONLY=true` |
