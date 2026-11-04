@@ -1,8 +1,8 @@
 # Setup
 
-This guide configures Google Ads MCP **0.17.2** for Google Ads API v25.
+This guide configures Google Ads MCP **0.18.0** for Google Ads API v26.
 
-> **Validation target:** use `0.17.2`. Do not replace a working production MCP with `0.17.0` or `0.17.1` — both contain `mutate_atomic()` crashes fixed in `0.17.2`. Run the local validation gate first; see `RELEASE_0.17.2.md`.
+> **Validation target:** use `0.18.0`. Do not replace a working production MCP with `0.17.0` or `0.17.1` — both contain `mutate_atomic()` crashes fixed in `0.17.2`. Run the local validation gate first; see `RELEASE_0.18.0.md`.
 
 ## Requirements
 
@@ -42,7 +42,7 @@ Verify:
 Expected version:
 
 ```text
-0.17.2
+0.18.0
 ```
 
 ## 2. Google Ads credentials
@@ -242,7 +242,7 @@ GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true
 
 `ALLOW_INSECURE_HTTP=true` is only a startup opt-in. It does not add authentication.
 
-## 8. Upgrade an existing installation to the 0.17.2 test candidate
+## 8. Upgrade an existing installation to the 0.18.0 test candidate
 
 Preserve `.env`, the audit DB and the pending encryption key.
 
@@ -255,7 +255,7 @@ python -m pip install -e ".[dev]"
 python scripts/validate_local.py
 ```
 
-The validator runs isolated smoke + Ruff + full pytest. **Do not replace the running production MCP unless it ends with `LOCAL VALIDATION GREEN` and reports version `0.17.2`.**
+The validator runs isolated smoke + Ruff + full pytest. **Do not replace the running production MCP unless it ends with `LOCAL VALIDATION GREEN` and reports version `0.18.0`.**
 
 The smoke stage also verifies that these formerly duplicated public names have one canonical runtime owner and produce no FastMCP duplicate-registration warning:
 
@@ -293,11 +293,11 @@ Then follow `VALIDATION_CHECKLIST.md` in order:
 
 ### `ImportError: cannot import name 'from_micros'`
 
-That was a 0.16.0 regression. Update to 0.17.2, reinstall the editable package, and verify `google_ads_mcp.__version__`.
+That was a 0.16.0 regression. Update to 0.18.0, reinstall the editable package, and verify `google_ads_mcp.__version__`.
 
 ### FastMCP prints `Component already exists`
 
-0.17.2 should not emit duplicate public-tool warnings for the known PMax/ConversionValueRule names. If it does, stop validation and report the exact warning plus Git SHA; do not proceed to live writes.
+0.18.0 should not emit duplicate public-tool warnings for the known PMax/ConversionValueRule names. If it does, stop validation and report the exact warning plus Git SHA; do not proceed to live writes.
 
 ### `ModuleNotFoundError: google_ads_mcp`
 
@@ -333,11 +333,11 @@ That is Google-side eligibility, not a missing MCP tool. See `V25_SERVICE_COVERA
 
 ## API version policy
 
-The code explicitly requests Google Ads API `v25`. Major API upgrades require contract review because fields, enums and services can be removed or reshaped.
+The code explicitly requests Google Ads API `v26`. Major API upgrades require contract review because fields, enums and services can be removed or reshaped.
 
 See:
 
-- `RELEASE_0.17.2.md`
+- `RELEASE_0.18.0.md`
 - `UPDATE_LOCAL.md`
 - `VALIDATION_CHECKLIST.md`
 - `V25_SERVICE_COVERAGE.md`

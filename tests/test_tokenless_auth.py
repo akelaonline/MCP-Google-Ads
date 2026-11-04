@@ -97,7 +97,7 @@ def test_yaml_dict_normalizes_login_customer_id():
 # ---- Client wrapper passes the tokenless dict through at API v25 ------------
 
 
-def test_wrapper_loads_client_with_tokenless_dict_at_v25(mocker):
+def test_wrapper_loads_client_with_tokenless_dict_at_pinned_api_version(mocker):
     captured = {}
 
     class _FakeGoogleAdsClient:
@@ -113,7 +113,7 @@ def test_wrapper_loads_client_with_tokenless_dict_at_v25(mocker):
     )
     wrapper = GoogleAdsClientWrapper(_settings())
     assert wrapper.raw is not None
-    assert captured["version"] == GOOGLE_ADS_API_VERSION == "v25"
+    assert captured["version"] == GOOGLE_ADS_API_VERSION
     assert "developer_token" not in captured["config"]
     assert captured["config"]["use_proto_plus"] is True
 
@@ -124,7 +124,7 @@ def test_wrapper_loads_client_with_tokenless_dict_at_v25(mocker):
 def _real_client(cfg: dict):
     from google.ads.googleads.client import GoogleAdsClient
 
-    return GoogleAdsClient.load_from_dict(cfg, version="v25")
+    return GoogleAdsClient.load_from_dict(cfg, version=GOOGLE_ADS_API_VERSION)
 
 
 def test_real_lib_builds_tokenless_client(monkeypatch):

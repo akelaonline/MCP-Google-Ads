@@ -1,6 +1,6 @@
 # Google Ads API v25 service coverage
 
-This document is the coverage contract for **Google Ads MCP 0.17.2**.
+This document is the coverage contract for **Google Ads MCP 0.17.2** (written for API v25; the v26 migration keeps the same surface — v26 adds `CustomerBudgetNetworkSettingService` (write-only, not yet exposed) and `LocalServicesEligibilityService` (exposed via `check_local_services_eligibility`), and removes no service this MCP uses).
 
 The source of truth is the official Google Ads API v25 service reference. Coverage
 is counted at the Google service surface, not by trying to reproduce the Google

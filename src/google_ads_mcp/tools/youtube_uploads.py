@@ -1,4 +1,4 @@
-"""YouTube video upload lifecycle for Google Ads API v25.
+"""YouTube video upload lifecycle for Google Ads API v26.
 
 The Google Ads API can upload videos directly to a Google-managed YouTube
 channel or an advertiser-owned channel. Upload streaming is supported by the
@@ -7,6 +7,7 @@ Python client, so this MCP tool accepts a file path that exists on the MCP host.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from google.protobuf import field_mask_pb2
@@ -150,9 +151,20 @@ def register(mcp, ctx: AppContext) -> None:
         path = Path(video_file_path).expanduser().resolve()
         if not path.exists() or not path.is_file():
             raise ValueError("video_file_path must point to an existing regular file.")
-        file_size = path.stat().st_size
+        file_probe = path.stat()
+        file_size = file_probe.st_size
         if file_size <= 0:
             raise ValueError("video_file_path is empty.")
+        # Fingerprint captured at proposal time and re-verified against the
+        # actually-opened descriptor at confirm time, so a swapped/replaced
+        # file is never uploaded after human approval. This is a stat-level
+        # check (size/mtime/inode), not a content hash — it reliably detects
+        # replacement, truncation and rewrites but does not prove byte-level
+        # identity against a determined attacker who preserves metadata. A
+        # SHA-256 of the file would close that gap at O(file size) read cost;
+        # deliberately not enabled because uploads routinely handle large
+        # video files and the human-confirmation window is short.
+        file_sig = (file_probe.st_size, file_probe.st_mtime_ns, file_probe.st_ino)
 
         raw = ctx.client.raw
         privacy_name, privacy_value = _privacy(raw, video_privacy)
@@ -173,15 +185,38 @@ def register(mcp, ctx: AppContext) -> None:
         service = ctx.client.service("YouTubeVideoUploadService")
 
         def execute():
+            import inspect
+
             from google.ads.googleads.errors import GoogleAdsException
 
             try:
+                upload_method = service.create_you_tube_video_upload
                 with path.open("rb") as stream:
-                    response = service.create_you_tube_video_upload(
-                        stream=stream,
-                        request=request,
-                        retry=None,
-                    )
+                    # Verify the descriptor we actually opened (fstat on the
+                    # live fd), closing the stat()->open() swap window.
+                    probe = os.fstat(stream.fileno())
+                    if (
+                        probe.st_size,
+                        probe.st_mtime_ns,
+                        probe.st_ino,
+                    ) != file_sig:
+                        raise GoogleAdsMcpError(
+                            "video_file_path changed between proposal and "
+                            "confirmation; the file may have been replaced. "
+                            "Re-propose the upload."
+                        )
+                    if "stream" in inspect.signature(upload_method).parameters:
+                        # google-ads <=34 / API <=v25: single-call media upload.
+                        response = upload_method(
+                            stream=stream,
+                            request=request,
+                            retry=None,
+                        )
+                    else:
+                        # API v26: create returns a ResumableUploadSession; the
+                        # bytes are sent through session.upload() separately.
+                        session = upload_method(request=request, retry=None)
+                        response = session.upload(stream, size=file_size)
             except GoogleAdsException as ex:
                 raise GoogleAdsMcpError(format_google_ads_exception(ex)) from ex
             except OSError as ex:
@@ -222,27 +257,30 @@ def register(mcp, ctx: AppContext) -> None:
         video_description: str | None = None,
         video_privacy: str | None = None,
     ) -> dict:
-        """Propose updating supported metadata on a video uploaded through this API."""
+        """Propose updating video privacy on an upload (the only mutable field)."""
         customer, resource = _resource(
             ctx, customer_id, you_tube_video_upload_resource_name
         )
-        if video_title is None and video_description is None and video_privacy is None:
-            raise ValueError("Provide at least one field to update.")
+        if video_title is not None:
+            raise ValueError(
+                "video_title is immutable after creation; the Google Ads API "
+                "does not allow updating it."
+            )
+        if video_description is not None:
+            raise ValueError(
+                "video_description is immutable after creation; the Google Ads "
+                "API does not allow updating it."
+            )
+        if video_privacy is None:
+            raise ValueError(
+                "Provide video_privacy — the only field the API allows updating."
+            )
 
         raw = ctx.client.raw
         request = raw.get_type("UpdateYouTubeVideoUploadRequest")
         upload = request.you_tube_video_upload
         upload.resource_name = resource
         paths: list[str] = []
-        if video_title is not None:
-            title = str(video_title).strip()
-            if not title:
-                raise ValueError("video_title must not be empty when supplied.")
-            upload.video_title = title
-            paths.append("video_title")
-        if video_description is not None:
-            upload.video_description = str(video_description)
-            paths.append("video_description")
         privacy_name = None
         if video_privacy is not None:
             privacy_name, privacy_value = _privacy(raw, video_privacy)

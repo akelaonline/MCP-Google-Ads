@@ -14,6 +14,7 @@ from conftest import FakeAuditLog, FakeMcp
 from google.ads.googleads.client import GoogleAdsClient
 from google.oauth2.credentials import Credentials
 
+from google_ads_mcp.client import GOOGLE_ADS_API_VERSION
 from google_ads_mcp.context import AppContext
 from google_ads_mcp.safety import SafetyLayer
 from google_ads_mcp.tools import ads, assets, campaigns, performance_max
@@ -23,7 +24,7 @@ def _raw_client() -> GoogleAdsClient:
     return GoogleAdsClient(
         credentials=Credentials(token="contract-test-token"),
         developer_token="contract-test-developer-token",
-        version="v25",
+        version=GOOGLE_ADS_API_VERSION,
         use_proto_plus=True,
     )
 

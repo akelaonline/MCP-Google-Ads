@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "google-ads-mcp"
-version = "0.17.2"
-description = "Production-grade read/write MCP server for Google Ads API v25 with confirmation, audit, durable replay, and MCC customer isolation."
+version = "0.18.0"
+description = "Production-grade read/write MCP server for Google Ads API v26 with confirmation, audit, durable replay, and MCC customer isolation."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["mcp", "google-ads", "claude", "ai-agent", "advertising"]
 dependencies = [
-    "google-ads>=32.0.0,<34.0.0",
+    "google-ads>=34.0.0,<36.0.0",
     "fastmcp>=2.3.0",
     "python-dotenv>=1.0.1",
     "pydantic>=2.7",

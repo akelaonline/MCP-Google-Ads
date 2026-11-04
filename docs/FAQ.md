@@ -2,7 +2,7 @@
 
 ## What does this MCP do?
 
-It gives an MCP client structured **read/write** access to Google Ads API v25. It covers reporting, campaigns, budgets, bidding, ad groups, ads, assets, keywords, audiences, targeting, conversions/goals, Performance Max, experiments, recommendations, MCC/account access, billing/product links, Batch Jobs, Smart Bidding controls and specialist Google Ads services.
+It gives an MCP client structured **read/write** access to Google Ads API v26. It covers reporting, campaigns, budgets, bidding, ad groups, ads, assets, keywords, audiences, targeting, conversions/goals, Performance Max, experiments, recommendations, MCC/account access, billing/product links, Batch Jobs, Smart Bidding controls and specialist Google Ads services.
 
 For the service-by-service coverage contract, see [`V25_SERVICE_COVERAGE.md`](V25_SERVICE_COVERAGE.md).
 
@@ -89,9 +89,9 @@ v0.16 recursively checks customer-scoped resource references in mutation payload
 
 The deliberate exception is real manager/client linking. That path may reference a second Google Ads customer only when the second customer also passes the deployment allowlist.
 
-## Which Google Ads API version does v0.16 target?
+## Which Google Ads API version does this MCP target?
 
-Google Ads API **v25**. The project explicitly requests `v25` and pins the Google Ads Python client to the tested 31.x line instead of floating to a future default API version.
+Google Ads API **v26**. The project explicitly requests `v26` and pins the Google Ads Python client to the tested 34.x-35.x line (which still carries v23-v25 for rollback).
 
 ## Does the MCP support Performance Max?
 
@@ -115,7 +115,7 @@ Batch jobs can partially succeed. Always inspect row-level results after complet
 
 ## Can it create traditional legacy VIDEO campaigns?
 
-No. Google Ads API v25 does not provide the old programmatic VIDEO creation contract used by legacy implementations. The compatibility endpoint fails safe and performs no mutation. Use Demand Gen video workflows instead.
+No. Google Ads API v26 does not provide the old programmatic VIDEO creation contract used by legacy implementations. The compatibility endpoint fails safe and performs no mutation. Use Demand Gen video workflows instead.
 
 ## Can it manage Merchant Center feeds/products?
 
@@ -127,7 +127,7 @@ No. Google Business Profile administration is outside the Google Ads API boundar
 
 ## What about Google-controlled beta/allowlisted services?
 
-The MCP exposes relevant v25 wrappers for services such as Asset Generation, Audience Insights, Benchmarks, Creator Insights, Incentives and other eligibility-controlled surfaces.
+The MCP exposes relevant v26 wrappers for services such as Asset Generation, Audience Insights, Benchmarks, Creator Insights, Incentives and other eligibility-controlled surfaces.
 
 The MCP does not fake access. If Google has not enabled the authenticated account for a service, the upstream Google Ads error is returned.
 

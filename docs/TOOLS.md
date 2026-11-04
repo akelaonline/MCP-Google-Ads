@@ -1,4 +1,4 @@
-# Tool reference — v0.17 / Google Ads API v25
+# Tool reference — v0.17 / Google Ads API v26
 
 This file is the **living operator index** for Google Ads MCP. It intentionally stays compact so it can remain current as the tool surface grows.
 

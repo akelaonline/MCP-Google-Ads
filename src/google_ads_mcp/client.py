@@ -14,7 +14,7 @@ from .config import Settings
 from .errors import GoogleAdsMcpError, format_google_ads_exception
 from .helpers import normalize_customer_id
 
-GOOGLE_ADS_API_VERSION = "v25"
+GOOGLE_ADS_API_VERSION = "v26"
 
 
 class GoogleAdsClientWrapper:
@@ -312,7 +312,7 @@ _IRREGULAR_MUTATE_METHODS: dict[str, str] = {
     "CustomerUserAccessInvitationService": "mutate_customer_user_access_invitation",
     "CustomerUserAccessService": "mutate_customer_user_access",
     "CustomerSkAdNetworkConversionValueSchemaService": "mutate_customer_sk_ad_network_conversion_value_schema",
-    # v25 stubs use the singular mutate_customer / the -ies plural form; the
+    # API stubs use the singular mutate_customer / the -ies plural form; the
     # generic snake+s pluralizer would generate mutate_customers /
     # mutate_bidding_strategys, which do not exist on the real stubs.
     "CustomerService": "mutate_customer",
@@ -457,7 +457,7 @@ def _assert_mutation_targets_customer(
 
 
 def _normalize_campaign_create(client, operation) -> None:
-    """Apply v25-required fields and repair legacy PMax bidding shapes."""
+    """Apply API-required fields (v25+) and repair legacy PMax bidding shapes."""
     pb = getattr(operation, "_pb", None)
     if pb is None or pb.WhichOneof("operation") != "create":
         return

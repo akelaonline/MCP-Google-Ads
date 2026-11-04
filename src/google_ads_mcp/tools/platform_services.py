@@ -1,4 +1,4 @@
-"""Public Google Ads API v25 services not tied to the core campaign CRUD surface.
+"""Public Google Ads API v26 services not tied to the core campaign CRUD surface.
 
 Covers field metadata introspection, Local Services leads, third-party app
 analytics links, and Travel asset suggestions. All customer-scoped writes use
@@ -454,4 +454,33 @@ def register(mcp, ctx: AppContext) -> None:
         result["customer_id"] = customer
         result["language_option"] = language
         result["requested_place_ids"] = places
+        return result
+
+    # ------------------------------------------------------------------
+    # LocalServicesEligibilityService (new in Google Ads API v26, read-only)
+    # ------------------------------------------------------------------
+    @mcp.tool()
+    def check_local_services_eligibility(customer_id: str, listing_id: str) -> dict:
+        """Check Local Services Ads eligibility for a Business Profile listing.
+
+        Read-only RPC introduced in Google Ads API v26. Returns overall
+        eligibility plus per-check suggestion reasons (e.g. licensing issues).
+        """
+        customer = ctx.client.assert_customer_allowed(customer_id)
+        listing = str(listing_id).strip()
+        if not listing:
+            raise ValueError("listing_id must not be empty.")
+
+        raw = ctx.client.raw
+        request = raw.get_type("CheckLocalServicesEligibilityRequest")
+        request.customer_id = customer
+        request.listing_id = listing
+        response = _call(
+            ctx.client.service("LocalServicesEligibilityService"),
+            "check_local_services_eligibility",
+            request=request,
+        )
+        result = _as_dict(response)
+        result["customer_id"] = customer
+        result["listing_id"] = listing
         return result

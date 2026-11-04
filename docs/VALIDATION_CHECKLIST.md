@@ -1,4 +1,4 @@
-# Google Ads MCP 0.17.2 production validation checklist
+# Google Ads MCP 0.18.0 production validation checklist
 
 Use this checklist after updating the local server from GitHub and before treating a specific deployment as production-validated.
 
@@ -15,14 +15,14 @@ python scripts/validate_local.py
 
 The validator runs the isolated smoke test, Ruff, and the complete pytest suite with the same Python interpreter. It also prints the exact Git commit and dependency versions.
 
-Expected release version: `0.17.2`.
+Expected release version: `0.18.0`.
 
 A successful gate ends with:
 
 ```text
 LOCAL VALIDATION GREEN
 validated commit: <sha>
-validated version: 0.17.2
+validated version: 0.18.0
 ```
 
 The smoke test must construct FastMCP without duplicate-tool warnings, verify canonical PMax/ConversionValueRule tool ownership, and pass nested protobuf map/list MCC isolation.
