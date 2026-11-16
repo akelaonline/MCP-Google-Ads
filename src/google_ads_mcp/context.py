@@ -36,6 +36,8 @@ def build_context() -> AppContext:
         auto_approve_sensitive=settings.auto_approve_sensitive,
         allowed_customer_ids=settings.allowed_customer_ids,
         require_customer_allowlist=settings.require_customer_allowlist,
+        allowed_merchant_ids=settings.allowed_merchant_ids,
+        require_merchant_allowlist=settings.require_merchant_allowlist,
     )
     safety = ReadOnlySafetyProxy(base_safety) if settings.read_only else base_safety
     merchant = MerchantCenterClient(settings)

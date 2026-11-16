@@ -21,6 +21,7 @@ from .audit import AuditLog
 from .errors import GoogleAdsMcpError
 from .helpers import normalize_customer_id
 from .invocation import current_invocation, replay_action_id, replay_tool
+from .merchant_scope import MerchantScope, is_merchant_tool
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +225,8 @@ class SafetyLayer:
         auto_approve_sensitive: bool | None = None,
         allowed_customer_ids: Iterable[str] | None = None,
         require_customer_allowlist: bool = False,
+        allowed_merchant_ids: Iterable[str] | None = None,
+        require_merchant_allowlist: bool = False,
     ):
         self._auto_approve = auto_approve
         self._auto_approve_spend = (
@@ -254,6 +257,13 @@ class SafetyLayer:
                 "GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST is enabled but no "
                 "GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS were configured."
             )
+        self._merchant_scope = MerchantScope.build(
+            allowed_ids=allowed_merchant_ids,
+            require_allowlist=require_merchant_allowlist,
+            ads_scope_configured=bool(
+                self._require_customer_allowlist or self._allowed_customer_ids
+            ),
+        )
         self._evict_expired()
 
     def propose(
@@ -266,7 +276,7 @@ class SafetyLayer:
         execute: Callable[[], Any],
     ) -> dict[str, Any]:
         self._evict_expired()
-        normalized_customer_id = self._assert_customer_allowed(customer_id)
+        normalized_customer_id = self._assert_target_allowed(tool_name, customer_id)
         risk_level = classify_risk(tool_name, payload)
 
         replay_id = replay_action_id()
@@ -385,7 +395,7 @@ class SafetyLayer:
         self._evict_expired()
         action = self._pending.get(action_id)
         if action is not None:
-            self._assert_customer_allowed(action.customer_id)
+            self._assert_target_allowed(action.tool_name, action.customer_id)
             action.attempts += 1
             if self._durable_store:
                 self._audit.set_pending_attempts(action_id, action.attempts)
@@ -419,7 +429,7 @@ class SafetyLayer:
                 f"No pending action with id '{action_id}' (it may have expired, "
                 "already been confirmed, or been cancelled)."
             )
-        self._assert_customer_allowed(stored["customer_id"])
+        self._assert_target_allowed(stored["tool_name"], stored["customer_id"])
         if stored.get("invocation_error"):
             raise GoogleAdsMcpError(str(stored["invocation_error"]))
         arguments = stored.get("invocation_arguments")
@@ -496,6 +506,16 @@ class SafetyLayer:
             }
             for action in self._pending.values()
         ]
+
+    def _assert_target_allowed(self, tool_name: str, target_id: str) -> str:
+        """Check a write target against the scope that owns its ID space.
+
+        Merchant Center tools target Merchant account IDs, which are enforced
+        against the Merchant allowlist and never against the Google Ads one.
+        """
+        if is_merchant_tool(tool_name):
+            return self._merchant_scope.assert_allowed(target_id)
+        return self._assert_customer_allowed(target_id)
 
     def _assert_customer_allowed(self, customer_id: str) -> str:
         normalized = normalize_customer_id(customer_id)
