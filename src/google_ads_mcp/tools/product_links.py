@@ -97,6 +97,7 @@ def register(mcp, ctx: AppContext) -> None:
         """
         customer = ctx.client.assert_customer_allowed(customer_id)
         merchant_id = _positive_id(merchant_center_id, "merchant_center_id")
+        ctx.assert_merchant_allowed(merchant_id)
         raw = ctx.client.raw
         link = raw.get_type("ProductLink")
         link.merchant_center.merchant_center_id = merchant_id

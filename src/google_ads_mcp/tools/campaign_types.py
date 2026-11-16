@@ -43,6 +43,9 @@ def register(mcp, ctx: AppContext) -> None:
         if not sales_country or len(sales_country) > 20:
             raise ValueError("sales_country/feed label must be 1-20 characters.")
 
+        # The Merchant account is a separate scope from the Ads customer scope.
+        merchant_center_id = ctx.assert_merchant_allowed(merchant_center_id)
+
         client = ctx.client.raw
         operation = client.get_type("CampaignOperation")
         campaign = operation.create
