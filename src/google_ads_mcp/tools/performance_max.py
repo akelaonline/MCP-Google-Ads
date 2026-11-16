@@ -23,8 +23,20 @@ def register(mcp, ctx: AppContext) -> None:
         target_cpa: float | None = None,
         target_roas: float | None = None,
         contains_eu_political_advertising: str = DEFAULT_EU_POLITICAL_ADVERTISING,
+        image_extraction: str | None = None,
     ) -> dict:
-        """Propose creating a standard Performance Max campaign shell."""
+        """Propose creating a standard Performance Max campaign shell.
+
+        ``image_extraction`` (OPTED_IN / OPTED_OUT) sets the campaign-level
+        GENERATE_IMAGE_EXTRACTION automation. Left unset, Google decides: the
+        account-level Dynamic images control until 2026-12-03, and OPTED_IN for
+        every new campaign from 2026-12-04. The proposal states which applies.
+        """
+        extraction = None
+        if image_extraction is not None:
+            extraction = str(image_extraction).strip().upper()
+            if extraction not in {"OPTED_IN", "OPTED_OUT"}:
+                raise ValueError("image_extraction must be OPTED_IN or OPTED_OUT.")
         if target_cpa is not None and target_roas is not None:
             raise ValueError("Set at most one of target_cpa or target_roas, not both.")
         if target_cpa is not None and target_cpa <= 0:
@@ -60,9 +72,26 @@ def register(mcp, ctx: AppContext) -> None:
                 client.get_type("MaximizeConversions"),
             )
 
+        if extraction is not None:
+            setting = client.get_type("AssetAutomationSetting")
+            setting.asset_automation_type = (
+                client.enums.AssetAutomationTypeEnum.GENERATE_IMAGE_EXTRACTION
+            )
+            setting.asset_automation_status = getattr(
+                client.enums.AssetAutomationStatusEnum, extraction
+            )
+            campaign.asset_automation_settings.append(setting)
+            extraction_note = f"image extraction {extraction} (explicit)"
+        else:
+            extraction_note = (
+                "image extraction not set by this call: Google applies the account "
+                "Dynamic images control before 2026-12-04 and OPTED_IN to new "
+                "campaigns from 2026-12-04 (pass image_extraction=OPTED_OUT to avoid it)"
+            )
+
         description = (
             f"Create Performance Max campaign '{name}', created PAUSED; "
-            "brand guidelines disabled for asset-group branding"
+            "brand guidelines disabled for asset-group branding; " + extraction_note
         )
 
         def execute():
@@ -77,6 +106,7 @@ def register(mcp, ctx: AppContext) -> None:
                 "target_cpa": target_cpa,
                 "target_roas": target_roas,
                 "brand_guidelines_enabled": False,
+                "image_extraction": extraction or "GOOGLE_DEFAULT",
                 "contains_eu_political_advertising": contains_eu_political_advertising,
             },
             execute=execute,

@@ -658,9 +658,17 @@ def _safe_result(result: Any) -> Any:
             safe_single: dict[str, Any] = {}
             if resource_name:
                 safe_single["resource_name"] = resource_name
-            review = getattr(single_result, "multi_party_auth_review", None)
-            if review:
-                safe_single["multi_party_auth_review"] = str(review)
+            if hasattr(single_result, "multi_party_auth_review"):
+                # Multi-party approval: "executed" only means Google accepted the
+                # request. With a review attached nothing has taken effect yet
+                # (and, from the week of 2026-12-07, an invitation resource may
+                # not exist until a second administrator approves).
+                review = getattr(single_result, "multi_party_auth_review", None)
+                if review:
+                    safe_single["multi_party_auth_review"] = str(review)
+                    safe_single["approval_state"] = "PENDING_GOOGLE_AUTHORIZATION"
+                else:
+                    safe_single["approval_state"] = "COMPLETED"
             return safe_single or str(single_result)
 
         responses = getattr(result, "mutate_operation_responses", None)
