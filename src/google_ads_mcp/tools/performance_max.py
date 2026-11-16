@@ -73,7 +73,7 @@ def register(mcp, ctx: AppContext) -> None:
             )
 
         if extraction is not None:
-            setting = client.get_type("AssetAutomationSetting")
+            setting = type(campaign).AssetAutomationSetting()
             setting.asset_automation_type = (
                 client.enums.AssetAutomationTypeEnum.GENERATE_IMAGE_EXTRACTION
             )
