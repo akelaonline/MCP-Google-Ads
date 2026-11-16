@@ -100,25 +100,6 @@ def register(mcp, ctx: AppContext) -> None:
             ),
         }
 
-    @mcp.tool()
-    def get_merchant_center_developer_registration(
-        merchant_id: str | None = None,
-    ) -> dict:
-        """Check whether this Cloud project is registered for Merchant API v1.
-
-        Merchant API v1 requires a one-time developer registration
-        (``registerGcp``) of the Google Cloud project used for OAuth. If this
-        returns an error or no ``gcpIds``, register the project in Merchant
-        Center (Settings > API) before using the other Merchant tools.
-        """
-        account = _merchant_id(ctx, merchant_id)
-        return ctx.merchant.request(
-            "GET",
-            "accounts",
-            _ACCOUNTS_VERSION,
-            f"{account_path(account)}/developerRegistration",
-        )
-
     # --------------------------------------------------------------- accounts
 
     @mcp.tool()

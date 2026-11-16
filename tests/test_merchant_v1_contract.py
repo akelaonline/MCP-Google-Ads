@@ -49,7 +49,6 @@ def test_every_tool_call_goes_to_v1():
     tools["search_merchant_center_reports"](merchant_id="1", query="SELECT id FROM product_view")
     tools["list_merchant_center_datasources"](merchant_id="1")
     tools["get_merchant_center_datasource"](data_source_id="2", merchant_id="1")
-    tools["get_merchant_center_developer_registration"](merchant_id="1")
     tools["fetch_merchant_center_datasource"](data_source_id="2", merchant_id="1")
     tools["insert_merchant_center_product"](
         offer_id="a", content_language="en", feed_label="US", data_source_id="2", merchant_id="1"

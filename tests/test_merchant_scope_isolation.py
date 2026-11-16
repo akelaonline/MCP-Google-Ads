@@ -123,7 +123,6 @@ def test_read_outside_allowlist_is_blocked_before_any_request(monkeypatch):
         ("get_merchant_center_datasource", {"data_source_id": "1"}),
         ("list_merchant_center_product_issues", {}),
         ("search_merchant_center_reports", {"query": "SELECT offer_id FROM product_view"}),
-        ("get_merchant_center_developer_registration", {}),
     ],
 )
 def test_every_read_tool_enforces_scope(monkeypatch, tool, kwargs):

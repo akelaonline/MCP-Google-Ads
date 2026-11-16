@@ -38,8 +38,7 @@ _PLAIN_ID_PART = re.compile(r"[A-Za-z0-9._-]+")
 _REGISTRATION_HINT = (
     " Merchant API v1 requires a one-time developer registration of the Google "
     "Cloud project used for OAuth (accounts.developerRegistration.registerGcp, or "
-    "Merchant Center > Settings > API). Use get_merchant_center_developer_registration "
-    "to check it."
+    "Merchant Center > Settings > API). See docs/MERCHANT_V1_ONBOARDING.md."
 )
 
 
