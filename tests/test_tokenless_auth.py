@@ -144,7 +144,9 @@ def test_real_lib_builds_legacy_token_client(monkeypatch):
     monkeypatch.setattr(
         "google.oauth2.credentials.Credentials.refresh", lambda self, request: None
     )
-    client = _real_client(_settings(developer_token="LEGACY-TOKEN-123").google_ads_yaml_dict)
+    client = _real_client(
+        _settings(developer_token="LEGACY-TOKEN-123").google_ads_yaml_dict
+    )
     assert client.developer_token == "LEGACY-TOKEN-123"
     assert client.get_service("GoogleAdsService") is not None
 
@@ -153,6 +155,8 @@ def test_real_lib_tokenless_client_with_mcc(monkeypatch):
     monkeypatch.setattr(
         "google.oauth2.credentials.Credentials.refresh", lambda self, request: None
     )
-    client = _real_client(_settings(login_customer_id="123-456-7890").google_ads_yaml_dict)
+    client = _real_client(
+        _settings(login_customer_id="123-456-7890").google_ads_yaml_dict
+    )
     assert client.developer_token is None
     assert client.login_customer_id == "1234567890"

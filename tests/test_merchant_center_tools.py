@@ -51,7 +51,9 @@ def _fake_settings():
     return SimpleNamespace(merchant_center_refresh_token=None)
 
 
-def _ctx(merchant, *, auto_approve: bool = True, auto_approve_destructive: bool | None = None) -> AppContext:
+def _ctx(
+    merchant, *, auto_approve: bool = True, auto_approve_destructive: bool | None = None
+) -> AppContext:
     safety = SafetyLayer(
         auto_approve=auto_approve,
         auto_approve_destructive=auto_approve_destructive,
@@ -263,14 +265,18 @@ def test_datasource_id_must_be_numeric():
     merchant = FakeMerchantClient()
     tools, _ = _register(merchant)
     with pytest.raises(ValueError, match="datasource_id must be the numeric"):
-        tools["get_merchant_center_datasource"](data_source_id="not-a-number", merchant_id="123")
+        tools["get_merchant_center_datasource"](
+            data_source_id="not-a-number", merchant_id="123"
+        )
 
 
 def test_read_only_mode_blocks_merchant_writes():
     from google_ads_mcp.read_only import ReadOnlySafetyProxy
 
     merchant = FakeMerchantClient()
-    base_safety = SafetyLayer(auto_approve=True, ttl_minutes=30, audit_log=FakeAuditLog())
+    base_safety = SafetyLayer(
+        auto_approve=True, ttl_minutes=30, audit_log=FakeAuditLog()
+    )
     ctx = AppContext(
         settings=_fake_settings(),
         client=None,

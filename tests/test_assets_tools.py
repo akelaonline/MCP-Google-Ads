@@ -118,6 +118,4 @@ def test_set_conversion_action_counting_maps_to_primary_for_goal():
     assert calls == ["ConversionActionService"]
     assert result["status"] == "executed"
     assert "secondary/non-biddable" in result["description"]
-    assert result["result"]["resource_names"] == [
-        "customers/123/conversionActions/789"
-    ]
+    assert result["result"]["resource_names"] == ["customers/123/conversionActions/789"]

@@ -24,14 +24,20 @@ def test_no_native_protobuf_set_in_parent_calls():
 
 def test_removed_call_ad_proto_does_not_return():
     hits = _matches(".call_ad")
-    assert not hits, "CallAd was removed from current Google Ads API:\n" + "\n".join(hits)
+    assert not hits, "CallAd was removed from current Google Ads API:\n" + "\n".join(
+        hits
+    )
 
 
 def test_removed_message_asset_proto_does_not_return():
     hits = _matches(".message_asset")
-    assert not hits, "MessageAsset was replaced by BusinessMessageAsset:\n" + "\n".join(hits)
+    assert not hits, "MessageAsset was replaced by BusinessMessageAsset:\n" + "\n".join(
+        hits
+    )
 
 
 def test_removed_campaign_date_fields_do_not_return():
     hits = _matches("campaign.start_date =") + _matches("campaign.end_date =")
-    assert not hits, "Use v25 campaign start_date_time/end_date_time:\n" + "\n".join(hits)
+    assert not hits, "Use v25 campaign start_date_time/end_date_time:\n" + "\n".join(
+        hits
+    )

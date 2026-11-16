@@ -46,15 +46,25 @@ def test_every_tool_call_goes_to_v1():
     tools["list_merchant_center_products"](merchant_id="1")
     tools["get_merchant_center_product"](product_id="en~US~a", merchant_id="1")
     tools["list_merchant_center_product_issues"](merchant_id="1")
-    tools["search_merchant_center_reports"](merchant_id="1", query="SELECT id FROM product_view")
+    tools["search_merchant_center_reports"](
+        merchant_id="1", query="SELECT id FROM product_view"
+    )
     tools["list_merchant_center_datasources"](merchant_id="1")
     tools["get_merchant_center_datasource"](data_source_id="2", merchant_id="1")
     tools["fetch_merchant_center_datasource"](data_source_id="2", merchant_id="1")
     tools["insert_merchant_center_product"](
-        offer_id="a", content_language="en", feed_label="US", data_source_id="2", merchant_id="1"
+        offer_id="a",
+        content_language="en",
+        feed_label="US",
+        data_source_id="2",
+        merchant_id="1",
     )
     tools["remove_merchant_center_product"](
-        offer_id="a", content_language="en", feed_label="US", data_source_id="2", merchant_id="1"
+        offer_id="a",
+        content_language="en",
+        feed_label="US",
+        data_source_id="2",
+        merchant_id="1",
     )
     assert merchant.calls
     assert {call["version"] for call in merchant.calls} == {"v1"}
@@ -84,26 +94,40 @@ def test_insert_translates_legacy_gtin_and_rejects_removed_attributes():
     merchant = FakeMerchantClient(response={})
     tools = _tools(merchant)
     tools["insert_merchant_center_product"](
-        offer_id="a", content_language="en", feed_label="US", data_source_id="2",
-        extra_attributes={"gtin": "123"}, merchant_id="1",
+        offer_id="a",
+        content_language="en",
+        feed_label="US",
+        data_source_id="2",
+        extra_attributes={"gtin": "123"},
+        merchant_id="1",
     )
     assert merchant.calls[0]["body"]["productAttributes"]["gtins"] == ["123"]
     for removed in ("taxes", "taxCategory"):
         with pytest.raises(ValueError, match="removed"):
             tools["insert_merchant_center_product"](
-                offer_id="a", content_language="en", feed_label="US", data_source_id="2",
-                extra_attributes={removed: []}, merchant_id="1",
+                offer_id="a",
+                content_language="en",
+                feed_label="US",
+                data_source_id="2",
+                extra_attributes={removed: []},
+                merchant_id="1",
             )
 
 
-@pytest.mark.parametrize("tool", ["insert_merchant_center_product", "remove_merchant_center_product"])
+@pytest.mark.parametrize(
+    "tool", ["insert_merchant_center_product", "remove_merchant_center_product"]
+)
 def test_retired_channel_values_are_rejected(tool):
     merchant = FakeMerchantClient(response={})
     tools = _tools(merchant)
     with pytest.raises(ValueError, match="channel"):
         tools[tool](
-            offer_id="a", content_language="en", feed_label="US", data_source_id="2",
-            channel="LOCAL", merchant_id="1",
+            offer_id="a",
+            content_language="en",
+            feed_label="US",
+            data_source_id="2",
+            channel="LOCAL",
+            merchant_id="1",
         )
     assert merchant.calls == []
 
@@ -113,14 +137,19 @@ def test_product_id_encoding_matches_googles_documented_example():
     assert encode_product_id("en~US~sku/123") == "ZW5-VVN-c2t1LzEyMw"
     assert build_product_id("en", "US", "sku/123") == "ZW5-VVN-c2t1LzEyMw"
     assert build_product_id("en", "US", "sku123") == "en~US~sku123"
-    assert build_product_id("es", "AR", "PISO 10mm") == encode_product_id("es~AR~PISO 10mm")
+    assert build_product_id("es", "AR", "PISO 10mm") == encode_product_id(
+        "es~AR~PISO 10mm"
+    )
 
 
 def test_remove_uses_encoded_id_for_special_characters():
     merchant = FakeMerchantClient(response={})
     tools = _tools(merchant)
     tools["remove_merchant_center_product"](
-        offer_id="sku/123", content_language="en", feed_label="US", data_source_id="2",
+        offer_id="sku/123",
+        content_language="en",
+        feed_label="US",
+        data_source_id="2",
         merchant_id="1",
     )
     assert merchant.calls[0]["path"] == "accounts/1/productInputs/ZW5-VVN-c2t1LzEyMw"
@@ -129,8 +158,12 @@ def test_remove_uses_encoded_id_for_special_characters():
 def test_get_product_accepts_v1_legacy_beta_and_encoded_ids():
     assert product_path("1", "en~US~sku1") == "accounts/1/products/en~US~sku1"
     assert product_path("1", "online~en~US~sku1") == "accounts/1/products/en~US~sku1"
-    assert product_path("1", "local~en~US~sku1") == "accounts/1/products/local~en~US~sku1"
+    assert (
+        product_path("1", "local~en~US~sku1") == "accounts/1/products/local~en~US~sku1"
+    )
     assert normalize_product_id("ZW5-VVN-c2t1LzEyMw") == "ZW5-VVN-c2t1LzEyMw"
-    assert normalize_product_id("online~en~US~sku/1") == encode_product_id("en~US~sku/1")
+    assert normalize_product_id("online~en~US~sku/1") == encode_product_id(
+        "en~US~sku/1"
+    )
     with pytest.raises(ValueError):
         normalize_product_id("  ")

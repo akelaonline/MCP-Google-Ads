@@ -38,7 +38,9 @@ class _FakeYouTubeService:
 
     def update_you_tube_video_upload(self, request=None, **kwargs):
         self.update_requests.append(request)
-        return SimpleNamespace(resource_name=request.you_tube_video_upload.resource_name)
+        return SimpleNamespace(
+            resource_name=request.you_tube_video_upload.resource_name
+        )
 
 
 def _ctx(service) -> SimpleNamespace:
@@ -55,7 +57,9 @@ def _ctx(service) -> SimpleNamespace:
     )
     return SimpleNamespace(
         client=client,
-        safety=SafetyLayer(auto_approve=False, ttl_minutes=30, audit_log=FakeAuditLog()),
+        safety=SafetyLayer(
+            auto_approve=False, ttl_minutes=30, audit_log=FakeAuditLog()
+        ),
         audit=FakeAuditLog(),
     )
 
@@ -80,7 +84,8 @@ def test_upload_executes_through_resumable_session_and_closes_stream(tmp_path):
         video_privacy="UNLISTED",
     )
     assert pending["status"] == "pending_confirmation"
-    envelope = ctx.safety.confirm(pending["pending_action_id"]); result = envelope["result"]
+    envelope = ctx.safety.confirm(pending["pending_action_id"])
+    result = envelope["result"]
 
     assert result["resource_name"] == "customers/1/youTubeVideoUploads/9"
     assert len(session.calls) == 1
@@ -137,6 +142,7 @@ def test_update_privacy_only_masks_single_field():
         you_tube_video_upload_resource_name="customers/1234567890/youTubeVideoUploads/9",
         video_privacy="UNLISTED",
     )
-    envelope = ctx.safety.confirm(pending["pending_action_id"]); result = envelope["result"]
+    envelope = ctx.safety.confirm(pending["pending_action_id"])
+    result = envelope["result"]
     assert result["updated_fields"] == ["video_privacy"]
     assert result["video_privacy"] == "UNLISTED"

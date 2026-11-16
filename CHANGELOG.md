@@ -11,6 +11,7 @@ Google Ads MCP follows Semantic Versioning. Detailed release notes for productio
 - `create_smart_campaign` and Search `set_language_targeting` stop offering what Google retired.
 
 ### Added
+- Hermetic offline validation (`scripts/validation_isolation.py`, `tests/conftest.py`, `validate_local.py`) with decoy-based regressions; stricter `scripts/lab_preflight.py` (explicit `--env-file`, runtime boolean semantics, strict allowlist, path containment, private permissions).
 - December 2026 compat: PMax `image_extraction` option and explicit proposal text; multi-party approval `approval_state`.
 - `constraints-certified.txt`, `make install-certified`, `scripts/stdio_lifecycle_test.py`, `scripts/lab_preflight.py`, docs for Merchant onboarding, update/rollback and the validation lab.
 

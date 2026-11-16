@@ -17,7 +17,7 @@
 Creado y mantenido por **[Alejandro José · Akela](https://github.com/akelaonline)**
 
 [![Versión](https://img.shields.io/badge/versión-0.18.1-111111?style=for-the-badge)](docs/RELEASE_0.18.1.md)
-[![Tests](https://img.shields.io/badge/tests-451%2F451-16a34a?style=for-the-badge)](docs/RELEASE_0.18.1.md)
+[![Tests](https://img.shields.io/badge/tests-510%2F510-16a34a?style=for-the-badge)](docs/RELEASE_0.18.1.md)
 [![Google Ads API](https://img.shields.io/badge/Google_Ads_API-v26-4285F4?style=for-the-badge&logo=googleads&logoColor=white)](https://developers.google.com/google-ads/api)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](pyproject.toml)
 [![MIT](https://img.shields.io/badge/license-MIT-black?style=for-the-badge)](LICENSE)

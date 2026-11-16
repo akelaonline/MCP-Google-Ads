@@ -146,9 +146,13 @@ def test_customer_client_link_create_still_requires_target_allowlist():
 
     wrapper = GoogleAdsClientWrapper(_settings())
     wrapper._client = raw
-    wrapper.service = lambda name: SimpleNamespace(mutate_customer_client_link=lambda **_: None)
+    wrapper.service = lambda name: SimpleNamespace(
+        mutate_customer_client_link=lambda **_: None
+    )
 
-    with pytest.raises(GoogleAdsMcpError, match="outside GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS"):
+    with pytest.raises(
+        GoogleAdsMcpError, match="outside GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS"
+    ):
         wrapper.mutate(
             "CustomerClientLinkService",
             "1111111111",

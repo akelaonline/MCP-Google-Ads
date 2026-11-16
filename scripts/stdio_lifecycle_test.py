@@ -53,7 +53,8 @@ def main() -> int:
         env = {
             key: value
             for key, value in os.environ.items()
-            if not key.startswith("GOOGLE_ADS_") and not key.startswith("GOOGLE_MERCHANT_")
+            if not key.startswith("GOOGLE_ADS_")
+            and not key.startswith("GOOGLE_MERCHANT_")
         }
         env.update(
             {

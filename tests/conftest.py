@@ -6,6 +6,19 @@ covered separately by tests that instantiate Google's real v25 protobuf types.
 
 from __future__ import annotations
 
+import atexit
+import shutil
+import sys
+from pathlib import Path
+
+# Isolate the whole battery BEFORE google_ads_mcp is imported: its config loads a
+# dotenv file at import time and several tests build the real server (audit DB).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import validation_isolation
+
+_VALIDATION_WORKDIR = validation_isolation.apply_to_process()
+atexit.register(shutil.rmtree, _VALIDATION_WORKDIR, ignore_errors=True)
+
 import enum
 from types import SimpleNamespace
 

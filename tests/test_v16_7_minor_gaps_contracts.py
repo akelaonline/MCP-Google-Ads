@@ -206,9 +206,7 @@ def test_change_history_rejects_bad_operation():
     reporting.register(mcp, SimpleNamespace(client=client, safety=safety))
 
     with pytest.raises(ValueError, match="ADD, SET, or REMOVE"):
-        mcp.tools["get_change_history"](
-            customer_id="111-111-1111", operation="DELETE"
-        )
+        mcp.tools["get_change_history"](customer_id="111-111-1111", operation="DELETE")
 
 
 def test_set_target_cpa_with_ceiling_and_floor():

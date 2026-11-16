@@ -96,7 +96,9 @@ def _check_tool_package_imports() -> int:
 
     if not ALL_MODULES:
         raise AssertionError("ALL_MODULES is empty")
-    missing = [module.__name__ for module in ALL_MODULES if not hasattr(module, "register")]
+    missing = [
+        module.__name__ for module in ALL_MODULES if not hasattr(module, "register")
+    ]
     if missing:
         raise AssertionError(f"Tool modules missing register(): {missing}")
     return len(ALL_MODULES)

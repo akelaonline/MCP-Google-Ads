@@ -60,7 +60,9 @@ def test_demand_gen_auto_leaves_type_unset():
 
 
 def test_demand_gen_rejects_ad_group_cpc():
-    ctx = build_ctx(lambda *a, **k: None, search_side_effect=_campaign_search("DEMAND_GEN"))
+    ctx = build_ctx(
+        lambda *a, **k: None, search_side_effect=_campaign_search("DEMAND_GEN")
+    )
     tool_fns = register_module(tools.ad_groups, ctx)
 
     with pytest.raises(ValueError, match="Demand Gen"):

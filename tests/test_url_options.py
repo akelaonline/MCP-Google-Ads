@@ -13,9 +13,7 @@ def test_set_campaign_tracking_url_requires_at_least_one_field():
     tool_fns = register_module(tools.url_options, ctx)
 
     with pytest.raises(ValueError, match="at least one"):
-        tool_fns["set_campaign_tracking_url"](
-            customer_id="123", campaign_id="456"
-        )
+        tool_fns["set_campaign_tracking_url"](customer_id="123", campaign_id="456")
 
 
 def test_set_campaign_tracking_url_rejects_empty_param_key():

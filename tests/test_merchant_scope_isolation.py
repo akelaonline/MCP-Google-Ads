@@ -104,7 +104,9 @@ def test_read_outside_allowlist_is_blocked_before_any_request(monkeypatch):
     _install_urlopen(monkeypatch, client, {"name": "accounts/x"})
     tools, _ = _tools(client)
 
-    with pytest.raises(GoogleAdsMcpError, match="outside GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS"):
+    with pytest.raises(
+        GoogleAdsMcpError, match="outside GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS"
+    ):
         tools["get_merchant_center_account"](merchant_id=OUTSIDE)
     assert client.http_calls == []
 
@@ -122,7 +124,10 @@ def test_read_outside_allowlist_is_blocked_before_any_request(monkeypatch):
         ("list_merchant_center_datasources", {}),
         ("get_merchant_center_datasource", {"data_source_id": "1"}),
         ("list_merchant_center_product_issues", {}),
-        ("search_merchant_center_reports", {"query": "SELECT offer_id FROM product_view"}),
+        (
+            "search_merchant_center_reports",
+            {"query": "SELECT offer_id FROM product_view"},
+        ),
     ],
 )
 def test_every_read_tool_enforces_scope(monkeypatch, tool, kwargs):
@@ -162,7 +167,9 @@ def test_request_layer_blocks_even_a_tool_that_forgot_to_check(monkeypatch):
 
 
 def test_account_and_subaccount_listings_are_filtered(monkeypatch):
-    client = _RecordingClient(_settings(allowed_merchant_ids=frozenset({ALLOWED, "2222222222"})))
+    client = _RecordingClient(
+        _settings(allowed_merchant_ids=frozenset({ALLOWED, "2222222222"}))
+    )
     accounts = [
         {"name": f"accounts/{ALLOWED}", "accountId": ALLOWED},
         {"name": f"accounts/{OUTSIDE}", "accountId": OUTSIDE},
@@ -195,7 +202,9 @@ def test_write_outside_merchant_allowlist_is_blocked(monkeypatch):
         allowed_merchant_ids={ALLOWED},
     )
     with pytest.raises(GoogleAdsMcpError, match="outside"):
-        tools["fetch_merchant_center_datasource"](data_source_id="1", merchant_id=OUTSIDE)
+        tools["fetch_merchant_center_datasource"](
+            data_source_id="1", merchant_id=OUTSIDE
+        )
     assert client.http_calls == []
 
 
@@ -289,10 +298,16 @@ def test_unregistered_gcp_error_gets_actionable_hint(monkeypatch):
 
     def boom(request, timeout=0):
         body = json.dumps(
-            {"error": {"status": "PERMISSION_DENIED",
-                       "message": "GCP project is not registered as a developer"}}
+            {
+                "error": {
+                    "status": "PERMISSION_DENIED",
+                    "message": "GCP project is not registered as a developer",
+                }
+            }
         ).encode()
-        raise urllib.error.HTTPError(request.full_url, 403, "Forbidden", {}, io.BytesIO(body))
+        raise urllib.error.HTTPError(
+            request.full_url, 403, "Forbidden", {}, io.BytesIO(body)
+        )
 
     monkeypatch.setattr(mc.urllib.request, "urlopen", boom)
     with pytest.raises(GoogleAdsMcpError, match="developer registration"):

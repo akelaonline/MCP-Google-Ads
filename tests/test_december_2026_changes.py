@@ -68,7 +68,9 @@ def test_mpa_pending_result_is_distinguished_from_completed():
     assert "resource_name" not in pending  # deferred invitation: nothing exists yet
 
     done = safety_module._safe_result(
-        SimpleNamespace(result=_Result(resource_name="customers/1/customerUserAccessInvitations/2"))
+        SimpleNamespace(
+            result=_Result(resource_name="customers/1/customerUserAccessInvitations/2")
+        )
     )
     assert done["approval_state"] == "COMPLETED"
     assert done["resource_name"].endswith("/2")

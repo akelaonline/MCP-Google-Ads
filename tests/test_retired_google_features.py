@@ -67,7 +67,9 @@ def _language_ctx(channel, existing):
 
     def fake_search(customer_id, query):
         if "advertising_channel_type" in query and "campaign_criterion" not in query:
-            return [{"campaign": {"advertising_channel_type": channel}}] if channel else []
+            return (
+                [{"campaign": {"advertising_channel_type": channel}}] if channel else []
+            )
         return existing
 
     def fake_mutate(service_name, customer_id, operations, **kwargs):
@@ -79,7 +81,12 @@ def _language_ctx(channel, existing):
 
 
 _EXISTING = [
-    {"campaign_criterion": {"criterion_id": 11, "language": {"language_constant": "languageConstants/1003"}}}
+    {
+        "campaign_criterion": {
+            "criterion_id": 11,
+            "language": {"language_constant": "languageConstants/1003"},
+        }
+    }
 ]
 
 
@@ -103,7 +110,10 @@ def test_search_campaign_cleanup_removes_leftover_languages_only(channel):
 
 def test_search_campaign_with_nothing_to_remove_is_a_noop():
     fn, calls = _language_ctx("SEARCH", [])
-    assert fn(customer_id="123", campaign_id="456", language_codes=[])["status"] == "no_change"
+    assert (
+        fn(customer_id="123", campaign_id="456", language_codes=[])["status"]
+        == "no_change"
+    )
     assert calls == []
 
 

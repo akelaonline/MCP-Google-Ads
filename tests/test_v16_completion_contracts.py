@@ -113,7 +113,10 @@ def test_atomic_experiment_split_tool_is_registered_and_builds_one_two_arm_rpc()
 
     assert response["status"] == "pending_confirmation"
     assert safety.last["tool_name"] == "update_experiment_arm"
-    assert [item["traffic_split"] for item in safety.last["payload"]["arms"]] == [70, 30]
+    assert [item["traffic_split"] for item in safety.last["payload"]["arms"]] == [
+        70,
+        30,
+    ]
 
     safety.last["execute"]()
     call = client.last_mutate
@@ -122,7 +125,9 @@ def test_atomic_experiment_split_tool_is_registered_and_builds_one_two_arm_rpc()
     assert call["partial_failure"] is False
     assert len(call["operations"]) == 2
     assert [op.update.traffic_split for op in call["operations"]] == [70, 30]
-    assert all(list(op.update_mask.paths) == ["traffic_split"] for op in call["operations"])
+    assert all(
+        list(op.update_mask.paths) == ["traffic_split"] for op in call["operations"]
+    )
 
 
 def test_atomic_experiment_split_rejects_invalid_total_and_mixed_experiments():
@@ -212,7 +217,10 @@ def test_asset_generation_v25_contracts_are_registered_and_customer_scoped():
     assert mcp.tools["generate_google_ads_image_assets"]("1111111111", {}) == {
         "generated_images": []
     }
-    assert [kind for kind, _ in client.asset_generation_service.calls] == ["text", "images"]
+    assert [kind for kind, _ in client.asset_generation_service.calls] == [
+        "text",
+        "images",
+    ]
 
 
 def test_asset_generation_rejects_customer_id_inside_protobuf_payload():

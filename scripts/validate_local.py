@@ -12,17 +12,31 @@ Usage:
 from __future__ import annotations
 
 import importlib.metadata
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import validation_isolation  # stdlib-only; safe before google_ads_mcp
+
+# One throw-away workdir (HOME, empty dotenv, temp audit DB) shared by every step.
+_WORKDIR: Path | None = None
+
+
+def _isolated_env() -> dict[str, str]:
+    global _WORKDIR
+    if _WORKDIR is None:
+        _WORKDIR = Path(tempfile.mkdtemp(prefix="gads-mcp-validation-"))
+    return validation_isolation.isolated_environment(dict(os.environ), _WORKDIR)
 
 
 def _run(label: str, command: list[str]) -> None:
     print(f"\n== {label} ==")
     print("$", " ".join(command))
-    completed = subprocess.run(command, cwd=ROOT, check=False)
+    completed = subprocess.run(command, cwd=ROOT, check=False, env=_isolated_env())
     if completed.returncode != 0:
         raise SystemExit(completed.returncode)
 
@@ -46,6 +60,10 @@ def _package_version(name: str) -> str:
 
 
 def main() -> int:
+    # Isolate this process too, BEFORE importing google_ads_mcp (dotenv at import).
+    isolated = _isolated_env()  # computed first: clear() would empty its input
+    os.environ.clear()
+    os.environ.update(isolated)
     import google_ads_mcp
 
     print("Google Ads MCP local validation")
@@ -79,6 +97,10 @@ def main() -> int:
     _run("pytest", [sys.executable, "-m", "pytest", "-q"])
     _run("stdio lifecycle", [sys.executable, "scripts/stdio_lifecycle_test.py"])
 
+    import shutil
+
+    if _WORKDIR is not None:
+        shutil.rmtree(_WORKDIR, ignore_errors=True)
     print("\nLOCAL VALIDATION GREEN")
     print(f"validated commit: {_git_head()}")
     print(f"validated version: {google_ads_mcp.__version__}")

@@ -196,9 +196,7 @@ def test_create_app_deep_link_asset_requires_uri():
     tool_fns = register_module(tools.assets_extended, ctx)
 
     with pytest.raises(ValueError, match="app_deep_link_uri is required"):
-        tool_fns["create_app_deep_link_asset"](
-            customer_id="123", app_deep_link_uri=""
-        )
+        tool_fns["create_app_deep_link_asset"](customer_id="123", app_deep_link_uri="")
 
 
 def test_create_app_deep_link_asset_proposes_asset_service():

@@ -252,7 +252,9 @@ def test_create_app_campaign_without_target_uses_maximize_conversions():
         bidding_strategy_goal_type="OPTIMIZE_PRE_REGISTRATION_CONVERSION_VOLUME",
     )
     campaign = call["operations"][0].create
-    assert campaign._pb.WhichOneof("campaign_bidding_strategy") == "maximize_conversions"
+    assert (
+        campaign._pb.WhichOneof("campaign_bidding_strategy") == "maximize_conversions"
+    )
     assert campaign.target_cpa.target_cpa_micros == 0  # not set
 
 
@@ -301,7 +303,11 @@ def test_add_webpage_target_builds_valid_criterion():
         campaign_id="123",
         conditions=[
             {"operand": "URL", "operator": "CONTAINS", "argument": "/hotel"},
-            {"operand": "CUSTOM_LABEL", "operator": "EQUALS", "argument": "hotel_pages"},
+            {
+                "operand": "CUSTOM_LABEL",
+                "operator": "EQUALS",
+                "argument": "hotel_pages",
+            },
         ],
         criterion_name="hotel pages",
         bid_modifier=1.2,

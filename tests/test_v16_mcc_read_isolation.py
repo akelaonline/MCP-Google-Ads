@@ -26,7 +26,10 @@ def _settings() -> Settings:
 
 
 def test_gaql_from_resource_is_case_insensitive():
-    assert _gaql_from_resource("SELECT customer_client.id FROM customer_client") == "customer_client"
+    assert (
+        _gaql_from_resource("SELECT customer_client.id FROM customer_client")
+        == "customer_client"
+    )
     assert _gaql_from_resource("select campaign.id FrOm campaign") == "campaign"
 
 
@@ -77,7 +80,9 @@ def test_customer_client_link_rows_filter_by_linked_client():
         rows,
     )
     assert len(filtered) == 1
-    assert filtered[0]["customer_client_link"]["client_customer"] == "customers/2222222222"
+    assert (
+        filtered[0]["customer_client_link"]["client_customer"] == "customers/2222222222"
+    )
 
 
 def test_customer_manager_link_rows_filter_by_linked_manager():
@@ -101,7 +106,10 @@ def test_customer_manager_link_rows_filter_by_linked_manager():
         rows,
     )
     assert len(filtered) == 1
-    assert filtered[0]["customer_manager_link"]["manager_customer"] == "customers/1111111111"
+    assert (
+        filtered[0]["customer_manager_link"]["manager_customer"]
+        == "customers/1111111111"
+    )
 
 
 def test_customer_manager_link_query_without_manager_fails_closed():
@@ -119,6 +127,9 @@ def test_customer_manager_link_query_without_manager_fails_closed():
 def test_non_hierarchy_rows_are_unchanged():
     client = ScopedGoogleAdsClientWrapper(_settings())
     rows = [{"campaign": {"id": 7, "name": "Search"}}]
-    assert client._filter_allowed_hierarchy_rows(
-        "SELECT campaign.id, campaign.name FROM campaign", rows
-    ) == rows
+    assert (
+        client._filter_allowed_hierarchy_rows(
+            "SELECT campaign.id, campaign.name FROM campaign", rows
+        )
+        == rows
+    )

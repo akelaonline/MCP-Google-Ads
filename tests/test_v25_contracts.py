@@ -68,7 +68,9 @@ def _ctx():
     )
     audit = FakeAuditLog()
     safety = SafetyLayer(auto_approve=True, ttl_minutes=30, audit_log=audit)
-    return AppContext(settings=None, client=client, safety=safety, audit=audit), captured
+    return AppContext(
+        settings=None, client=client, safety=safety, audit=audit
+    ), captured
 
 
 def _register(module, ctx):
@@ -139,10 +141,15 @@ def test_legacy_call_ad_tool_builds_rsa_plus_call_asset_atomically():
     service, _, operations, _ = captured[0]
     assert service == "GoogleAdsService"
     assert len(operations) == 3
-    assert operations[0].asset_operation.create.call_asset.phone_number == "+541112345678"
-    assert len(
-        operations[1].ad_group_ad_operation.create.ad.responsive_search_ad.headlines
-    ) == 3
+    assert (
+        operations[0].asset_operation.create.call_asset.phone_number == "+541112345678"
+    )
+    assert (
+        len(
+            operations[1].ad_group_ad_operation.create.ad.responsive_search_ad.headlines
+        )
+        == 3
+    )
     assert int(operations[2].ad_group_asset_operation.create.field_type) != 0
 
 
