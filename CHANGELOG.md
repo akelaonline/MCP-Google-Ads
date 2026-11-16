@@ -2,6 +2,22 @@
 
 Google Ads MCP follows Semantic Versioning. Detailed release notes for production releases live in `docs/RELEASE_X.Y.Z.md`.
 
+## 0.18.1 — 2026-11-16 (candidate, offline-validated)
+
+### Fixed
+- `validate_only` is carried in the real request message; unsupported services are refused before any RPC (was silently dropped, turning dry runs into writes).
+- Merchant API Products/DataSources on `v1` (IDs, fields, MCQL `language_code`).
+- Separate fail-closed Merchant scope (`GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS`, `GOOGLE_ADS_MCP_REQUIRE_MERCHANT_ALLOWLIST`) across reads, writes, discovery, replay and Ads tools that name a Merchant account.
+- `create_smart_campaign` and Search `set_language_targeting` stop offering what Google retired.
+
+### Added
+- December 2026 compat: PMax `image_extraction` option and explicit proposal text; multi-party approval `approval_state`.
+- `constraints-certified.txt`, `make install-certified`, `scripts/stdio_lifecycle_test.py`, `scripts/lab_preflight.py`, docs for Merchant onboarding, update/rollback and the validation lab.
+
+### Changed
+- FastMCP update check off by default; `RELEASE_0.18.0.md` v26.1 claim corrected (v26.1/v26.2 ship inside `v26`).
+- No tool added or removed (463).
+
 ## 0.18.0 — 2026-11-04
 
 ### Changed

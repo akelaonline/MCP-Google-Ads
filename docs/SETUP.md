@@ -1,6 +1,6 @@
 # Setup
 
-This guide configures Google Ads MCP **0.18.0** for Google Ads API v26.
+This guide configures Google Ads MCP **0.18.1** for Google Ads API v26.
 
 > **Validation target:** use `0.18.0`. Do not replace a working production MCP with `0.17.0` or `0.17.1` — both contain `mutate_atomic()` crashes fixed in `0.17.2`. Run the local validation gate first; see `RELEASE_0.18.0.md`.
 

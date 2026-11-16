@@ -34,11 +34,13 @@
 - Contract tests now build real protobufs at the pinned API version instead of
   a hardcoded `v25`.
 
-## Pending v26.1
+## v26.1 / v26.2 (corrected in 0.18.1)
 
-The `google-ads` 35.x library ships only `v23`–`v26` directories; **no v26.1
-endpoint exists yet**. Any v26.1 capabilities land when Google publishes them —
-nothing in this release invents unsupported services.
+> **Correction.** This section originally said that no v26.1 endpoint exists.
+> That was wrong. Minor versions (v26.1, v26.2) are delivered *inside* the
+> `v26` Python package: `google-ads` 35.0.0 added the v26.1 surface and 35.1.0
+> added v26.2. This project always requests `v26`, so it receives them with the
+> library version it is installed with (see `constraints-certified.txt`).
 
 ## Validation
 

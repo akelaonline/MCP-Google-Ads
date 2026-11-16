@@ -134,7 +134,7 @@ class MerchantCenterClient:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "google-ads-mcp-merchant-center/0.18",
+            "User-Agent": "google-ads-mcp-merchant-center/0.18.1",
         }
         if body is not None:
             payload = json.dumps(body, separators=(",", ":")).encode("utf-8")

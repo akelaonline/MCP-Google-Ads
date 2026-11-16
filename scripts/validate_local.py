@@ -3,7 +3,7 @@
 
 This script is intentionally local/manual: the repository does not use GitHub
 Actions. It runs the isolated smoke test, Ruff, and pytest with the current
-Python interpreter, then prints the installed MCP version and Git commit.
+Python interpreter (offline: no network, no production config or audit DB), then prints the installed MCP version and Git commit.
 
 Usage:
     .venv/bin/python scripts/validate_local.py
@@ -77,6 +77,7 @@ def main() -> int:
     _run("isolated smoke", [sys.executable, "scripts/smoke_test.py"])
     _run("ruff", [sys.executable, "-m", "ruff", "check", "src", "tests", "scripts"])
     _run("pytest", [sys.executable, "-m", "pytest", "-q"])
+    _run("stdio lifecycle", [sys.executable, "scripts/stdio_lifecycle_test.py"])
 
     print("\nLOCAL VALIDATION GREEN")
     print(f"validated commit: {_git_head()}")
