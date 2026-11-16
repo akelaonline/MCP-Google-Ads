@@ -2,9 +2,30 @@
 
 from __future__ import annotations
 
+import importlib
+from typing import Any
+
 from google.protobuf import field_mask_pb2
 
+from ..client import GOOGLE_ADS_API_VERSION
 from ..context import AppContext
+from ..errors import GoogleAdsMcpError
+
+
+def _channel_name(value: Any) -> str | None:
+    """Return the advertising channel name from a GAQL row value (name or int)."""
+    if value is None:
+        return None
+    if isinstance(value, str) and not value.isdigit():
+        return value.rsplit(".", 1)[-1].upper()
+    try:
+        module = importlib.import_module(
+            f"google.ads.googleads.{GOOGLE_ADS_API_VERSION}.enums.types."
+            "advertising_channel_type"
+        )
+        return module.AdvertisingChannelTypeEnum.AdvertisingChannelType(int(value)).name
+    except (ImportError, AttributeError, ValueError):
+        return None
 
 
 def register(mcp, ctx: AppContext) -> None:
@@ -83,10 +104,18 @@ def register(mcp, ctx: AppContext) -> None:
     def set_language_targeting(
         customer_id: str, campaign_id: str, language_codes: list[str]
     ) -> dict:
-        """Replace all language criteria on a campaign atomically."""
-        if not language_codes:
-            raise ValueError("Provide at least one language constant ID.")
-        normalized_codes = list(dict.fromkeys(str(code).strip() for code in language_codes))
+        """Replace all language criteria on a campaign atomically.
+
+        Since September 2026 Google no longer supports manual language
+        targeting on Search campaigns (adding or updating ``CampaignCriterion.language``
+        fails with OPERATION_NOT_PERMITTED_FOR_CONTEXT); languages are inferred
+        automatically there. For a Search campaign this tool refuses to add
+        language criteria and, when called with an empty ``language_codes``,
+        proposes removing the leftover ones. Other channels keep full support.
+        """
+        normalized_codes = list(
+            dict.fromkeys(str(code).strip() for code in language_codes or [])
+        )
         if any(not code.isdigit() for code in normalized_codes):
             raise ValueError("language_codes must contain numeric language constant IDs.")
 
@@ -95,6 +124,30 @@ def register(mcp, ctx: AppContext) -> None:
         campaign_resource_name = client.get_service("CampaignService").campaign_path(
             customer_id_clean, campaign_id
         )
+
+        channel_rows = ctx.client.search(
+            customer_id,
+            f"""
+            SELECT campaign.advertising_channel_type
+            FROM campaign
+            WHERE campaign.id = {int(campaign_id)}
+            """,
+        )
+        channel = _channel_name(
+            ((channel_rows[0].get("campaign") or {}) if channel_rows else {}).get(
+                "advertising_channel_type"
+            )
+        )
+        is_search = channel == "SEARCH"
+        if is_search and normalized_codes:
+            raise GoogleAdsMcpError(
+                "Google Ads no longer supports manual language targeting on Search "
+                "campaigns (adds/updates fail with OPERATION_NOT_PERMITTED_FOR_CONTEXT); "
+                "languages are inferred automatically. Nothing was changed. Call with an "
+                "empty language_codes to remove leftover language criteria instead."
+            )
+        if not normalized_codes and not is_search:
+            raise ValueError("Provide at least one language constant ID.")
 
         existing_query = f"""
             SELECT campaign_criterion.criterion_id,
@@ -117,6 +170,12 @@ def register(mcp, ctx: AppContext) -> None:
             )
             operations.append(operation)
 
+        if is_search and not operations:
+            return {
+                "status": "no_change",
+                "reason": "Search campaign has no manual language criteria to remove.",
+            }
+
         for code in normalized_codes:
             operation = client.get_type("CampaignCriterionOperation")
             criterion = operation.create
@@ -125,7 +184,9 @@ def register(mcp, ctx: AppContext) -> None:
             operations.append(operation)
 
         description = (
-            f"Replace campaign {campaign_id} language targeting with {normalized_codes}"
+            f"Remove manual language criteria from Search campaign {campaign_id}"
+            if is_search
+            else f"Replace campaign {campaign_id} language targeting with {normalized_codes}"
         )
 
         def execute():
@@ -140,6 +201,7 @@ def register(mcp, ctx: AppContext) -> None:
             payload={
                 "campaign_id": campaign_id,
                 "language_codes": normalized_codes,
+                "channel": channel,
                 "existing_language_count": len(existing),
             },
             execute=execute,
