@@ -139,7 +139,9 @@ def replay_tool(tool_name: str, arguments: dict[str, Any], action_id: str) -> An
         _REPLAY_ACTION_ID.reset(token)
 
 
-def install_tool_tracking(mcp) -> None:
+def install_tool_tracking(
+    mcp, read_only_blocked_tools: frozenset[str] | None = None
+) -> None:
     """Wrap ``mcp.tool`` before tool modules register their functions.
 
     The wrapper supports both ``@mcp.tool()`` and ``mcp.tool(function, ...)`` forms.
@@ -154,6 +156,7 @@ def install_tool_tracking(mcp) -> None:
     original_tool = mcp.tool
     if getattr(original_tool, "_google_ads_mcp_tracking_installed", False):
         return
+    blocked = read_only_blocked_tools or frozenset()
 
     _TOOL_REGISTRY.clear()
     _TOOL_OWNERS.clear()
@@ -166,7 +169,7 @@ def install_tool_tracking(mcp) -> None:
                 tool_name = explicit_name or func.__name__
                 if not _candidate_should_register(tool_name, func):
                     return func
-                wrapped = _tracked_function(func, explicit_name)
+                wrapped = _tracked_function(func, explicit_name, blocked)
                 return original_tool(*decorator_args, **decorator_kwargs)(wrapped)
 
             return decorator
@@ -175,7 +178,7 @@ def install_tool_tracking(mcp) -> None:
         tool_name = explicit_name or function.__name__
         if not _candidate_should_register(tool_name, function):
             return function
-        wrapped = _tracked_function(function, explicit_name)
+        wrapped = _tracked_function(function, explicit_name, blocked)
         return original_tool(wrapped, *decorator_args, **decorator_kwargs)
 
     tracked_tool._google_ads_mcp_tracking_installed = True  # type: ignore[attr-defined]
@@ -217,12 +220,28 @@ def _candidate_should_register(tool_name: str, function: Callable[..., Any]) -> 
     return True
 
 
-def _tracked_function(function: Callable[..., Any], explicit_name: str | None):
+def _tracked_function(
+    function: Callable[..., Any],
+    explicit_name: str | None,
+    read_only_blocked: frozenset[str] = frozenset(),
+):
     tool_name = explicit_name or function.__name__
     signature = inspect.signature(function)
+    early_reject = tool_name in read_only_blocked
 
     @wraps(function)
     def wrapped(*args, **kwargs):
+        if early_reject:
+            # READ_ONLY: reject before the tool body runs, so no Google Ads client
+            # is built and no OAuth token refresh is attempted for a write tool.
+            from .errors import GoogleAdsMcpError
+
+            raise GoogleAdsMcpError(
+                f"Google Ads MCP is running in read-only mode; write tool "
+                f"{tool_name!r} was blocked before any authentication or Google Ads "
+                "call. Set GOOGLE_ADS_MCP_READ_ONLY=false only on an instance that "
+                "is allowed to write."
+            )
         bound = signature.bind(*args, **kwargs)
         bound.apply_defaults()
         arguments = dict(bound.arguments)
