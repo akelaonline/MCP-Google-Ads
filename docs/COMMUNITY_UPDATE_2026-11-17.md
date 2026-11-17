@@ -36,7 +36,7 @@ no modifica las tools, el cliente Google Ads ni la safety layer de esa base.
 | Suite combinada de #20 y #21 | Reporte de 547 tests, Ruff y lifecycle de 463 tools; no es una certificación nueva de escritura en vivo |
 | Google Ads de lectura con MCC | Lecturas reales reportadas en dos clientes y rechazo de cuentas fuera de alcance/excluidas |
 | ChatGPT por túnel | Túnel conectado y consultas reales de Ads verificadas |
-| Editor local en Claude Desktop | El cliente respondió a initialize y tools/list; consulta de Google y edición real pendientes de la prueba en la sesión |
+| Editor local en Claude Desktop | Consulta real `get_account_summary` reportada por el operador desde `google-ads-editor`: nombre, moneda, zona horaria y tipo de cuenta correctos; sin propuesta ni mutación. Edición real todavía no comprobada |
 | Escritura real desde ChatGPT con este montaje | No verificada; una prueba de propuesta de presupuesto fue rechazada por la revisión del cliente antes de llegar al MCP |
 | GTM/GA4 | Base separada: 142 tests pasan; gate completo y OAuth/E2E aún pendientes |
 | Merchant API | Onboarding y validación real separados; no habilitados por esta actualización |
