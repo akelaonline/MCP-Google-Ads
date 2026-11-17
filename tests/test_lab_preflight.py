@@ -362,3 +362,43 @@ def test_cli_repo_root_controls_the_stray_dotenv_check(checkout, tmp_path):
 def test_real_checkout_dotenv_does_not_influence_these_tests():
     """A stray .env at the real checkout root (the Owner's) must not matter here."""
     assert CHECKOUT != ROOT and not (CHECKOUT / ".env").exists()
+
+
+MCC_ENV = {
+    "GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS": None,
+    "GOOGLE_ADS_MCP_ALLOWED_MANAGER_IDS": "111-111-1111",
+    "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "1111111111",
+}
+
+
+def test_manager_scope_is_a_valid_allowlist_source(tmp_path):
+    lab, env_file = _lab(tmp_path, **MCC_ENV)
+    assert _run(lab, env_file).ok
+
+
+def test_manager_scope_single_manager_may_omit_login(tmp_path):
+    lab, env_file = _lab(tmp_path, **{**MCC_ENV, "GOOGLE_ADS_LOGIN_CUSTOMER_ID": None})
+    assert _run(lab, env_file).ok
+
+
+def test_negative_manager_scope_login_must_be_a_listed_manager(tmp_path):
+    lab, env_file = _lab(tmp_path, **{**MCC_ENV, "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "2222222222"})
+    assert not _run(lab, env_file).ok
+
+
+@pytest.mark.parametrize("bad", ["abc", "123", "1111111111,12x"])
+def test_negative_manager_ids_must_be_valid(tmp_path, bad):
+    lab, env_file = _lab(tmp_path, **{**MCC_ENV, "GOOGLE_ADS_MCP_ALLOWED_MANAGER_IDS": bad})
+    assert not _run(lab, env_file).ok
+
+
+def test_negative_excluded_ids_must_be_valid(tmp_path):
+    lab, env_file = _lab(tmp_path, **{**MCC_ENV, "GOOGLE_ADS_MCP_EXCLUDED_CUSTOMER_IDS": "x1"})
+    assert not _run(lab, env_file).ok
+
+
+def test_manager_scope_still_requires_strict_allowlist_flag(tmp_path):
+    lab, env_file = _lab(
+        tmp_path, **{**MCC_ENV, "GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST": "false"}
+    )
+    assert not _run(lab, env_file).ok

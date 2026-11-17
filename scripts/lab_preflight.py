@@ -37,6 +37,9 @@ GUARDED = (
     "GOOGLE_ADS_MCP_AUTO_APPROVE_SENSITIVE",
     "GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST",
     "GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS",
+    "GOOGLE_ADS_MCP_ALLOWED_MANAGER_IDS",
+    "GOOGLE_ADS_MCP_EXCLUDED_CUSTOMER_IDS",
+    "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
     "GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS",
     "GOOGLE_ADS_MCP_REQUIRE_MERCHANT_ALLOWLIST",
     "GOOGLE_ADS_MCP_AUDIT_DB",
@@ -205,11 +208,24 @@ def run(
 
     # --- strict allowlists ---------------------------------------------------
     customers = _split_ids(get("GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS"))
-    report.check(bool(customers), "GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS is not empty")
+    managers = _split_ids(get("GOOGLE_ADS_MCP_ALLOWED_MANAGER_IDS"))
+    excluded = _split_ids(get("GOOGLE_ADS_MCP_EXCLUDED_CUSTOMER_IDS"))
     report.check(
-        all(_valid_customer_id(item) for item in customers),
-        "every allowed customer ID is 10 digits (dashes allowed)",
+        bool(customers) or bool(managers),
+        "allowlist source present: GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS or "
+        "GOOGLE_ADS_MCP_ALLOWED_MANAGER_IDS is not empty",
     )
+    report.check(
+        all(_valid_customer_id(item) for item in customers + managers + excluded),
+        "every allowed/manager/excluded customer ID is 10 digits (dashes allowed)",
+    )
+    if managers:
+        login = "".join(ch for ch in (get("GOOGLE_ADS_LOGIN_CUSTOMER_ID") or "") if ch.isdigit())
+        normalized = {"".join(ch for ch in m if ch.isdigit()) for m in managers}
+        report.check(
+            login in normalized if login else len(normalized) == 1,
+            "login customer ID is one of the manager IDs (or the single manager)",
+        )
     report.check(
         runtime_bool(get("GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST")),
         "GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST is true (strict allowlist)",
