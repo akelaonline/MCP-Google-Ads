@@ -121,3 +121,18 @@ una mutación. La generación de borradores en una conversación no cambia Googl
 
 GTM, GA4 y Merchant requieren integraciones/alcances propios:
 la MCC de Ads no concede acceso a sus contenedores, propiedades o cuentas.
+
+## Ejecución real observada y alcance de la evidencia
+
+El 17/11/2026, el operador reportó la ejecución desde Claude Desktop de un bloque
+aprobado: dos keywords nuevas en PHRASE y pausa de tres BROAD del mismo grupo.
+Una lectura independiente mediante ChatGPT READ_ONLY encontró quince criterios
+no eliminados: doce activos y tres pausados. Los diez criterios previos exactos/de
+frase seguían activos. Presupuestos, estrategias y límites CPC de las cuatro
+campañas consultadas coincidían con la línea base.
+
+Las altas y pausas fueron fases separadas, no una transacción atómica. La verificación
+no demuestra por sí sola qué proceso realizó cada cambio: el detalle de confirmaciones
+y auditoría debe conservarse en el perfil ejecutor. Tampoco prueba una mejora comercial
+ni garantiza un techo de gasto por día. No se cambiaron presupuestos como parte del bloque.
+La edición real desde ChatGPT sigue sin verificarse en este montaje.
