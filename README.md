@@ -10,9 +10,9 @@
 
 # Google Ads MCP
 
-### Administrá Google Ads desde Claude — no sólo lo mires.
+### Administrá Google Ads desde ChatGPT o Claude.
 
-**Servidor MCP read/write para Google Ads API v25, self-hosted, con confirmación humana, auditoría, aislamiento MCC y acciones pendientes durables.**
+**Servidor MCP read/write para Google Ads API v26, self-hosted, con confirmación humana, auditoría, aislamiento MCC y acciones pendientes durables.**
 
 Creado y mantenido por **[Alejandro José · Akela](https://github.com/akelaonline)**
 
@@ -32,6 +32,20 @@ Creado y mantenido por **[Alejandro José · Akela](https://github.com/akelaonli
 [Qué problema resuelve](#por-qué-existe) · [Cómo funciona](#cómo-funciona) · [Tutorial paso a paso](#tutorial-paso-a-paso) · [Ejemplos](#ejemplos-reales-de-uso) · [Seguridad](#seguridad-de-fábrica) · [Capacidades](#capacidades) · [Sobre Akela](#sobre-akela)
 
 </div>
+
+---
+
+## Conectalo a ChatGPT o Claude Desktop
+
+- [Instalación paso a paso y perfiles privados](docs/INSTALL_CLIENTS.md)
+- [ChatGPT por Secure MCP Tunnel](docs/CHATGPT.md)
+- [Claude Desktop, herramientas locales y diagnóstico](docs/CLAUDE_DESKTOP.md)
+- [Editar campañas con confirmación](docs/EDITING_CAMPAIGNS.md)
+- [Novedades y límites de validación — 17/11/2026](docs/COMMUNITY_UPDATE_2026-11-17.md)
+
+ChatGPT admite herramientas MCP de escritura; una instancia en READ_ONLY no puede editar.
+Los servidores locales de Claude Desktop no aparecen en claude.ai por usar el mismo proyecto.
+GTM/GA4 sigue separado en draft: [estado y próximos pasos](docs/MEASUREMENT_STATUS.md).
 
 ---
 
@@ -238,14 +252,14 @@ Antes de abrir Claude:
 python scripts/validate_local.py
 ```
 
-La versión 0.17.0 debe terminar con:
+El validador del código actual debe terminar con:
 
 ```text
 LOCAL VALIDATION GREEN
-validated version: 0.17.0
+validated version: 0.18.1
 ```
 
-El gate ejecuta smoke aislado + Ruff + pytest completo. La referencia actual es **362/362 tests**.
+El gate ejecuta smoke aislado + Ruff + pytest completo. Los conteos dependen del commit: consultá la [evidencia de integración](docs/COMMUNITY_UPDATE_2026-11-17.md).
 
 Si el import falla, verificá primero que estés usando el Python del venv:
 
@@ -458,12 +472,12 @@ El objetivo no es “darle control total a una IA”. El objetivo es **darle her
 
 ## Versión actual — 0.18.1 (candidata)
 
-**`0.18.1` es una candidata correctiva validada solo offline**: no está publicada, ni validada contra Google en vivo, ni recomendada para reemplazar una instalación activa. Corrige que `validate_only` se descartaba en silencio (un dry-run podía ejecutarse como escritura real), migra Merchant Products/DataSources a **API v1**, agrega un **alcance propio de Merchant** (`GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS`, falla cerrado), retira lo que Google retiró (`create_smart_campaign`, idioma manual en Search) y deja explícitos los cambios de diciembre 2026 (PMax image extraction, multi-party approvals). Detalle: [`docs/RELEASE_0.18.1.md`](docs/RELEASE_0.18.1.md), [Merchant v1](docs/MERCHANT_V1_ONBOARDING.md), [actualizar y volver atrás](docs/UPDATE_AND_ROLLBACK_0.18.1.md).
+**`0.18.1` sigue como candidata, sin nueva release**. En main se agregaron descubrimiento por MCC y rechazo temprano READ_ONLY; hay lecturas reales verificadas por túnel y pruebas de alcance. Esto no certifica escrituras reales de la candidata, Merchant ni GTM/GA4. Ver [evidencia y límites](docs/COMMUNITY_UPDATE_2026-11-17.md). Corrige que `validate_only` se descartaba en silencio (un dry-run podía ejecutarse como escritura real), migra Merchant Products/DataSources a **API v1**, agrega un **alcance propio de Merchant** (`GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS`, falla cerrado), retira lo que Google retiró (`create_smart_campaign`, idioma manual en Search) y deja explícitos los cambios de diciembre 2026 (PMax image extraction, multi-party approvals). Detalle: [`docs/RELEASE_0.18.1.md`](docs/RELEASE_0.18.1.md), [Merchant v1](docs/MERCHANT_V1_ONBOARDING.md), [actualizar y volver atrás](docs/UPDATE_AND_ROLLBACK_0.18.1.md).
 
 | Estado | Qué es |
 |---|---|
 | Recomendado | El set de dependencias de `constraints-certified.txt` (`make install-certified`) |
-| Candidata | `0.18.1` hasta pasar validación real (ver [laboratorio](docs/REAL_VALIDATION_LAB.md)) |
+| Candidata | `0.18.1`; lectura Ads/MCC verificada, escritura real y Merchant pendientes (ver [evidencia](docs/COMMUNITY_UPDATE_2026-11-17.md)) |
 | Beta | Herramientas de Merchant Center |
 | Referencia estable | `0.17.2` |
 
