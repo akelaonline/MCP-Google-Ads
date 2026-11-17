@@ -22,6 +22,18 @@ GOOD = {
 SECRET = "super-secret-value-123"
 
 
+@pytest.fixture(autouse=True)
+def checkout(tmp_path, monkeypatch):
+    """A pristine fake checkout: these tests must never inspect the real one."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    monkeypatch.setattr(sys.modules[__name__], "CHECKOUT", root)
+    return root
+
+
+CHECKOUT: Path = ROOT  # replaced per test by the autouse fixture
+
+
 def _clean_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if not k.startswith("GOOGLE_")}
 
@@ -44,7 +56,7 @@ def _lab(tmp_path: Path, **overrides):
 
 
 def _run(lab, env_file, environ=None):
-    return lab_preflight.run(lab, env_file, environ or {})
+    return lab_preflight.run(lab, env_file, environ or {}, repo=CHECKOUT)
 
 
 def _failed(report):
@@ -268,6 +280,8 @@ def test_cli_exit_codes_and_no_secret_is_ever_printed(tmp_path):
         str(ROOT / "scripts" / "lab_preflight.py"),
         "--lab-dir",
         str(lab),
+        "--repo-root",
+        str(CHECKOUT),
     ]
     ok = subprocess.run(
         cmd, capture_output=True, text=True, check=False, env=_clean_env()
@@ -301,6 +315,8 @@ def test_cli_explicit_env_file_option(tmp_path):
         str(ROOT / "scripts" / "lab_preflight.py"),
         "--lab-dir",
         str(lab),
+        "--repo-root",
+        str(CHECKOUT),
     ]
     assert (
         subprocess.run(
@@ -316,3 +332,33 @@ def test_cli_explicit_env_file_option(tmp_path):
         env=_clean_env(),
     )
     assert done.returncode == 0, done.stdout
+
+
+def test_security_control_kept_stray_dotenv_in_checkout_fails(checkout, tmp_path):
+    lab, env_file = _lab(tmp_path)
+    assert _run(lab, env_file).ok
+    (checkout / ".env").write_text("GOOGLE_ADS_REFRESH_TOKEN=x\n")
+    failed = _failed(_run(lab, env_file))
+    assert any("repository has no .env" in label for label in failed)
+
+
+def test_cli_repo_root_controls_the_stray_dotenv_check(checkout, tmp_path):
+    lab, _ = _lab(tmp_path)
+    (checkout / ".env").write_text("X=1\n")
+    cmd = [
+        sys.executable,
+        str(ROOT / "scripts" / "lab_preflight.py"),
+        "--lab-dir",
+        str(lab),
+        "--repo-root",
+        str(checkout),
+    ]
+    done = subprocess.run(
+        cmd, capture_output=True, text=True, check=False, env=_clean_env()
+    )
+    assert done.returncode == 1 and "repository has no .env" in done.stdout
+
+
+def test_real_checkout_dotenv_does_not_influence_these_tests():
+    """A stray .env at the real checkout root (the Owner's) must not matter here."""
+    assert CHECKOUT != ROOT and not (CHECKOUT / ".env").exists()

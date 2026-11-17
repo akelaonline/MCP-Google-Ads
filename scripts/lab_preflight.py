@@ -116,7 +116,13 @@ def _check_path_safety(report: Report, label: str, path: Path, lab: Path) -> Non
     report.check(_inside(path, lab), f"{label}: really inside the lab directory")
 
 
-def run(lab_dir: Path, env_file: Path | None, environ: dict[str, str]) -> Report:
+def run(
+    lab_dir: Path,
+    env_file: Path | None,
+    environ: dict[str, str],
+    repo: Path | None = None,
+) -> Report:
+    """``repo`` is the checkout to inspect (default: the one containing this script)."""
     report = Report()
     lab = Path(os.path.abspath(os.path.expanduser(str(lab_dir))))
     env_path = (
@@ -124,7 +130,7 @@ def run(lab_dir: Path, env_file: Path | None, environ: dict[str, str]) -> Report
         if env_file is not None
         else lab / "lab.env"
     )
-    repo = Path(__file__).resolve().parents[1]
+    repo = Path(repo).resolve() if repo else Path(__file__).resolve().parents[1]
     production = Path(os.path.expanduser("~/.google_ads_mcp"))
 
     # --- lab directory -------------------------------------------------------
@@ -253,6 +259,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--lab-dir", default="~/.google_ads_mcp_lab")
     parser.add_argument("--env-file", default=None, help="default: <lab-dir>/lab.env")
+    parser.add_argument(
+        "--repo-root",
+        default=None,
+        help="checkout to inspect for a stray .env (default: this script's checkout)",
+    )
     args = parser.parse_args(argv)
     lab = Path(args.lab_dir)
     env_file = (
@@ -260,7 +271,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.env_file
         else Path(os.path.expanduser(str(lab))) / "lab.env"
     )
-    report = run(lab, env_file, dict(os.environ))
+    repo = Path(args.repo_root) if args.repo_root else None
+    report = run(lab, env_file, dict(os.environ), repo)
     report.print()
     print("PREFLIGHT", "PASSED" if report.ok else "FAILED")
     return 0 if report.ok else 1

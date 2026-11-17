@@ -16,13 +16,13 @@ ones and are only reported as PASSED when actually run.
 ## Preflight (no secrets, no network)
 
 ```bash
-python scripts/lab_preflight.py [--lab-dir ~/.google_ads_mcp_lab] [--env-file <lab>/lab.env]
+python scripts/lab_preflight.py [--lab-dir ~/.google_ads_mcp_lab] [--env-file <lab>/lab.env] [--repo-root <checkout>]
 ```
 
 The env file defaults to `<lab>/lab.env` (the name used by the lab mission); pass
 `--env-file` for any other name — a lone `.env` is **not** picked up. Exit code 0
 only if every check passes. It prints variable names and PASS/FAIL, never values,
-makes no network call, does not import the server and never reads the production
+`--repo-root` selects the checkout inspected for a stray `.env` (default: the script's own; the preflight tests use a pristine fake checkout so an Owner `.env` never affects them). It makes no network call, does not import the server and never reads the production
 installation. Checks:
 
 * **Parsing**: python-dotenv (the server's parser: `export`, quotes, inline
@@ -52,7 +52,7 @@ test all run with an isolated environment (`scripts/validation_isolation.py`):
 Google/Cloud variables dropped, `HOME` and XDG dirs in a throw-away directory, an
 empty dotenv forced through `GOOGLE_ADS_MCP_ENV_FILE`, and a temporary audit DB
 and key. Operator DBs, dotenv files and `<cwd>/.env` are never opened.
-`tests/test_validation_isolation.py` proves it with decoy config and DBs.
+`tests/test_validation_isolation.py` proves it with decoy config and DBs, including a full `validate_local.py` run inside a copy of the checkout whose root holds a decoy `.env`.
 
 ## Status per capability
 

@@ -217,3 +217,62 @@ def test_validate_local_main_keeps_PATH_and_non_google_variables(tmp_path):
         check=False,
     )
     assert done.returncode == 0 and "ok" in done.stdout, done.stderr[-400:]
+
+
+_NESTED = "GADS_NESTED_VALIDATION"
+
+
+@pytest.mark.skipif(os.environ.get(_NESTED) == "1", reason="nested validator run")
+def test_full_validator_with_decoy_dotenv_in_checkout_root(decoys, tmp_path):
+    """Whole battery in a copy of the checkout whose ROOT holds a decoy ``.env``.
+
+    The Owner's real ``.env`` is never touched or moved: the decoy lives in a
+    throw-away copy. Config, DB and key stay intact and the battery is green.
+    """
+    import shutil
+
+    copy = tmp_path / "checkout_copy"
+    shutil.copytree(
+        ROOT,
+        copy,
+        ignore=shutil.ignore_patterns(
+            ".git",
+            ".venv",
+            "venv",
+            "__pycache__",
+            ".pytest_cache",
+            ".ruff_cache",
+            "*.egg-info",
+            ".env",
+        ),
+    )
+    root_env = copy / ".env"
+    root_env.write_text(
+        "GOOGLE_ADS_REFRESH_TOKEN=root-dotenv-decoy\n"
+        f"GOOGLE_ADS_MCP_AUDIT_DB={decoys['missing_db']}\n"
+    )
+    key = Path(str(decoys["missing_db"]) + ".pending.key")
+    env_digest = _digest(root_env)
+    before = _snapshot(decoys)
+
+    env = {
+        **decoys["base"],
+        _NESTED: "1",
+        "PYTHONPATH": str(copy / "src"),
+    }
+    completed = subprocess.run(
+        [sys.executable, str(copy / "scripts" / "validate_local.py")],
+        cwd=copy,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=600,
+    )
+    tail = completed.stdout[-1500:] + completed.stderr[-500:]
+    assert completed.returncode == 0, tail
+    assert "LOCAL VALIDATION GREEN" in completed.stdout, tail
+    assert " failed" not in completed.stdout, tail
+    _assert_untouched(decoys, before)
+    assert not key.exists()
+    assert root_env.exists() and _digest(root_env) == env_digest
