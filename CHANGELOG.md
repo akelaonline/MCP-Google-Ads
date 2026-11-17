@@ -2,6 +2,11 @@
 
 Google Ads MCP follows Semantic Versioning. Detailed release notes for production releases live in `docs/RELEASE_X.Y.Z.md`.
 
+## Unreleased
+
+### Added
+- Allowlist derived from an MCC: `GOOGLE_ADS_MCP_ALLOWED_MANAGER_IDS` (+ `GOOGLE_ADS_MCP_EXCLUDED_CUSTOMER_IDS`) discovers ENABLED client accounts via read-only `customer_client` at startup and freezes them into the existing fail-closed allowlist. Discovery errors never widen the scope. See `docs/MCC_SCOPE_DISCOVERY.md`. The lab preflight accepts this mode.
+
 ## 0.18.1 — 2026-11-16 (candidate, offline-validated)
 
 ### Fixed

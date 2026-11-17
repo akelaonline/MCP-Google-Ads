@@ -75,6 +75,10 @@ class Settings:
     http_port: int
     allowed_customer_ids: frozenset[str] = frozenset()
     require_customer_allowlist: bool = False
+    # Manager (MCC) accounts whose enabled client accounts are discovered at
+    # startup and added to the customer allowlist; see scope_discovery.py.
+    allowed_manager_ids: frozenset[str] = frozenset()
+    excluded_customer_ids: frozenset[str] = frozenset()
     auto_approve_spend: bool = False
     auto_approve_destructive: bool = False
     auto_approve_sensitive: bool = False
@@ -125,10 +129,13 @@ def load_settings() -> Settings:
     require_customer_allowlist = _bool(
         "GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST", False
     )
-    if require_customer_allowlist and not allowed_customer_ids:
+    allowed_manager_ids = _customer_id_set("GOOGLE_ADS_MCP_ALLOWED_MANAGER_IDS")
+    excluded_customer_ids = _customer_id_set("GOOGLE_ADS_MCP_EXCLUDED_CUSTOMER_IDS")
+    if require_customer_allowlist and not (allowed_customer_ids or allowed_manager_ids):
         raise ValueError(
             "GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST=true requires at least one "
-            "GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS entry."
+            "GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS or "
+            "GOOGLE_ADS_MCP_ALLOWED_MANAGER_IDS entry."
         )
 
     allowed_merchant_ids = _merchant_id_set("GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS")
@@ -166,6 +173,8 @@ def load_settings() -> Settings:
         transport=os.environ.get("GOOGLE_ADS_MCP_TRANSPORT", "stdio"),
         http_port=int(os.environ.get("GOOGLE_ADS_MCP_HTTP_PORT", "8080")),
         allowed_customer_ids=allowed_customer_ids,
+        allowed_manager_ids=allowed_manager_ids,
+        excluded_customer_ids=excluded_customer_ids,
         require_customer_allowlist=require_customer_allowlist,
         auto_approve_spend=_bool("GOOGLE_ADS_MCP_AUTO_APPROVE_SPEND", False),
         auto_approve_destructive=_bool(

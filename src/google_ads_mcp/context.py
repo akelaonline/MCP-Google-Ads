@@ -12,6 +12,7 @@ from .merchant_client import MerchantCenterClient
 from .merchant_scope import MerchantScope
 from .read_only import ReadOnlySafetyProxy
 from .safety import SafetyLayer
+from .scope_discovery import resolve_manager_scope
 from .scoped_client import ScopedGoogleAdsClientWrapper
 
 
@@ -39,7 +40,7 @@ class AppContext:
 
 
 def build_context() -> AppContext:
-    settings = load_settings()
+    settings = resolve_manager_scope(load_settings())
     audit = AuditLog(settings.audit_db_path)
     client = ScopedGoogleAdsClientWrapper(settings)
     base_safety = SafetyLayer(
