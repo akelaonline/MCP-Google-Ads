@@ -7,6 +7,9 @@ Google Ads MCP follows Semantic Versioning. Detailed release notes for productio
 ### Added
 - Allowlist derived from an MCC: `GOOGLE_ADS_MCP_ALLOWED_MANAGER_IDS` (+ `GOOGLE_ADS_MCP_EXCLUDED_CUSTOMER_IDS`) discovers ENABLED client accounts via read-only `customer_client` at startup and freezes them into the existing fail-closed allowlist. Discovery errors never widen the scope. See `docs/MCC_SCOPE_DISCOVERY.md`. The lab preflight accepts this mode.
 
+### Fixed
+- READ_ONLY now rejects write tools before the tool body runs: no Google Ads client is built and no OAuth token refresh is attempted (the client constructor refreshes the token, so the previous late `propose` gate still reached Google OAuth). The write-tool set is generated from the sources (`scripts/gen_write_tools.py` -> `write_tools.py`) and checked for drift by `tests/test_read_only_early_reject.py`. `SafetyLayer`/`ReadOnlySafetyProxy` stay as defense in depth.
+
 ## 0.18.1 — 2026-11-16 (candidate, offline-validated)
 
 ### Fixed
