@@ -1,12 +1,16 @@
-# Real validation lab (preparation only)
+# Real validation lab
 
-Nothing in this document was executed. Real results are kept apart from offline
-ones and are only reported as PASSED when actually run.
+The runbook below describes the isolated read-only lab. Initial preparation was
+followed by live Ads/MCC reads and a ChatGPT tunnel connection. See the dated
+[evidence and limits](COMMUNITY_UPDATE_2026-11-17.md); a successful read does not
+certify live writes.
 
 ## Isolation rules
 
-* Lab home: `~/.google_ads_mcp_lab/` with its own `.env`, audit DB and key.
-  Never reuse the production `.env`, DB, `.pending.key` or credentials.
+* Lab home: `~/.google_ads_mcp_lab/` with its own `lab.env`, audit DB and key.
+  Never point it at production config/DB/key paths. Credential provenance and
+  account access must be documented; reusing a consented Ads identity does not
+  make the configurations or pending storage shared.
 * `GOOGLE_ADS_MCP_READ_ONLY=true`, auto-approvals OFF, explicit allowlists
   (`GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS`, `GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS`).
 * Authenticated calls need specific written authorization from the owner.
@@ -30,7 +34,7 @@ installation. Checks:
   trimmed). `GOOGLE_ADS_MCP_READ_ONLY` must be true; `AUTO_APPROVE`, `_SPEND`,
   `_DESTRUCTIVE`, `_SENSITIVE` must be off (so `1`, `yes`, `on`, `TRUE` fail).
 * **Strict allowlist**: `GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST` true, a
-  non-empty `GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS` of valid 10-digit IDs; Merchant
+  non-empty `GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS` or `GOOGLE_ADS_MCP_ALLOWED_MANAGER_IDS` of valid 10-digit IDs; manager/login membership is checked; Merchant
   IDs valid positive numbers (and non-empty if the Merchant requirement is on).
 * **Paths**: resolved, absolute, no symlink anywhere in the path, and *real*
   membership in the lab directory (not a name match) for the env file, the audit
@@ -58,8 +62,8 @@ and key. Operator DBs, dotenv files and `<cwd>/.env` are never opened.
 
 | Capability | Status | Blocker |
 |---|---|---|
-| Google Ads read-only | NOT RUN | Needs authorized test account + OAuth in the lab |
+| Google Ads read-only | LIVE READS VERIFIED | MCC hierarchy, two clients and scope/exclusion checks; see dated evidence |
 | Google Ads writes / validate_only against API | NOT RUN | Needs explicit write authorization on a test account |
 | Merchant API v1 read-only | NOT RUN | Needs developer registration of the Cloud project (owner) + Merchant allowlist |
 | Merchant writes | NOT RUN | Same + explicit write authorization |
-| GTM / GA4 | NOT RUN | Out of scope for this release |
+| GTM / GA4 | SEPARATE DRAFT | [Status and remaining gates](MEASUREMENT_STATUS.md) |

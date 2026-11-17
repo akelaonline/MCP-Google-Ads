@@ -1,121 +1,66 @@
-# Connecting Google Ads MCP from Claude or another MCP client
+# Connecting ChatGPT, Claude Desktop and other MCP clients
 
-Google Ads MCP is a server. It does not require a specific AI client: any client that can speak Model Context Protocol and invoke the exposed tools can operate it, subject to the server's own safety and customer-isolation policy.
+Google Ads MCP supports read and write operations. Effective access depends on
+client permissions, the server profile and Google Ads permissions. READ_ONLY=true
+blocks mutations regardless of which client sends the request.
 
-## Local clients: stdio — recommended
+## Start here
 
-The safest/default mode is `stdio`. The MCP client launches the local Python process directly.
+| Task | Guide |
+|---|---|
+| Install with private OAuth/configuration and per-process storage | [Common setup](INSTALL_CLIENTS.md) |
+| Connect ChatGPT web through Secure MCP Tunnel | [ChatGPT](CHATGPT.md) |
+| Connect Claude Desktop via local stdio | [Claude Desktop](CLAUDE_DESKTOP.md) |
+| Propose, approve, confirm and verify campaign changes | [Editing campaigns](EDITING_CAMPAIGNS.md) |
+| Discover MCC clients without entering every ID | [MCC scope](MCC_SCOPE_DISCOVERY.md) |
+| GTM/GA4 integration status | [Measurement status](MEASUREMENT_STATUS.md) |
+| Current integration evidence and limits | [Community update](COMMUNITY_UPDATE_2026-11-17.md) |
 
-Example configuration shape:
+The step-by-step client guides are in Spanish. They include copyable commands,
+configuration, troubleshooting and official source links.
 
-```json
-{
-  "mcpServers": {
-    "google-ads": {
-      "command": "/absolute/path/to/MCP-Google-Ads/.venv/bin/python",
-      "args": ["-m", "google_ads_mcp.server"],
-      "env": {
-        "GOOGLE_ADS_MCP_ENV_FILE": "/absolute/path/to/MCP-Google-Ads/.env"
-      }
-    }
-  }
-}
-```
+## Local and remote are different
 
-This pattern is appropriate for Claude Desktop/Claude Code and any other MCP host that can launch a local stdio server.
+Claude Desktop can launch a stdio process on the Mac. Its local JSON configuration
+does not register a remote connector in claude.ai. Use the native Desktop app and
+check which tools are enabled in the actual conversation.
 
-The client does not receive the Google Ads refresh token directly; the local MCP process reads its own `.env` and performs Google Ads API calls.
+ChatGPT web can reach a local stdio server through OpenAI Secure MCP Tunnel.
+The runtime key authenticates the tunnel, while Google OAuth remains local to
+the Ads server. This route does not require enabling the repository HTTP mode.
 
-## Remote/cloud clients
+A generic remote HTTP client needs a separately authenticated boundary. The repo
+has no remote identity provider. GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true removes
+a startup check; it does not add authentication. Do not expose an unprotected
+write-capable endpoint.
 
-A cloud or web client cannot launch a process on your local computer through stdio. For that case the MCP server must run somewhere reachable by the client and use a network transport.
+## Server policy remains authoritative
 
-This repository supports HTTP, but intentionally does **not** include a remote identity provider. HTTP therefore remains blocked unless explicitly enabled:
+The server enforces READ_ONLY, account scope, risk classification, proposal and
+confirmation, encrypted pending storage and audit history. The client must still
+wait for the operator to review the proposed change before calling confirmation.
+A pending ID is a technical step, not evidence of human review.
 
-```dotenv
-GOOGLE_ADS_MCP_TRANSPORT=http
-GOOGLE_ADS_MCP_HTTP_PORT=8080
-GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true
-```
+READ_ONLY rejects classified write tools before building an Ads client or
+refreshing OAuth. Reports and GAQL can still run. An error from a client security
+review happens before the MCP and must not be described as a server rejection.
 
-`GOOGLE_ADS_MCP_ALLOW_INSECURE_HTTP=true` only removes the startup block. It does not add authentication.
+## Simultaneous clients and processes
 
-A remote deployment must place the MCP behind an authenticated and network-restricted boundary such as an authenticated reverse proxy or another access layer appropriate to the environment. Do not expose a write-capable instance directly to the public Internet.
+Different processes must not share a pending-action DB. In this version,
+confirmation/cancellation locks are process-local. Keep profile files, audit DBs
+and encryption keys separate. Reusing the same OAuth identity is possible when
+it has the required permissions; that does not make pending state shareable.
 
-## Server policy is authoritative
+The optional POSIX launcher scripts/run_profile.py keeps one primary DB owner
+and allocates isolated DB/key directories for additional Claude processes.
+Pending actions in an additional instance stay with that instance's connection;
+the files are retained after shutdown but another fresh instance does not recover
+them automatically. Review and propose again after reconnecting.
 
-The AI client is not trusted to enforce production safety by itself. The MCP server centrally enforces:
+For a sequential migration, stop the previous owner before reusing an existing
+profile and its DB/key. For concurrent clients, use separate profiles.
 
-- `GOOGLE_ADS_MCP_READ_ONLY`;
-- customer allowlists;
-- recursive cross-customer mutation isolation;
-- MCC hierarchy/link read filtering;
-- standard/spend/destructive/sensitive risk classification;
-- propose/confirm execution flow;
-- encrypted durable pending actions;
-- execution audit history.
-
-This means the same local server can be used by different MCP-capable clients without changing its Google Ads safety model.
-
-## Recommended production pattern
-
-For a local operator workstation:
-
-```text
-MCP-capable AI client
-        |
-      stdio
-        |
-Google Ads MCP (local Python process)
-        |
- Google Ads API v26
-```
-
-For a remote/cloud operator:
-
-```text
-MCP-capable cloud client
-        |
- authenticated network boundary
-        |
-Google Ads MCP (HTTP, private server)
-        |
- Google Ads API v26
-```
-
-The second pattern is only safe when the external boundary authenticates and restricts access.
-
-## Switching clients
-
-No migration of Google Ads state is required when moving between MCP clients. Point the new client at the same server installation/configuration, or deploy the same repository/configuration in the intended environment.
-
-Keep these server-side values stable where applicable:
-
-- Google Ads OAuth/developer credentials;
-- customer allowlist;
-- audit DB;
-- pending encryption key;
-- read-only/approval policy.
-
-## First connection test
-
-Ask the client to:
-
-```text
-List my accessible Google Ads customer IDs.
-```
-
-Then, while write mode requires confirmation:
-
-```text
-Propose pausing campaign 123. Do not confirm it.
-```
-
-The expected result is a `pending_action_id` with no live change. Only an explicit `confirm_pending_action(action_id)` should execute the mutation.
-
-See also:
-
-- [`SETUP.md`](SETUP.md)
-- [`SAFETY.md`](SAFETY.md)
-- [`UPDATE_LOCAL.md`](UPDATE_LOCAL.md)
-- [`VALIDATION_CHECKLIST.md`](VALIDATION_CHECKLIST.md)
+Start by reading a permitted account. For a write test, agree on a concrete
+change and inspect the proposal before confirmation. Creating a budget as a
+connectivity check is not a read-only test.

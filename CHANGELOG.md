@@ -5,6 +5,8 @@ Google Ads MCP follows Semantic Versioning. Detailed release notes for productio
 ## Unreleased
 
 ### Added
+- Step-by-step ChatGPT Secure MCP Tunnel and Claude Desktop guides, private per-process profiles, editing/confirmation workflow, current integration evidence, and separate GTM/GA4 readiness status.
+- Optional POSIX `scripts/run_profile.py` launcher: validates mode/scope/approval policy and isolates the extra stdio processes Claude starts for Chat and Cowork/Code. Three offline regressions cover concurrent storage, local policy rejection, and private file permissions. No change to Ads API tools or the safety layer.
 - Allowlist derived from an MCC: `GOOGLE_ADS_MCP_ALLOWED_MANAGER_IDS` (+ `GOOGLE_ADS_MCP_EXCLUDED_CUSTOMER_IDS`) discovers ENABLED client accounts via read-only `customer_client` at startup and freezes them into the existing fail-closed allowlist. Discovery errors never widen the scope. See `docs/MCC_SCOPE_DISCOVERY.md`. The lab preflight accepts this mode.
 
 ### Fixed

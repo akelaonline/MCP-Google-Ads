@@ -10,9 +10,9 @@
 
 # Google Ads MCP
 
-### Operate Google Ads from Claude — don't just read it.
+### Operate Google Ads from ChatGPT or Claude.
 
-**Self-hosted read/write MCP server for Google Ads API v25 with human confirmation, audit logging, MCC isolation, and durable pending actions.**
+**Self-hosted read/write MCP server for Google Ads API v26 with human confirmation, audit logging, MCC isolation, and durable pending actions.**
 
 Built and maintained by **[Alejandro José · Akela](https://github.com/akelaonline)**
 
@@ -35,9 +35,24 @@ Built and maintained by **[Alejandro José · Akela](https://github.com/akelaonl
 
 ---
 
+## Connect ChatGPT or Claude Desktop
+
+- [Step-by-step setup and private profiles](docs/INSTALL_CLIENTS.md)
+- [ChatGPT through Secure MCP Tunnel](docs/CHATGPT.md)
+- [Claude Desktop, local tools and troubleshooting](docs/CLAUDE_DESKTOP.md)
+- [Campaign edits with confirmation](docs/EDITING_CAMPAIGNS.md)
+- [Integration update and validation limits — 2026-11-17](docs/COMMUNITY_UPDATE_2026-11-17.md)
+
+The guides above are in Spanish. ChatGPT supports MCP write tools; an instance
+configured READ_ONLY cannot edit. Local Claude Desktop servers do not appear in
+claude.ai merely because you use the same project. GTM/GA4 remains a separate draft:
+[status](docs/MEASUREMENT_STATUS.md).
+
+---
+
 ## What this is
 
-**Google Ads MCP** is a [Model Context Protocol](https://modelcontextprotocol.io) server that connects Claude —or any compatible MCP client— to **Google Ads API v25** for real account operations.
+**Google Ads MCP** is a [Model Context Protocol](https://modelcontextprotocol.io) server that connects Claude —or any compatible MCP client— to **Google Ads API v26** for real account operations.
 
 It is not designed as another dashboard. It is built for the day-to-day work of agencies and performance teams from a conversation:
 
@@ -238,14 +253,14 @@ Before opening Claude:
 python scripts/validate_local.py
 ```
 
-Version 0.17.0 should finish with:
+The current code validator should finish with:
 
 ```text
 LOCAL VALIDATION GREEN
-validated version: 0.17.0
+validated version: 0.18.1
 ```
 
-The gate runs isolated smoke + Ruff + the full pytest suite. The current reference is **362/362 tests**.
+The gate runs isolated smoke + Ruff + the full pytest suite. Counts depend on the commit; see the [integration evidence](docs/COMMUNITY_UPDATE_2026-11-17.md).
 
 If import fails, first verify that you are using the virtualenv Python:
 
@@ -456,12 +471,12 @@ The goal is not to “give an AI total control.” The goal is to **give a human
 
 ## Current release — 0.18.1 (candidate)
 
-**`0.18.1` is a corrective candidate validated offline only**: not published, not validated against live Google services, not recommended to replace an active install. It fixes `validate_only` being silently dropped (a dry run could execute as a real write), moves Merchant Products/DataSources to **API v1**, adds a **dedicated Merchant scope** (`GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS`, fail-closed), retires what Google retired (`create_smart_campaign`, manual Search language targeting) and makes the December 2026 changes explicit (PMax image extraction, multi-party approvals). Detail: [`docs/RELEASE_0.18.1.md`](docs/RELEASE_0.18.1.md), [Merchant v1](docs/MERCHANT_V1_ONBOARDING.md), [update and rollback](docs/UPDATE_AND_ROLLBACK_0.18.1.md).
+**`0.18.1` remains a candidate without a new release**. Main now includes MCC discovery and early READ_ONLY rejection. Live read-only Ads queries and scope checks have passed; live writes, Merchant and GTM/GA4 are not certified by those reads. See [evidence and limits](docs/COMMUNITY_UPDATE_2026-11-17.md). It fixes `validate_only` being silently dropped (a dry run could execute as a real write), moves Merchant Products/DataSources to **API v1**, adds a **dedicated Merchant scope** (`GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS`, fail-closed), retires what Google retired (`create_smart_campaign`, manual Search language targeting) and makes the December 2026 changes explicit (PMax image extraction, multi-party approvals). Detail: [`docs/RELEASE_0.18.1.md`](docs/RELEASE_0.18.1.md), [Merchant v1](docs/MERCHANT_V1_ONBOARDING.md), [update and rollback](docs/UPDATE_AND_ROLLBACK_0.18.1.md).
 
 | State | What it is |
 |---|---|
 | Recommended | The dependency set in `constraints-certified.txt` (`make install-certified`) |
-| Candidate | `0.18.1` until real validation passes (see the [lab](docs/REAL_VALIDATION_LAB.md)) |
+| Candidate | `0.18.1`; live Ads/MCC reads verified, live writes and Merchant pending (see [evidence](docs/COMMUNITY_UPDATE_2026-11-17.md)) |
 | Beta | Merchant Center tools |
 | Stable reference | `0.17.2` |
 
