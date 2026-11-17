@@ -199,3 +199,92 @@ def test_resolved_scope_is_enforced_by_client_and_safety(monkeypatch, tmp_path):
     assert ctx.client.filter_allowed_customer_ids([CLIENT_A, OUTSIDE, CANCELLED]) == [
         CLIENT_A
     ]
+
+
+# --- independent review findings (regressions written before the fix) ---------
+
+
+def test_empty_effective_scope_is_rejected_even_without_required_flag():
+    """An empty allowlist means "unrestricted" downstream: it must never result."""
+    settings = _settings(
+        require_customer_allowlist=False,
+        excluded_customer_ids=frozenset({MCC, CLIENT_A, CLIENT_B, CLIENT_C}),
+    )
+    with pytest.raises(GoogleAdsMcpError, match="no accounts"):
+        resolve_manager_scope(settings, FakeFactory(_ROWS))
+
+
+def test_failed_discovery_with_manager_excluded_is_rejected_not_open():
+    settings = _settings(
+        require_customer_allowlist=False, excluded_customer_ids=frozenset({MCC})
+    )
+    factory = FakeFactory(_ROWS, error=RuntimeError("boom"))
+    with pytest.raises(GoogleAdsMcpError, match="no accounts"):
+        resolve_manager_scope(settings, factory)
+
+
+def test_manager_scope_always_enforces_a_strict_allowlist():
+    settings = _settings(require_customer_allowlist=False)
+    resolved = resolve_manager_scope(settings, FakeFactory(_ROWS))
+    assert resolved.require_customer_allowlist is True
+    assert resolved.allowed_customer_ids
+
+
+def test_exclusions_win_over_explicit_ids_without_managers():
+    settings = _settings(
+        allowed_manager_ids=frozenset(),
+        allowed_customer_ids=frozenset({CLIENT_A, CLIENT_B}),
+        excluded_customer_ids=frozenset({CLIENT_B}),
+    )
+    factory = FakeFactory(_ROWS)
+    resolved = resolve_manager_scope(settings, factory)
+    assert resolved.allowed_customer_ids == {CLIENT_A}
+    assert factory.calls == []
+
+
+def test_exclusions_that_empty_an_explicit_allowlist_are_rejected():
+    settings = _settings(
+        allowed_manager_ids=frozenset(),
+        require_customer_allowlist=False,
+        allowed_customer_ids=frozenset({CLIENT_A}),
+        excluded_customer_ids=frozenset({CLIENT_A}),
+    )
+    with pytest.raises(GoogleAdsMcpError, match="no accounts"):
+        resolve_manager_scope(settings, FakeFactory(_ROWS))
+
+
+def test_exclusions_without_any_allowlist_source_are_rejected_clearly():
+    settings = _settings(
+        allowed_manager_ids=frozenset(),
+        allowed_customer_ids=frozenset(),
+        require_customer_allowlist=False,
+        excluded_customer_ids=frozenset({CLIENT_A}),
+    )
+    with pytest.raises(GoogleAdsMcpError, match="EXCLUDED_CUSTOMER_IDS"):
+        resolve_manager_scope(settings, FakeFactory(_ROWS))
+
+
+def test_built_client_denies_everything_when_scope_would_be_empty(
+    monkeypatch, tmp_path
+):
+    """End to end: the real client must not fall back to unrestricted access."""
+    factory = FakeFactory(_ROWS, error=RuntimeError("boom"))
+    monkeypatch.setattr(scope_discovery, "_default_client_factory", factory)
+    for key, value in {
+        "GOOGLE_ADS_MCP_READ_ONLY": "true",
+        "GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST": "false",
+        "GOOGLE_ADS_MCP_ALLOWED_MANAGER_IDS": MCC,
+        "GOOGLE_ADS_MCP_EXCLUDED_CUSTOMER_IDS": MCC,
+        "GOOGLE_ADS_MCP_AUDIT_DB": str(tmp_path / "audit.db"),
+        "GOOGLE_ADS_CLIENT_ID": "decoy",
+        "GOOGLE_ADS_CLIENT_SECRET": "decoy",
+        "GOOGLE_ADS_REFRESH_TOKEN": "decoy",
+    }.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS", raising=False)
+    monkeypatch.delenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", raising=False)
+
+    from google_ads_mcp.context import build_context
+
+    with pytest.raises(GoogleAdsMcpError):
+        build_context()

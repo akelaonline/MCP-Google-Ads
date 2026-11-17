@@ -77,14 +77,40 @@ def discover_manager_clients(
         return ManagerDiscovery(manager_id, frozenset(), error=type(exc).__name__)
 
 
+def _empty_scope_error() -> GoogleAdsMcpError:
+    # Downstream components read an empty allowlist as "unrestricted" when the
+    # allowlist is not required, so an empty effective scope must never be returned.
+    return GoogleAdsMcpError(
+        "The customer allowlist resolved to no accounts. Check the manager IDs, the "
+        "OAuth identity's access and GOOGLE_ADS_MCP_EXCLUDED_CUSTOMER_IDS."
+    )
+
+
 def resolve_manager_scope(
     settings: Settings,
     client_factory: Callable[[Settings, str], Any] | None = None,
 ) -> Settings:
-    """Return settings whose allowlist includes the discovered MCC clients."""
+    """Return settings whose allowlist includes the discovered MCC clients.
+
+    Exclusions always win, with or without managers. A resolved scope is never
+    empty: that would silently mean unrestricted access, so it is refused.
+    """
     managers = settings.allowed_manager_ids
+    excluded = frozenset(settings.excluded_customer_ids)
+
     if not managers:
-        return settings
+        if not excluded:
+            return settings
+        if not settings.allowed_customer_ids:
+            raise GoogleAdsMcpError(
+                "GOOGLE_ADS_MCP_EXCLUDED_CUSTOMER_IDS needs an allowlist to subtract "
+                "from: set GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS or "
+                "GOOGLE_ADS_MCP_ALLOWED_MANAGER_IDS, or remove the exclusions."
+            )
+        effective = set(settings.allowed_customer_ids) - excluded
+        if not effective:
+            raise _empty_scope_error()
+        return replace(settings, allowed_customer_ids=frozenset(effective))
 
     login = normalize_customer_id(settings.login_customer_id or "")
     if not login:
@@ -111,24 +137,21 @@ def resolve_manager_scope(
             )
         discovered |= result.clients
 
-    effective = (set(settings.allowed_customer_ids) | set(managers) | discovered) - set(
-        settings.excluded_customer_ids
-    )
-    if settings.require_customer_allowlist and not effective:
-        raise GoogleAdsMcpError(
-            "Customer allowlist is required but the manager scope resolved to no "
-            "accounts. Check the MCC IDs, the OAuth identity's access and the "
-            "exclusion list."
-        )
+    effective = (
+        set(settings.allowed_customer_ids) | set(managers) | discovered
+    ) - excluded
+    if not effective:
+        raise _empty_scope_error()
     logger.info(
         "Customer allowlist resolved from manager scope: %d accounts (%d discovered, "
         "%d excluded).",
         len(effective),
         len(discovered),
-        len(settings.excluded_customer_ids),
+        len(excluded),
     )
     return replace(
         settings,
         allowed_customer_ids=frozenset(effective),
+        require_customer_allowlist=True,
         login_customer_id=login,
     )
