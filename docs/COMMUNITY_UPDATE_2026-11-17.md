@@ -16,7 +16,8 @@ Ya están en main:
 1. [Instalación común y perfiles](INSTALL_CLIENTS.md).
 2. [ChatGPT por túnel](CHATGPT.md) o [Claude Desktop local](CLAUDE_DESKTOP.md).
 3. [Edición con confirmación](EDITING_CAMPAIGNS.md).
-4. [Estado de GTM/GA4](MEASUREMENT_STATUS.md).
+4. [Retirar una conexión anterior sin borrar dependencias](RETIRE_OLD_CONNECTION.md).
+5. [Estado de GTM/GA4](MEASUREMENT_STATUS.md).
 
 El lanzador `scripts/run_profile.py` soporta los procesos adicionales que Claude
 abre para Chat y Cowork/Code: mantiene el lock de la base principal y asigna
@@ -36,10 +37,17 @@ no modifica las tools, el cliente Google Ads ni la safety layer de esa base.
 | Suite combinada de #20 y #21 | Reporte de 547 tests, Ruff y lifecycle de 463 tools; no es una certificación nueva de escritura en vivo |
 | Google Ads de lectura con MCC | Lecturas reales reportadas en dos clientes y rechazo de cuentas fuera de alcance/excluidas |
 | ChatGPT por túnel | Túnel conectado y consultas reales de Ads verificadas |
-| Editor local en Claude Desktop | Consulta real `get_account_summary` reportada por el operador desde `google-ads-editor`: nombre, moneda, zona horaria y tipo de cuenta correctos; sin propuesta ni mutación. Edición real todavía no comprobada |
+| Editor local en Claude Desktop | Lectura y edición real reportadas por el operador desde `google-ads-editor`: dos altas de keywords PHRASE y tres pausas de BROAD. Una consulta posterior independiente por el perfil READ_ONLY verificó las dos altas activas, las tres pausas y los diez criterios previos conservados; presupuestos, estrategias y límites CPC de cuatro campañas sin cambios |
 | Escritura real desde ChatGPT con este montaje | No verificada; una prueba de propuesta de presupuesto fue rechazada por la revisión del cliente antes de llegar al MCP |
 | GTM/GA4 | Base separada: 142 tests pasan; gate completo y OAuth/E2E aún pendientes |
 | Merchant API | Onboarding y validación real separados; no habilitados por esta actualización |
+
+La edición se realizó con el lanzador local corregido del instalador, sobre la base
+revisada indicada arriba. No se ejecutó mediante el nuevo `scripts/run_profile.py`
+de este PR: su evidencia sigue siendo las tres pruebas offline. La lectura posterior
+comprueba el estado de esos recursos, no certifica todos los tipos de escritura,
+la trazabilidad completa de las acciones ni una mejora de rendimiento.
+Los datos identificatorios del cliente y los IDs de acciones permanecen privados.
 
 **Una conexión READ_ONLY no prueba que ChatGPT sea incapaz de editar.**
 La documentación oficial actual admite tools de lectura y escritura.
