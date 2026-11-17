@@ -96,6 +96,14 @@ el operador debe revisar la propuesta y el cliente debe esperar esa autorizació
 No publiques logs crudos: pueden contener IDs de cuentas y errores con datos de recursos.
 Nunca compartas el contenido del env ni el JSON completo si contiene otros secretos.
 
+## Retirar una conexión anterior
+
+Después de comprobar una lectura y la edición autorizada con el perfil nuevo,
+podés retirar la entrada anterior desde la misma pantalla de servidores locales.
+Conservá `google-ads-editor`; eliminá únicamente la entrada vieja que identificaste.
+Seguí [el procedimiento con respaldo y revisión de dependencias](RETIRE_OLD_CONNECTION.md).
+Quitar la entrada no requiere borrar el laboratorio, el venv, el OAuth ni los historiales.
+
 ## Claude web
 
 El navegador necesita un MCP remoto alcanzable por Anthropic.
