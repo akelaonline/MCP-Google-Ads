@@ -187,8 +187,6 @@ class GoogleAdsClientWrapper:
         customer allowlist. Other intentional cross-account callers may opt in
         explicitly after validating their target customer.
         """
-        import inspect
-
         from google.ads.googleads.errors import GoogleAdsException
 
         customer_id = self.assert_customer_allowed(customer_id)
@@ -227,19 +225,16 @@ class GoogleAdsClientWrapper:
         else:
             operation_value = operation_list
 
-        kwargs: dict[str, Any] = {
-            "customer_id": customer_id,
-            operations_field: operation_value,
-        }
-        try:
-            accepted_params = set(inspect.signature(method).parameters)
-        except (TypeError, ValueError):
-            accepted_params = None
-
-        if accepted_params is None or "partial_failure" in accepted_params:
-            kwargs["partial_failure"] = partial_failure
-        if accepted_params is None or "validate_only" in accepted_params:
-            kwargs["validate_only"] = validate_only
+        kwargs = _build_mutate_kwargs(
+            method,
+            service_name=service_name,
+            method_name=method_name,
+            customer_id=customer_id,
+            operations_field=operations_field,
+            operations_value=operation_value,
+            partial_failure=partial_failure,
+            validate_only=validate_only,
+        )
 
         try:
             return method(**kwargs)
@@ -266,20 +261,16 @@ class GoogleAdsClientWrapper:
 
         _assert_mutation_targets_customer(customer_id, operation_list)
 
-        import inspect
-
-        kwargs: dict[str, Any] = {
-            "customer_id": customer_id,
-            "mutate_operations": operation_list,
-        }
-        try:
-            accepted_params = set(inspect.signature(service.mutate).parameters)
-        except (TypeError, ValueError):
-            accepted_params = None
-        if accepted_params is None or "partial_failure" in accepted_params:
-            kwargs["partial_failure"] = False
-        if accepted_params is None or "validate_only" in accepted_params:
-            kwargs["validate_only"] = validate_only
+        kwargs = _build_mutate_kwargs(
+            service.mutate,
+            service_name="GoogleAdsService",
+            method_name="mutate",
+            customer_id=customer_id,
+            operations_field="mutate_operations",
+            operations_value=operation_list,
+            partial_failure=False,
+            validate_only=validate_only,
+        )
 
         try:
             return service.mutate(**kwargs)
@@ -297,6 +288,90 @@ class GoogleAdsClientWrapper:
                 if owner is None or owner == request_customer:
                     continue
                 self.assert_customer_allowed(owner)
+
+
+def _request_message_type(method: Any, request_param: Any) -> Any | None:
+    """Return the proto-plus request class from a GAPIC ``request`` annotation."""
+    import typing
+
+    annotation = getattr(request_param, "annotation", None)
+    try:
+        annotation = typing.get_type_hints(method).get("request", annotation)
+    except (NameError, TypeError, AttributeError):
+        # Unresolved forward references: keep the raw annotation.
+        annotation = getattr(request_param, "annotation", None)
+    candidates = typing.get_args(annotation) or (annotation,)
+    for candidate in candidates:
+        if isinstance(candidate, type) and hasattr(candidate, "meta"):
+            return candidate
+    return None
+
+
+def _build_mutate_kwargs(
+    method: Any,
+    *,
+    service_name: str,
+    method_name: str,
+    customer_id: str,
+    operations_field: str,
+    operations_value: Any,
+    partial_failure: bool,
+    validate_only: bool,
+) -> dict[str, Any]:
+    """Build the keyword arguments for a service mutate call.
+
+    GAPIC service stubs flatten only ``customer_id`` and the operations into
+    keyword arguments. ``partial_failure`` and ``validate_only`` exist only as
+    fields of the request message, so they must travel in ``request=``. A
+    ``validate_only=True`` request must never be silently degraded into a real
+    mutation: if it cannot be delivered, the call is refused.
+    """
+    import inspect
+
+    kwargs: dict[str, Any] = {
+        "customer_id": customer_id,
+        operations_field: operations_value,
+    }
+    try:
+        params = inspect.signature(method).parameters
+    except (TypeError, ValueError):
+        kwargs["partial_failure"] = partial_failure
+        kwargs["validate_only"] = validate_only
+        return kwargs
+
+    accepted = set(params)
+    has_partial = "partial_failure" in accepted
+    has_validate = "validate_only" in accepted
+
+    if "request" in accepted and not (has_partial and has_validate):
+        request_type = _request_message_type(method, params["request"])
+        fields = set(getattr(getattr(request_type, "meta", None), "fields", {}) or {})
+        if request_type is not None and {"customer_id", operations_field} <= fields:
+            payload: dict[str, Any] = {
+                "customer_id": customer_id,
+                operations_field: operations_value,
+            }
+            if "partial_failure" in fields:
+                payload["partial_failure"] = partial_failure
+            if "validate_only" in fields:
+                payload["validate_only"] = validate_only
+            elif validate_only:
+                raise GoogleAdsMcpError(
+                    f"{service_name}.{method_name} does not support validate_only; "
+                    "refusing to run the mutation. Nothing was sent to Google Ads."
+                )
+            return {"request": request_type(**payload)}
+
+    if has_partial:
+        kwargs["partial_failure"] = partial_failure
+    if has_validate:
+        kwargs["validate_only"] = validate_only
+    elif validate_only:
+        raise GoogleAdsMcpError(
+            f"{service_name}.{method_name} cannot carry validate_only; refusing to "
+            "run the mutation. Nothing was sent to Google Ads."
+        )
+    return kwargs
 
 
 _IRREGULAR_MUTATE_METHODS: dict[str, str] = {
@@ -465,9 +540,7 @@ def _normalize_campaign_create(client, operation) -> None:
     campaign_pb = getattr(campaign, "_pb", None)
     political_value = getattr(campaign, "contains_eu_political_advertising", 0)
     if not political_value:
-        campaign.contains_eu_political_advertising = (
-            client.enums.EuPoliticalAdvertisingStatusEnum.DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING
-        )
+        campaign.contains_eu_political_advertising = client.enums.EuPoliticalAdvertisingStatusEnum.DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING
     if (
         campaign.advertising_channel_type
         != client.enums.AdvertisingChannelTypeEnum.PERFORMANCE_MAX

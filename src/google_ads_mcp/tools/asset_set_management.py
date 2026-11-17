@@ -103,6 +103,9 @@ def register(mcp, ctx: AppContext) -> None:
             raise ValueError(f"asset_set_type must be one of {sorted(_ASSET_SET_TYPES)}.")
         if clean_type == "MERCHANT_CENTER_FEED" and merchant_id is None:
             raise ValueError("merchant_id is required for MERCHANT_CENTER_FEED.")
+        if merchant_id is not None:
+            # Merchant account IDs are a separate scope from Ads customer IDs.
+            ctx.assert_merchant_allowed(_id(merchant_id, "merchant_id"))
 
         raw = ctx.client.raw
         operation = raw.get_type("AssetSetOperation")

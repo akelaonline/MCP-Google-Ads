@@ -16,8 +16,8 @@
 
 Built and maintained by **[Alejandro José · Akela](https://github.com/akelaonline)**
 
-[![Version](https://img.shields.io/badge/version-0.18.0-111111?style=for-the-badge)](docs/RELEASE_0.18.0.md)
-[![Tests](https://img.shields.io/badge/tests-382%2F382-16a34a?style=for-the-badge)](docs/RELEASE_0.18.0.md)
+[![Version](https://img.shields.io/badge/version-0.18.1-111111?style=for-the-badge)](docs/RELEASE_0.18.1.md)
+[![Tests](https://img.shields.io/badge/tests-514%2F514-16a34a?style=for-the-badge)](docs/RELEASE_0.18.1.md)
 [![Google Ads API](https://img.shields.io/badge/Google_Ads_API-v26-4285F4?style=for-the-badge&logo=googleads&logoColor=white)](https://developers.google.com/google-ads/api)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](pyproject.toml)
 [![MIT](https://img.shields.io/badge/license-MIT-black?style=for-the-badge)](LICENSE)
@@ -194,6 +194,8 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
+# or, with exactly the certified dependencies:
+# make install-certified
 ```
 
 On Windows PowerShell:
@@ -452,9 +454,22 @@ The goal is not to “give an AI total control.” The goal is to **give a human
 
 ---
 
-## Current release — 0.17.2
+## Current release — 0.18.1 (candidate)
 
-`0.18.0` is an **offline-validated release candidate** — not yet production-validated and not recommended to replace working installs. It migrates to **Google Ads API v26** (`google-ads>=34,<36`), makes the Developer Token optional after its official sunset (2026-09-09), migrates YouTube uploads to `ResumableUploadSession`, and hardens upload proposal->confirmation. Detail in [`docs/RELEASE_0.18.0.md`](docs/RELEASE_0.18.0.md). `0.17.2` remains the stable historical reference ([`docs/RELEASE_0.17.2.md`](docs/RELEASE_0.17.2.md)).
+**`0.18.1` is a corrective candidate validated offline only**: not published, not validated against live Google services, not recommended to replace an active install. It fixes `validate_only` being silently dropped (a dry run could execute as a real write), moves Merchant Products/DataSources to **API v1**, adds a **dedicated Merchant scope** (`GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS`, fail-closed), retires what Google retired (`create_smart_campaign`, manual Search language targeting) and makes the December 2026 changes explicit (PMax image extraction, multi-party approvals). Detail: [`docs/RELEASE_0.18.1.md`](docs/RELEASE_0.18.1.md), [Merchant v1](docs/MERCHANT_V1_ONBOARDING.md), [update and rollback](docs/UPDATE_AND_ROLLBACK_0.18.1.md).
+
+| State | What it is |
+|---|---|
+| Recommended | The dependency set in `constraints-certified.txt` (`make install-certified`) |
+| Candidate | `0.18.1` until real validation passes (see the [lab](docs/REAL_VALIDATION_LAB.md)) |
+| Beta | Merchant Center tools |
+| Stable reference | `0.17.2` |
+
+Google Ads API **v26**: minor versions v26.1 and v26.2 ship *inside* the `v26` package (`google-ads` 35.0.0 adds v26.1; 35.1.0 adds v26.2).
+
+### History: 0.18.0
+
+`0.18.0` is an **offline-validated release candidate** — not yet production-validated and not recommended to replace working installs. It migrates to **Google Ads API v26** (`google-ads>=34,<36`), makes the Developer Token optional after its official sunset (2026-09-09), migrates YouTube uploads to `ResumableUploadSession`, and hardens upload proposal->confirmation. Detail in [`docs/RELEASE_0.18.0.md`](docs/RELEASE_0.18.1.md). `0.17.2` remains the stable historical reference ([`docs/RELEASE_0.17.2.md`](docs/RELEASE_0.17.2.md)).
 
 Everything below about `0.17.0` still applies unchanged — 0.17.1 doesn't touch any functionality, it only fixes that specific bug.
 
@@ -519,7 +534,8 @@ Full guide: [`docs/SETUP.md#troubleshooting`](docs/SETUP.md#troubleshooting).
 | [`docs/EXAMPLES.md`](docs/EXAMPLES.md) | conversations and ready-to-use queries |
 | [`docs/V25_SERVICE_COVERAGE.md`](docs/V25_SERVICE_COVERAGE.md) | service-by-service API v25 coverage |
 | [`docs/VALIDATION_CHECKLIST.md`](docs/VALIDATION_CHECKLIST.md) | validation before production |
-| [`docs/RELEASE_0.18.0.md`](docs/RELEASE_0.18.0.md) | release candidate (offline) |
+| [`docs/RELEASE_0.18.1.md`](docs/RELEASE_0.18.1.md) | corrective candidate (offline) |
+| [`docs/RELEASE_0.18.0.md`](docs/RELEASE_0.18.1.md) | release candidate (offline) |
 | [`docs/RELEASE_0.17.1.md`](docs/RELEASE_0.17.1.md) | previous release (first half of the mutate_atomic fix) |
 | [`docs/RELEASE_0.17.0.md`](docs/RELEASE_0.17.0.md) | previous release (Merchant Center) |
 | [`CHANGELOG.md`](CHANGELOG.md) | complete history |

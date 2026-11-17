@@ -6,6 +6,12 @@ import argparse
 import os
 import threading
 
+# A stdio MCP server must not phone home at startup. FastMCP's update check makes a
+# network call that can fail in proxied environments (e.g. a SOCKS proxy without
+# socksio) and break the lifecycle before tools/list. Opt back in by exporting
+# FASTMCP_CHECK_FOR_UPDATES=true. Must be set before FastMCP is imported.
+os.environ.setdefault("FASTMCP_CHECK_FOR_UPDATES", "off")
+
 from fastmcp import FastMCP
 
 from .context import build_context

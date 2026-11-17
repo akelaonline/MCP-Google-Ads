@@ -64,6 +64,11 @@ def register(mcp, ctx: AppContext) -> None:
             raise ValueError("target_cpa must be greater than 0.")
         if target_roas is not None and target_roas <= 0:
             raise ValueError("target_roas must be greater than 0.")
+        if str(channel_type).strip().upper() == "SMART":
+            raise ValueError(
+                "Google Ads no longer allows creating new Smart Campaigns (since "
+                "2026-09-23). Use channel_type SEARCH or create_performance_max_campaign."
+            )
 
         client = ctx.client.raw
         operation = client.get_type("CampaignOperation")

@@ -329,7 +329,9 @@ def test_upload_offline_conversion_attaches_custom_variables():
 
     (click_conversion,) = captured["conversions"]
     assert len(click_conversion.custom_variables) == 1
-    assert click_conversion.custom_variables[0].conversion_custom_variable == "lead_source"
+    assert (
+        click_conversion.custom_variables[0].conversion_custom_variable == "lead_source"
+    )
     assert click_conversion.custom_variables[0].value == "web"
 
 

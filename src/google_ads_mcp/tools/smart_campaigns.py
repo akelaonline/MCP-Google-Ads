@@ -1,21 +1,18 @@
-"""Smart Campaign suggestions, atomic creation, settings, and status for API v25."""
+"""Smart Campaign suggestions, settings, and status (API v26).
+
+Google stopped allowing new Smart Campaigns on 2026-09-23: ``create_smart_campaign``
+remains registered only to return guidance. Existing Smart Campaigns can still be
+read and updated.
+"""
 
 from __future__ import annotations
 
 import proto
 from google.protobuf import field_mask_pb2
 
-from ..campaign_compat import (
-    DEFAULT_EU_POLITICAL_ADVERTISING,
-    apply_required_campaign_fields,
-)
-from ..client import micros
+from ..campaign_compat import DEFAULT_EU_POLITICAL_ADVERTISING
 from ..context import AppContext
 from ..errors import GoogleAdsMcpError, format_google_ads_exception
-
-_BUDGET_TEMP_ID = "-1"
-_CAMPAIGN_TEMP_ID = "-2"
-_AD_GROUP_TEMP_ID = "-3"
 
 
 def _clean_business(
@@ -225,173 +222,27 @@ def register(mcp, ctx: AppContext) -> None:
         descriptions: list[str] | None = None,
         contains_eu_political_advertising: str = DEFAULT_EU_POLITICAL_ADVERTISING,
     ) -> dict:
-        """Propose atomically creating a complete PAUSED Smart Campaign.
+        """Smart Campaign creation is no longer available (retired by Google).
 
-        Budget, campaign, SmartCampaignSetting, targeting criteria, single ad group,
-        and Smart Campaign ad are created in one GoogleAdsService.Mutate request.
-        Supply at least 3 non-empty headlines and 2 descriptions after reviewing
-        SmartCampaignSuggestService output or writing your own.
+        Google Ads stopped allowing new Smart Campaigns on 2026-09-23. This tool
+        is kept for compatibility, never mutates anything, and returns guidance.
+        Existing Smart Campaigns can still be read and updated with
+        ``get_smart_campaign_status``, ``update_smart_campaign_setting`` and the
+        normal status/budget tools.
         """
-        customer = ctx.client.assert_customer_allowed(customer_id)
-        campaign_name = name.strip()
-        if not campaign_name:
-            raise ValueError("name must not be empty.")
-        if daily_budget <= 0:
-            raise ValueError("daily_budget must be greater than 0.")
-        url = final_url.strip()
-        if not url.startswith(("https://", "http://")):
-            raise ValueError("final_url must be an http:// or https:// URL.")
-        business, profile = _clean_business(business_name, business_profile_location)
-        language = language_code.strip().lower()
-        if len(language) != 2 or not language.isalpha():
-            raise ValueError("language_code must be a two-letter code such as en or es.")
-        country = country_code.strip().upper()
-        if len(country) != 2 or not country.isalpha():
-            raise ValueError("country_code must be a two-letter ISO-3166 code.")
-        clean_headlines = [str(v).strip() for v in headlines or [] if str(v).strip()]
-        clean_descriptions = [str(v).strip() for v in descriptions or [] if str(v).strip()]
-        if len(clean_headlines) < 3:
-            raise ValueError("Smart Campaign ads require at least 3 non-empty headlines.")
-        if len(clean_descriptions) < 2:
-            raise ValueError("Smart Campaign ads require at least 2 non-empty descriptions.")
-        keyword_infos = _keyword_theme_infos(ctx.client.raw, keyword_themes)
-        if not keyword_infos:
-            raise ValueError("Provide at least one keyword theme.")
-        if not geo_target_ids:
-            raise ValueError("Provide at least one geo_target_id.")
-
-        raw = ctx.client.raw
-        operations = []
-        campaign_budget_service = raw.get_service("CampaignBudgetService")
-        campaign_service = raw.get_service("CampaignService")
-        smart_setting_service = raw.get_service("SmartCampaignSettingService")
-        ad_group_service = raw.get_service("AdGroupService")
-        geo_service = raw.get_service("GeoTargetConstantService")
-
-        # Budget.
-        op = raw.get_type("MutateOperation")
-        budget = op.campaign_budget_operation.create
-        budget.name = f"{campaign_name} budget"
-        budget.amount_micros = micros(daily_budget)
-        budget.delivery_method = raw.enums.BudgetDeliveryMethodEnum.STANDARD
-        budget.type_ = raw.enums.BudgetTypeEnum.SMART_CAMPAIGN
-        budget.resource_name = campaign_budget_service.campaign_budget_path(
-            customer, _BUDGET_TEMP_ID
-        )
-        operations.append(op)
-
-        # Campaign.
-        op = raw.get_type("MutateOperation")
-        campaign = op.campaign_operation.create
-        campaign.name = campaign_name
-        campaign.status = raw.enums.CampaignStatusEnum.PAUSED
-        campaign.advertising_channel_type = raw.enums.AdvertisingChannelTypeEnum.SMART
-        campaign.advertising_channel_sub_type = (
-            raw.enums.AdvertisingChannelSubTypeEnum.SMART_CAMPAIGN
-        )
-        campaign.resource_name = campaign_service.campaign_path(customer, _CAMPAIGN_TEMP_ID)
-        campaign.campaign_budget = campaign_budget_service.campaign_budget_path(
-            customer, _BUDGET_TEMP_ID
-        )
-        apply_required_campaign_fields(
-            raw,
-            campaign,
-            contains_eu_political_advertising=contains_eu_political_advertising,
-        )
-        operations.append(op)
-
-        # SmartCampaignSetting is created via UPDATE.
-        op = raw.get_type("MutateOperation")
-        setting = op.smart_campaign_setting_operation.update
-        setting.resource_name = smart_setting_service.smart_campaign_setting_path(
-            customer, _CAMPAIGN_TEMP_ID
-        )
-        setting.final_url = url
-        setting.advertising_language_code = language
-        if profile:
-            setting.business_profile_location = profile
-        else:
-            setting.business_name = business
-        setting_paths = ["final_url", "advertising_language_code"]
-        setting_paths.append("business_profile_location" if profile else "business_name")
-        if phone_number:
-            setting.phone_number.country_code = country
-            setting.phone_number.phone_number = phone_number.strip()
-            setting_paths.append("phone_number")
-        op.smart_campaign_setting_operation.update_mask.CopyFrom(
-            field_mask_pb2.FieldMask(paths=setting_paths)
-        )
-        operations.append(op)
-
-        # Keyword themes.
-        for keyword_info in keyword_infos:
-            op = raw.get_type("MutateOperation")
-            criterion = op.campaign_criterion_operation.create
-            criterion.campaign = campaign_service.campaign_path(customer, _CAMPAIGN_TEMP_ID)
-            criterion.keyword_theme.CopyFrom(keyword_info)
-            operations.append(op)
-
-        # Locations.
-        for value in geo_target_ids:
-            geo_id = str(value).strip()
-            if not geo_id.isdigit():
-                raise ValueError("geo_target_ids must contain numeric IDs.")
-            op = raw.get_type("MutateOperation")
-            criterion = op.campaign_criterion_operation.create
-            criterion.campaign = campaign_service.campaign_path(customer, _CAMPAIGN_TEMP_ID)
-            criterion.location.geo_target_constant = geo_service.geo_target_constant_path(geo_id)
-            operations.append(op)
-
-        # Single Smart Campaign ad group.
-        op = raw.get_type("MutateOperation")
-        ad_group = op.ad_group_operation.create
-        ad_group.resource_name = ad_group_service.ad_group_path(customer, _AD_GROUP_TEMP_ID)
-        ad_group.name = f"{campaign_name} ad group"
-        ad_group.campaign = campaign_service.campaign_path(customer, _CAMPAIGN_TEMP_ID)
-        ad_group.type_ = raw.enums.AdGroupTypeEnum.SMART_CAMPAIGN_ADS
-        operations.append(op)
-
-        # Smart Campaign ad.
-        op = raw.get_type("MutateOperation")
-        ad_group_ad = op.ad_group_ad_operation.create
-        ad_group_ad.ad_group = ad_group_service.ad_group_path(customer, _AD_GROUP_TEMP_ID)
-        ad_group_ad.ad.type_ = raw.enums.AdTypeEnum.SMART_CAMPAIGN_AD
-        for text in clean_headlines:
-            asset = raw.get_type("AdTextAsset")
-            asset.text = text
-            ad_group_ad.ad.smart_campaign_ad.headlines.append(asset)
-        for text in clean_descriptions:
-            asset = raw.get_type("AdTextAsset")
-            asset.text = text
-            ad_group_ad.ad.smart_campaign_ad.descriptions.append(asset)
-        operations.append(op)
-
-        def execute():
-            return ctx.client.mutate_atomic(customer, operations)
-
-        return ctx.safety.propose(
-            tool_name="create_smart_campaign",
-            customer_id=customer,
-            description=(
-                f"Atomically create complete Smart Campaign '{campaign_name}' PAUSED "
-                f"with daily budget {daily_budget}"
+        ctx.client.assert_customer_allowed(customer_id)
+        return {
+            "status": "unsupported",
+            "mutations_executed": 0,
+            "reason": (
+                "Google Ads no longer allows creating new Smart Campaigns "
+                "(effective 2026-09-23); existing ones keep serving and can be updated."
             ),
-            payload={
-                "name": campaign_name,
-                "daily_budget": daily_budget,
-                "final_url": url,
-                "business_name": business,
-                "business_profile_location": profile,
-                "language_code": language,
-                "country_code": country,
-                "geo_target_ids": [str(v) for v in geo_target_ids],
-                "keyword_theme_count": len(keyword_infos),
-                "headline_count": len(clean_headlines),
-                "description_count": len(clean_descriptions),
-                "contains_eu_political_advertising": contains_eu_political_advertising,
-            },
-            execute=execute,
-        )
+            "guidance": (
+                "Create a Search campaign (create_campaign) or a Performance Max "
+                "campaign (create_performance_max_campaign) instead."
+            ),
+        }
 
     @mcp.tool()
     def get_smart_campaign_status(customer_id: str, campaign_id: str) -> dict:

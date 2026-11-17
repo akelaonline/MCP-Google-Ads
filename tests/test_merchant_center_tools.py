@@ -14,16 +14,24 @@ from conftest import FakeAuditLog, FakeMcp
 
 from google_ads_mcp.context import AppContext
 from google_ads_mcp.errors import GoogleAdsMcpError
+from google_ads_mcp.merchant_scope import MerchantScope
 from google_ads_mcp.safety import SafetyLayer
 from google_ads_mcp.tools import merchant_center
 
 
 class FakeMerchantClient:
-    def __init__(self, response=None, default_account_id=None):
+    def __init__(self, response=None, default_account_id=None, scope=None):
         self.calls: list[dict] = []
         self._response = response if response is not None else {}
         self.configured = True
         self.default_account_id = default_account_id
+        self.scope = scope if scope is not None else MerchantScope()
+
+    def assert_merchant_allowed(self, merchant_id):
+        return self.scope.assert_allowed(merchant_id)
+
+    def filter_allowed_accounts(self, accounts):
+        return self.scope.filter_accounts(accounts)
 
     def request(self, method, api, version, path, *, body=None, query=None, timeout=60):
         self.calls.append(
@@ -43,7 +51,9 @@ def _fake_settings():
     return SimpleNamespace(merchant_center_refresh_token=None)
 
 
-def _ctx(merchant, *, auto_approve: bool = True, auto_approve_destructive: bool | None = None) -> AppContext:
+def _ctx(
+    merchant, *, auto_approve: bool = True, auto_approve_destructive: bool | None = None
+) -> AppContext:
     safety = SafetyLayer(
         auto_approve=auto_approve,
         auto_approve_destructive=auto_approve_destructive,
@@ -74,10 +84,14 @@ def test_get_configuration_reports_status():
         "configured": True,
         "default_merchant_id": "123",
         "uses_dedicated_refresh_token": False,
+        "api_version": "v1",
+        "allowed_merchant_ids": [],
+        "merchant_scope_enforced": False,
+        "merchant_access_blocked_missing_scope": False,
     }
 
 
-def test_list_products_uses_v1beta_products_api():
+def test_list_products_uses_v1_products_api():
     merchant = FakeMerchantClient(response={"products": [{"name": "p1"}]})
     tools, _ = _register(merchant)
     result = tools["list_merchant_center_products"](merchant_id="123456789")
@@ -85,7 +99,7 @@ def test_list_products_uses_v1beta_products_api():
     call = merchant.calls[0]
     assert call["method"] == "GET"
     assert call["api"] == "products"
-    assert call["version"] == "v1beta"
+    assert call["version"] == "v1"
     assert call["path"] == "accounts/123456789/products"
 
 
@@ -113,6 +127,9 @@ def test_list_merchant_center_product_issues_builds_mcql_query():
     assert call["path"] == "accounts/123/reports:search"
     assert "NOT_ELIGIBLE_OR_DISAPPROVED" in call["body"]["query"]
     assert "product_view" in call["body"]["query"]
+    # product_view exposes language_code, not content_language
+    assert "language_code" in call["body"]["query"]
+    assert "content_language" not in call["body"]["query"]
 
 
 def test_list_merchant_center_product_issues_rejects_bad_status():
@@ -174,6 +191,8 @@ def test_insert_product_is_a_pending_proposal_not_an_immediate_write():
     confirmed = ctx.safety.confirm(action_id)
     assert confirmed["status"] == "executed"
     assert merchant.calls[0]["method"] == "POST"
+    assert merchant.calls[0]["version"] == "v1"
+    assert "channel" not in merchant.calls[0]["body"]
     assert merchant.calls[0]["query"] == {"dataSource": "accounts/123/dataSources/111"}
     assert merchant.calls[0]["body"]["productAttributes"]["title"] == "A shirt"
     assert merchant.calls[0]["body"]["productAttributes"]["price"] == {
@@ -246,14 +265,18 @@ def test_datasource_id_must_be_numeric():
     merchant = FakeMerchantClient()
     tools, _ = _register(merchant)
     with pytest.raises(ValueError, match="datasource_id must be the numeric"):
-        tools["get_merchant_center_datasource"](data_source_id="not-a-number", merchant_id="123")
+        tools["get_merchant_center_datasource"](
+            data_source_id="not-a-number", merchant_id="123"
+        )
 
 
 def test_read_only_mode_blocks_merchant_writes():
     from google_ads_mcp.read_only import ReadOnlySafetyProxy
 
     merchant = FakeMerchantClient()
-    base_safety = SafetyLayer(auto_approve=True, ttl_minutes=30, audit_log=FakeAuditLog())
+    base_safety = SafetyLayer(
+        auto_approve=True, ttl_minutes=30, audit_log=FakeAuditLog()
+    )
     ctx = AppContext(
         settings=_fake_settings(),
         client=None,

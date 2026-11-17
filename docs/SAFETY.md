@@ -134,6 +134,14 @@ all referenced customer IDs must still pass `GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS
 when an allowlist is configured. Campaign/ad/asset/criterion mutations keep strict
 same-customer isolation.
 
+### Merchant Center scope
+
+Merchant account IDs are a separate identifier space from Google Ads customer
+IDs. `GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS` restricts every Merchant read/write,
+account discovery, pending-action confirm/replay and the Ads tools that name a
+Merchant account. With an Ads allowlist but no Merchant list, Merchant is
+refused (fail closed). See [`MERCHANT_V1_ONBOARDING.md`](MERCHANT_V1_ONBOARDING.md).
+
 ## Risk classes
 
 Writes are classified centrally as:

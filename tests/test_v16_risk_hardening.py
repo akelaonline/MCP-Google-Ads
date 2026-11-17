@@ -53,6 +53,5 @@ def test_status_and_sensitive_precedence_still_win():
         is RiskLevel.SENSITIVE
     )
     assert (
-        classify_risk("update_keyword_status", {"status": "ENABLED"})
-        is RiskLevel.SPEND
+        classify_risk("update_keyword_status", {"status": "ENABLED"}) is RiskLevel.SPEND
     )

@@ -24,7 +24,9 @@ def test_add_location_targeting_resolves_names_live():
             )
             return SimpleNamespace(
                 geo_target_constant_suggestions=[
-                    SimpleNamespace(search_term="Argentina", geo_target_constant=candidate)
+                    SimpleNamespace(
+                        search_term="Argentina", geo_target_constant=candidate
+                    )
                 ]
             )
 
@@ -194,7 +196,9 @@ def test_update_ad_schedule_builds_update_operation():
     )
     assert captured[0].update.ad_schedule.end_hour == 20
     assert captured[0].update.bid_modifier == 1.2
-    assert "end_hour" in captured[0]._children["update"]._children["ad_schedule"]._children
+    assert (
+        "end_hour" in captured[0]._children["update"]._children["ad_schedule"]._children
+    )
 
 
 def test_remove_ad_schedule_builds_remove_operation():

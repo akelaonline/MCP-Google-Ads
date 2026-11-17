@@ -6,12 +6,15 @@ and data source (feed) management. Every write goes through the same
 propose/confirm safety flow as Google Ads write tools
 (``ctx.safety.propose`` -> ``confirm_pending_action`` / ``cancel_pending_action``).
 
-Merchant Center account IDs are purely numeric, like Google Ads customer IDs,
-so they are reused as the ``customer_id`` for the shared pending-action /
-audit / allowlist machinery. If a deployment sets
-``GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS`` / ``GOOGLE_ADS_MCP_REQUIRE_CUSTOMER_ALLOWLIST``,
-Merchant Center account IDs used with write tools must also be included in
-that allowlist.
+Merchant Center account IDs are numeric like Google Ads customer IDs but live
+in a different ID space, so they have their own scope:
+``GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS`` / ``GOOGLE_ADS_MCP_REQUIRE_MERCHANT_ALLOWLIST``.
+The scope is enforced before every read and write, and discovery results
+(accounts, sub-accounts) are filtered to it. A Google Ads allowlist never
+authorises a Merchant account. When a deployment restricts Google Ads accounts
+but defines no Merchant allowlist, Merchant tools refuse to run.
+
+All sub-APIs use Merchant API v1 (v1beta was discontinued by Google).
 """
 
 from __future__ import annotations
@@ -21,16 +24,19 @@ from typing import Any
 from ..context import AppContext
 from ..merchant_client import (
     account_path,
+    build_product_id,
     datasource_resource_name,
-    normalize_merchant_id,
     product_input_path,
     product_path,
 )
 
 _ACCOUNTS_VERSION = "v1"
-_PRODUCTS_VERSION = "v1beta"
-_DATASOURCES_VERSION = "v1beta"
+_PRODUCTS_VERSION = "v1"
+_DATASOURCES_VERSION = "v1"
 _REPORTS_VERSION = "v1"
+
+# Attributes removed from the Products API in v1.
+_REMOVED_V1_ATTRIBUTES = {"taxes", "taxCategory"}
 
 _STATUS_FILTERS = {
     "NOT_ELIGIBLE_OR_DISAPPROVED",
@@ -46,7 +52,20 @@ def _merchant_id(ctx: AppContext, merchant_id: str | None) -> str:
         raise ValueError(
             "merchant_id is required (or set GOOGLE_MERCHANT_CENTER_ID as a default)."
         )
-    return normalize_merchant_id(value)
+    return ctx.merchant.assert_merchant_allowed(value)
+
+
+def _validate_channel(channel: str) -> None:
+    """``channel`` was removed from Merchant API v1 product inputs.
+
+    The parameter is kept so existing callers keep working: ONLINE (the only
+    channel a v1 product input can have) is accepted and ignored.
+    """
+    if str(channel).strip().upper() != "ONLINE":
+        raise ValueError(
+            "channel is no longer part of Merchant API v1 product inputs; only "
+            "ONLINE products can be managed here."
+        )
 
 
 def _page_size(value: int, maximum: int) -> int:
@@ -73,6 +92,12 @@ def register(mcp, ctx: AppContext) -> None:
             "uses_dedicated_refresh_token": bool(
                 ctx.settings.merchant_center_refresh_token
             ),
+            "api_version": "v1",
+            "allowed_merchant_ids": sorted(ctx.merchant.scope.allowed_ids),
+            "merchant_scope_enforced": ctx.merchant.scope.restricted,
+            "merchant_access_blocked_missing_scope": (
+                ctx.merchant.scope.hardened_without_scope
+            ),
         }
 
     # --------------------------------------------------------------- accounts
@@ -95,7 +120,7 @@ def register(mcp, ctx: AppContext) -> None:
                 "filter": filter_expression,
             },
         )
-        accounts = response.get("accounts", [])
+        accounts = ctx.merchant.filter_allowed_accounts(response.get("accounts", []))
         return {
             "accounts": accounts,
             "count": len(accounts),
@@ -125,7 +150,7 @@ def register(mcp, ctx: AppContext) -> None:
             f"{account_path(account)}:listSubaccounts",
             query={"pageSize": _page_size(page_size, 250), "pageToken": page_token},
         )
-        accounts = response.get("accounts", [])
+        accounts = ctx.merchant.filter_allowed_accounts(response.get("accounts", []))
         return {
             "accounts": accounts,
             "count": len(accounts),
@@ -197,9 +222,11 @@ def register(mcp, ctx: AppContext) -> None:
     ) -> dict:
         """Retrieve one processed product by its REST product ID.
 
-        ``product_id`` is the Merchant API product id, e.g.
-        ``online~en~US~SKU12345`` (channel~contentLanguage~feedLabel~offerId), as
-        returned by ``list_merchant_center_products``.
+        ``product_id`` is the Merchant API v1 product id,
+        ``contentLanguage~feedLabel~offerId`` (e.g. ``en~US~SKU12345``), as
+        returned by ``list_merchant_center_products``. The retired v1beta form
+        with a leading ``online~`` channel is accepted and converted. IDs whose
+        parts contain ``/``, ``%`` or ``~`` are sent base64url-encoded.
         """
         account = _merchant_id(ctx, merchant_id)
         return ctx.merchant.request(
@@ -230,7 +257,7 @@ def register(mcp, ctx: AppContext) -> None:
         if not (1 <= limit <= 1000):
             raise ValueError("limit must be between 1 and 1000.")
         query = (
-            "SELECT offer_id, id, title, feed_label, content_language, "
+            "SELECT offer_id, id, title, feed_label, language_code, "
             "aggregated_reporting_context_status, item_issues "
             "FROM product_view "
             f"WHERE aggregated_reporting_context_status = {_mcql_literal(status)} "
@@ -306,7 +333,7 @@ def register(mcp, ctx: AppContext) -> None:
         content_language: str,
         feed_label: str,
         data_source_id: str,
-        channel: str = "ONLINE",
+        channel: str = "ONLINE",  # deprecated: removed in Merchant API v1
         title: str | None = None,
         description: str | None = None,
         link: str | None = None,
@@ -325,14 +352,16 @@ def register(mcp, ctx: AppContext) -> None:
         """Propose creating OR updating a product input (productInputs.insert).
 
         Merchant API uses the same insert call to create a product and to
-        overwrite it later with the same offer_id/content_language/feed_label/
-        channel; there is no separate "update" method. ``data_source_id`` must
-        be an existing primary product data source (see
-        ``list_merchant_center_datasources``). Pass any field not covered by
-        the named kwargs via ``extra_attributes`` (merged as-is into
-        ``productAttributes``, e.g. {"googleProductCategory": "...", "gtin": [...]})
-        - verify field names against Google's current Merchant API reference,
-        since attribute coverage evolves.
+        overwrite it later with the same offer_id/content_language/feed_label;
+        there is no separate "update" method. ``data_source_id`` must be an
+        existing API data source (see ``list_merchant_center_datasources``).
+        Pass any field not covered by the named kwargs via ``extra_attributes``
+        (merged as-is into ``productAttributes``, e.g.
+        {"googleProductCategory": "...", "gtins": ["..."]}) - verify field names
+        against Google's current Merchant API v1 reference. ``gtin`` is sent as
+        the v1 ``gtins`` list; the removed ``taxes``/``taxCategory`` attributes
+        are rejected. ``channel`` no longer exists in v1 and only ``ONLINE`` is
+        accepted (and ignored).
         """
         account = _merchant_id(ctx, merchant_id)
         offer = offer_id.strip()
@@ -342,9 +371,22 @@ def register(mcp, ctx: AppContext) -> None:
             raise ValueError("content_language must not be empty.")
         if not feed_label.strip():
             raise ValueError("feed_label must not be empty.")
+        _validate_channel(channel)
         data_source = datasource_resource_name(account, data_source_id)
 
         attributes: dict[str, Any] = dict(extra_attributes or {})
+        removed = sorted(_REMOVED_V1_ATTRIBUTES & set(attributes))
+        if removed:
+            raise ValueError(
+                f"{', '.join(removed)} were removed from the Merchant API v1 "
+                "Products API and cannot be sent."
+            )
+        if "gtin" in attributes:
+            legacy_gtin = attributes.pop("gtin")
+            attributes.setdefault(
+                "gtins",
+                list(legacy_gtin) if isinstance(legacy_gtin, (list, tuple)) else [legacy_gtin],
+            )
         if title is not None:
             attributes["title"] = title
         if description is not None:
@@ -369,7 +411,7 @@ def register(mcp, ctx: AppContext) -> None:
         if brand is not None:
             attributes["brand"] = brand
         if gtin is not None:
-            attributes["gtin"] = gtin
+            attributes["gtins"] = [gtin]
         if mpn is not None:
             attributes["mpn"] = mpn
 
@@ -377,7 +419,6 @@ def register(mcp, ctx: AppContext) -> None:
             "offerId": offer,
             "contentLanguage": content_language.strip(),
             "feedLabel": feed_label.strip(),
-            "channel": channel.strip().upper(),
             "productAttributes": attributes,
         }
 
@@ -396,14 +437,13 @@ def register(mcp, ctx: AppContext) -> None:
             customer_id=account,
             description=(
                 f"Create/update product input {offer!r} "
-                f"({content_language}/{feed_label}/{channel}) in Merchant Center "
+                f"({content_language}/{feed_label}) in Merchant Center "
                 f"account {account} via data source {data_source_id}"
             ),
             payload={
                 "offer_id": offer,
                 "content_language": content_language.strip(),
                 "feed_label": feed_label.strip(),
-                "channel": channel.strip().upper(),
                 "data_source_id": str(data_source_id),
                 "attribute_fields": sorted(attributes.keys()),
                 "validate_only": bool(validate_only),
@@ -424,7 +464,7 @@ def register(mcp, ctx: AppContext) -> None:
         content_language: str,
         feed_label: str,
         data_source_id: str,
-        channel: str = "ONLINE",
+        channel: str = "ONLINE",  # deprecated: removed in Merchant API v1
         merchant_id: str | None = None,
     ) -> dict:
         """Propose removing a product input (productInputs.delete) from a data source.
@@ -441,8 +481,9 @@ def register(mcp, ctx: AppContext) -> None:
         ):
             if not value.strip():
                 raise ValueError(f"{name} must not be empty.")
+        _validate_channel(channel)
         data_source = datasource_resource_name(account, data_source_id)
-        product_input_id = f"{content_language.strip()}~{feed_label.strip()}~{offer_id.strip()}"
+        product_input_id = build_product_id(content_language, feed_label, offer_id)
         name = product_input_path(account, product_input_id)
 
         def execute():
@@ -460,14 +501,13 @@ def register(mcp, ctx: AppContext) -> None:
             customer_id=account,
             description=(
                 f"Remove product input {offer_id!r} "
-                f"({content_language}/{feed_label}/{channel}) from Merchant Center "
+                f"({content_language}/{feed_label}) from Merchant Center "
                 f"account {account}, data source {data_source_id}"
             ),
             payload={
                 "offer_id": offer_id.strip(),
                 "content_language": content_language.strip(),
                 "feed_label": feed_label.strip(),
-                "channel": channel.strip().upper(),
                 "data_source_id": str(data_source_id),
             },
             execute=execute,

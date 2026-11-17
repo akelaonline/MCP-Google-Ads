@@ -17,7 +17,9 @@ used for Google Ads (request both scopes together with
 
 from __future__ import annotations
 
+import base64
 import json
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -26,10 +28,18 @@ from typing import Any
 
 from .config import Settings
 from .errors import GoogleAdsMcpError
+from .merchant_scope import MerchantScope, normalize_merchant_account_id
 
 CONTENT_SCOPE = "https://www.googleapis.com/auth/content"
 _MERCHANT_API_ROOT = "https://merchantapi.googleapis.com"
 _TOKEN_URL = "https://oauth2.googleapis.com/token"
+_ACCOUNT_IN_PATH = re.compile(r"^accounts/([^/:]+)")
+_PLAIN_ID_PART = re.compile(r"[A-Za-z0-9._-]+")
+_REGISTRATION_HINT = (
+    " Merchant API v1 requires a one-time developer registration of the Google "
+    "Cloud project used for OAuth (accounts.developerRegistration.registerGcp, or "
+    "Merchant Center > Settings > API). See docs/MERCHANT_V1_ONBOARDING.md."
+)
 
 
 class MerchantCenterClient:
@@ -39,6 +49,19 @@ class MerchantCenterClient:
         self._settings = settings
         self._access_token: str | None = None
         self._access_token_expires_at = 0.0
+        self._scope = MerchantScope.from_settings(settings)
+
+    @property
+    def scope(self) -> MerchantScope:
+        return self._scope
+
+    def assert_merchant_allowed(self, merchant_id: str) -> str:
+        """Normalize a Merchant account ID and enforce the Merchant allowlist."""
+        return self._scope.assert_allowed(merchant_id)
+
+    def filter_allowed_accounts(self, accounts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Restrict discovery results to this deployment's Merchant scope."""
+        return self._scope.filter_accounts(accounts)
 
     @property
     def _refresh_token(self) -> str | None:
@@ -92,7 +115,13 @@ class MerchantCenterClient:
         timeout: int = 60,
     ) -> dict[str, Any]:
         """Call one Merchant API sub-API, e.g. api='products', version='v1beta'."""
+        self._scope.ensure_usable()
         self.require_configured()
+        # Defense in depth: every request, read or write, is checked against the
+        # Merchant scope before any credential is used or any byte leaves.
+        account_match = _ACCOUNT_IN_PATH.match(path.lstrip("/"))
+        if account_match:
+            self.assert_merchant_allowed(account_match.group(1))
         token = self._get_access_token()
         url = f"{_MERCHANT_API_ROOT}/{api}/{version}/{path.lstrip('/')}"
         if query:
@@ -105,7 +134,7 @@ class MerchantCenterClient:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "google-ads-mcp-merchant-center/0.17",
+            "User-Agent": "google-ads-mcp-merchant-center/0.18.1",
         }
         if body is not None:
             payload = json.dumps(body, separators=(",", ":")).encode("utf-8")
@@ -129,7 +158,15 @@ class MerchantCenterClient:
                 detail = _format_google_api_error(parsed)
             except (json.JSONDecodeError, TypeError, ValueError):
                 detail = raw[:2000] or str(ex)
-            raise GoogleAdsMcpError(f"Merchant API HTTP {ex.code}: {detail}") from ex
+            hint = ""
+            lowered = detail.lower()
+            if ex.code in (401, 403) and "regist" in lowered and (
+                "developer" in lowered or "gcp" in lowered or "cloud project" in lowered
+            ):
+                hint = _REGISTRATION_HINT
+            raise GoogleAdsMcpError(
+                f"Merchant API HTTP {ex.code}: {detail}{hint}"
+            ) from ex
         except (urllib.error.URLError, TimeoutError, OSError) as ex:
             raise GoogleAdsMcpError(f"Merchant API request failed: {ex}") from ex
 
@@ -182,18 +219,56 @@ class MerchantCenterClient:
 
 
 def normalize_merchant_id(value: str) -> str:
-    text = str(value).strip()
-    if not text.isdigit() or int(text) <= 0:
-        raise ValueError("merchant_id must be a positive numeric Merchant Center account ID.")
-    return text
+    return normalize_merchant_account_id(value)
 
 
 def account_path(merchant_id: str) -> str:
     return f"accounts/{normalize_merchant_id(merchant_id)}"
 
 
+def encode_product_id(raw_id: str) -> str:
+    """Unpadded base64url (RFC 4648 §5), the Merchant API v1 encoded ID format."""
+    return base64.urlsafe_b64encode(raw_id.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def build_product_id(content_language: str, feed_label: str, offer_id: str) -> str:
+    """Return the v1 ``{productinput}`` segment: ``content_language~feed_label~offer_id``.
+
+    Plain when every part is URL-safe; otherwise unpadded base64url, which v1
+    requires whenever a part contains characters such as ``/``, ``%`` or ``~``.
+    """
+    parts = (content_language.strip(), feed_label.strip(), offer_id.strip())
+    if not all(parts):
+        raise ValueError("content_language, feed_label and offer_id must not be empty.")
+    raw = "~".join(parts)
+    if all(_PLAIN_ID_PART.fullmatch(part) for part in parts):
+        return raw
+    return encode_product_id(raw)
+
+
+def normalize_product_id(product_id: str) -> str:
+    """Normalize a caller-supplied product ID to the v1 ``{product}`` segment.
+
+    Accepts ``en~US~sku123``, ``local~en~US~sku123`` and the v1beta-era
+    ``online~en~US~sku123`` (the retired channel prefix is dropped). A segment
+    without ``~`` is assumed to be already base64url-encoded.
+    """
+    raw = str(product_id).strip()
+    if not raw:
+        raise ValueError("product_id must not be empty.")
+    if "~" not in raw:
+        return raw
+    parts = raw.split("~")
+    if len(parts) == 4 and parts[0] == "online":
+        parts = parts[1:]
+    candidate = "~".join(parts)
+    if all(_PLAIN_ID_PART.fullmatch(part) for part in parts):
+        return candidate
+    return encode_product_id(candidate)
+
+
 def product_path(merchant_id: str, product_id: str) -> str:
-    return f"{account_path(merchant_id)}/products/{product_id}"
+    return f"{account_path(merchant_id)}/products/{normalize_product_id(product_id)}"
 
 
 def product_input_path(merchant_id: str, product_input_id: str) -> str:

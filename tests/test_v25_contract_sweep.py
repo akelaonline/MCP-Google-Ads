@@ -37,7 +37,9 @@ def _services_used() -> set[str]:
 def _services_mutated() -> set[str]:
     mutated: set[str] = set()
     for path in (_SRC / "tools").glob("*.py"):
-        for match in re.finditer(r'ctx\.client\.mutate\("([A-Za-z0-9]+)"', path.read_text()):
+        for match in re.finditer(
+            r'ctx\.client\.mutate\("([A-Za-z0-9]+)"', path.read_text()
+        ):
             mutated.add(match.group(1))
     return mutated
 

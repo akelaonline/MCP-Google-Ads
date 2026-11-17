@@ -210,13 +210,14 @@ def test_enhanced_upload_normalizes_gmail_and_phone_before_hashing():
     assert len(upload_service.calls) == 1
     conversion = upload_service.calls[0]["conversions"][0]
     identifiers = list(conversion.user_identifiers)
-    assert identifiers[0].hashed_email == hashlib.sha256(
-        b"janedoe@gmail.com"
-    ).hexdigest()
+    assert (
+        identifiers[0].hashed_email == hashlib.sha256(b"janedoe@gmail.com").hexdigest()
+    )
     assert identifiers[0].user_identifier_source.name == "FIRST_PARTY"
-    assert identifiers[1].hashed_phone_number == hashlib.sha256(
-        b"+5491112345678"
-    ).hexdigest()
+    assert (
+        identifiers[1].hashed_phone_number
+        == hashlib.sha256(b"+5491112345678").hexdigest()
+    )
     assert identifiers[1].user_identifier_source.name == "FIRST_PARTY"
     assert conversion.currency_code == "USD"
 

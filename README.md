@@ -16,8 +16,8 @@
 
 Creado y mantenido por **[Alejandro José · Akela](https://github.com/akelaonline)**
 
-[![Versión](https://img.shields.io/badge/versión-0.18.0-111111?style=for-the-badge)](docs/RELEASE_0.18.0.md)
-[![Tests](https://img.shields.io/badge/tests-382%2F382-16a34a?style=for-the-badge)](docs/RELEASE_0.18.0.md)
+[![Versión](https://img.shields.io/badge/versión-0.18.1-111111?style=for-the-badge)](docs/RELEASE_0.18.1.md)
+[![Tests](https://img.shields.io/badge/tests-514%2F514-16a34a?style=for-the-badge)](docs/RELEASE_0.18.1.md)
 [![Google Ads API](https://img.shields.io/badge/Google_Ads_API-v26-4285F4?style=for-the-badge&logo=googleads&logoColor=white)](https://developers.google.com/google-ads/api)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](pyproject.toml)
 [![MIT](https://img.shields.io/badge/license-MIT-black?style=for-the-badge)](LICENSE)
@@ -194,6 +194,8 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
+# o, con dependencias exactamente certificadas:
+# make install-certified
 ```
 
 En Windows PowerShell:
@@ -418,6 +420,7 @@ escrituras.
   (o seteá `GOOGLE_MERCHANT_CENTER_REFRESH_TOKEN` aparte si Merchant Center
   vive en otra cuenta de Google).
 - Opcional: `GOOGLE_MERCHANT_CENTER_ID` como cuenta por defecto.
+- Alcance propio: `GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS` (los IDs de Merchant **no** son los de Google Ads). Si hay allowlist de Ads y no de Merchant, Merchant queda bloqueado. Requiere registrar el proyecto de Cloud una vez en Merchant API v1: ver [`docs/MERCHANT_V1_ONBOARDING.md`](docs/MERCHANT_V1_ONBOARDING.md).
 - Herramientas típicas: `list_merchant_center_product_issues` (productos
   rechazados/no elegibles y por qué), `get_merchant_center_product_performance`,
   `list_merchant_center_datasources`, `insert_merchant_center_product`,
@@ -453,9 +456,22 @@ El objetivo no es “darle control total a una IA”. El objetivo es **darle her
 
 ---
 
-## Versión actual — 0.17.2
+## Versión actual — 0.18.1 (candidata)
 
-`0.18.0` es una **release candidate validada offline** — aún no validada en producción ni recomendada para reemplazar instalaciones activas. Migra a **Google Ads API v26** (`google-ads>=34,<36`), hace opcional el Developer Token tras su retiro oficial (2026-09-09), migra la subida de YouTube a `ResumableUploadSession` y endurece la propuesta→confirmación de uploads. Detalle en [`docs/RELEASE_0.18.0.md`](docs/RELEASE_0.18.0.md). `0.17.2` sigue siendo la referencia histórica estable ([`docs/RELEASE_0.17.2.md`](docs/RELEASE_0.17.2.md)).
+**`0.18.1` es una candidata correctiva validada solo offline**: no está publicada, ni validada contra Google en vivo, ni recomendada para reemplazar una instalación activa. Corrige que `validate_only` se descartaba en silencio (un dry-run podía ejecutarse como escritura real), migra Merchant Products/DataSources a **API v1**, agrega un **alcance propio de Merchant** (`GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS`, falla cerrado), retira lo que Google retiró (`create_smart_campaign`, idioma manual en Search) y deja explícitos los cambios de diciembre 2026 (PMax image extraction, multi-party approvals). Detalle: [`docs/RELEASE_0.18.1.md`](docs/RELEASE_0.18.1.md), [Merchant v1](docs/MERCHANT_V1_ONBOARDING.md), [actualizar y volver atrás](docs/UPDATE_AND_ROLLBACK_0.18.1.md).
+
+| Estado | Qué es |
+|---|---|
+| Recomendado | El set de dependencias de `constraints-certified.txt` (`make install-certified`) |
+| Candidata | `0.18.1` hasta pasar validación real (ver [laboratorio](docs/REAL_VALIDATION_LAB.md)) |
+| Beta | Herramientas de Merchant Center |
+| Referencia estable | `0.17.2` |
+
+Google Ads API **v26**: las versiones menores v26.1 y v26.2 viajan *dentro* del paquete `v26` (`google-ads` 35.0.0 suma v26.1; 35.1.0 suma v26.2).
+
+### Historial: 0.18.0
+
+`0.18.0` es una **release candidate validada offline** — aún no validada en producción ni recomendada para reemplazar instalaciones activas. Migra a **Google Ads API v26** (`google-ads>=34,<36`), hace opcional el Developer Token tras su retiro oficial (2026-09-09), migra la subida de YouTube a `ResumableUploadSession` y endurece la propuesta→confirmación de uploads. Detalle en [`docs/RELEASE_0.18.0.md`](docs/RELEASE_0.18.1.md). `0.17.2` sigue siendo la referencia histórica estable ([`docs/RELEASE_0.17.2.md`](docs/RELEASE_0.17.2.md)).
 
 Todo lo que sigue abajo sobre `0.17.0` sigue vigente sin cambios — 0.17.1 no toca ninguna funcionalidad, solo corrige ese bug puntual.
 
@@ -520,7 +536,8 @@ Guía completa: [`docs/SETUP.md#troubleshooting`](docs/SETUP.md#troubleshooting)
 | [`docs/EXAMPLES.md`](docs/EXAMPLES.md) | conversaciones y consultas listas para usar |
 | [`docs/V25_SERVICE_COVERAGE.md`](docs/V25_SERVICE_COVERAGE.md) | cobertura servicio por servicio de API v25 |
 | [`docs/VALIDATION_CHECKLIST.md`](docs/VALIDATION_CHECKLIST.md) | validación antes de producción |
-| [`docs/RELEASE_0.18.0.md`](docs/RELEASE_0.18.0.md) | release candidate (offline) |
+| [`docs/RELEASE_0.18.1.md`](docs/RELEASE_0.18.1.md) | candidata correctiva (offline) |
+| [`docs/RELEASE_0.18.0.md`](docs/RELEASE_0.18.1.md) | release candidate (offline) |
 | [`docs/RELEASE_0.17.1.md`](docs/RELEASE_0.17.1.md) | release anterior (primera mitad del fix de mutate_atomic) |
 | [`docs/RELEASE_0.17.0.md`](docs/RELEASE_0.17.0.md) | release anterior (Merchant Center) |
 | [`CHANGELOG.md`](CHANGELOG.md) | historial completo |

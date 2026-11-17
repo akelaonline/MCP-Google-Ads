@@ -10,8 +10,10 @@ from google_ads_mcp.safety import SafetyLayer
 class _FakeMcp:
     def tool(self, function=None, *args, **kwargs):
         if function is None:
+
             def decorator(func):
                 return func
+
             return decorator
         return function
 
@@ -55,7 +57,9 @@ def test_pending_action_replays_after_new_safety_instance(tmp_path):
 
     stored = audit.get_pending(action_id)
     assert stored is not None
-    assert stored["invocation_arguments"]["secret_value"] == "never-store-me-in-plaintext"
+    assert (
+        stored["invocation_arguments"]["secret_value"] == "never-store-me-in-plaintext"
+    )
 
     holder["safety"] = _safety(audit)
     confirmed = holder["safety"].confirm(action_id)

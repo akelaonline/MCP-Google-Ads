@@ -29,7 +29,9 @@ def test_no_legacy_smart_shopping_enum_in_tools():
 
 def test_no_removed_recommendation_status_field():
     hits = _hits(TOOLS, "recommendation.status")
-    assert not hits, "Recommendation.status is not the current API contract:\n" + "\n".join(hits)
+    assert not hits, (
+        "Recommendation.status is not the current API contract:\n" + "\n".join(hits)
+    )
 
 
 def test_no_direct_urllib_fetches_from_tool_modules():

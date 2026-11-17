@@ -36,7 +36,9 @@ def _ctx():
     client = SimpleNamespace(raw=raw, mutate=mutate, mutate_atomic=mutate_atomic)
     audit = FakeAuditLog()
     safety = SafetyLayer(auto_approve=True, ttl_minutes=30, audit_log=audit)
-    return AppContext(settings=None, client=client, safety=safety, audit=audit), captured
+    return AppContext(
+        settings=None, client=client, safety=safety, audit=audit
+    ), captured
 
 
 def _tools(ctx):
@@ -84,7 +86,10 @@ def test_demand_gen_video_builds_real_v25_atomic_operations(monkeypatch):
     assert service == "GoogleAdsService"
     assert customer_id == "1234567890"
     assert len(operations) == 3
-    assert operations[0].asset_operation.create.youtube_video_asset.youtube_video_id == "abcdefghijk"
+    assert (
+        operations[0].asset_operation.create.youtube_video_asset.youtube_video_id
+        == "abcdefghijk"
+    )
     ad_group_ad = operations[-1].ad_group_ad_operation.create
     assert ad_group_ad.status.name == "PAUSED"
     assert list(ad_group_ad.ad.final_urls) == ["https://example.com"]

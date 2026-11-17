@@ -134,7 +134,9 @@ def test_submit_batch_job_builds_real_mixed_v25_mutate_operations():
     assert result["risk_level"] == "sensitive"
     create_call = next(call for call in client.calls if call[0] == "mutate_batch_job")
     assert create_call[1]["operation"]._pb.WhichOneof("operation") == "create"
-    add_call = next(call for call in client.calls if call[0] == "add_batch_job_operations")
+    add_call = next(
+        call for call in client.calls if call[0] == "add_batch_job_operations"
+    )
     operations = add_call[1]["mutate_operations"]
     assert len(operations) == 4
     assert operations[0].campaign_operation.update.status.name == "PAUSED"
@@ -142,7 +144,10 @@ def test_submit_batch_job_builds_real_mixed_v25_mutate_operations():
     assert operations[1].campaign_budget_operation.update.amount_micros == 42_500_000
     assert operations[2].ad_group_criterion_operation.update.cpc_bid_micros == 1_250_000
     assert operations[3].campaign_criterion_operation.create.negative is True
-    assert operations[3].campaign_criterion_operation.create.keyword.match_type.name == "PHRASE"
+    assert (
+        operations[3].campaign_criterion_operation.create.keyword.match_type.name
+        == "PHRASE"
+    )
     run_call = next(call for call in client.calls if call[0] == "run_batch_job")
     assert run_call[1]["resource_name"] == "customers/1234567890/batchJobs/99"
 
@@ -189,7 +194,9 @@ def test_seasonality_adjustment_builds_real_v25_contract():
     assert result["status"] == "executed"
     assert result["risk_level"] == "spend"
     call = next(
-        call for call in client.calls if call[0] == "BiddingSeasonalityAdjustmentService"
+        call
+        for call in client.calls
+        if call[0] == "BiddingSeasonalityAdjustmentService"
     )
     operation = call[2][0]
     item = operation.create
@@ -215,7 +222,9 @@ def test_data_exclusion_campaign_scope_builds_real_v25_contract():
 
     assert result["status"] == "executed"
     assert result["risk_level"] == "spend"
-    call = next(call for call in client.calls if call[0] == "BiddingDataExclusionService")
+    call = next(
+        call for call in client.calls if call[0] == "BiddingDataExclusionService"
+    )
     item = call[2][0].create
     assert item.scope.name == "CAMPAIGN"
     assert list(item.campaigns) == [

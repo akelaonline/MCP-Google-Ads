@@ -40,6 +40,27 @@ def _customer_id_set(name: str) -> frozenset[str]:
     return frozenset(values)
 
 
+def _merchant_id_set(name: str) -> frozenset[str]:
+    """Parse a comma-separated list of Merchant Center account IDs.
+
+    Merchant Center and Google Ads IDs are different identifier spaces even
+    though both are numeric, so they are configured and enforced separately.
+    """
+    raw = os.environ.get(name, "")
+    values: set[str] = set()
+    for item in raw.split(","):
+        text = item.strip()
+        if not text:
+            continue
+        if not text.isdigit() or int(text) <= 0:
+            raise ValueError(
+                f"{name} contains invalid Merchant Center account ID {item!r}; "
+                "use positive numeric IDs separated by commas."
+            )
+        values.add(text)
+    return frozenset(values)
+
+
 @dataclass(frozen=True)
 class Settings:
     developer_token: str | None
@@ -61,6 +82,8 @@ class Settings:
     data_manager_refresh_token: str | None = None
     merchant_center_refresh_token: str | None = None
     merchant_center_default_id: str | None = None
+    allowed_merchant_ids: frozenset[str] = frozenset()
+    require_merchant_allowlist: bool = False
     read_only: bool = False
 
     @property
@@ -108,6 +131,14 @@ def load_settings() -> Settings:
             "GOOGLE_ADS_MCP_ALLOWED_CUSTOMER_IDS entry."
         )
 
+    allowed_merchant_ids = _merchant_id_set("GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS")
+    require_merchant_allowlist = _bool("GOOGLE_ADS_MCP_REQUIRE_MERCHANT_ALLOWLIST", False)
+    if require_merchant_allowlist and not allowed_merchant_ids:
+        raise ValueError(
+            "GOOGLE_ADS_MCP_REQUIRE_MERCHANT_ALLOWLIST=true requires at least one "
+            "GOOGLE_ADS_MCP_ALLOWED_MERCHANT_IDS entry."
+        )
+
     data_manager_project_id = (
         os.environ.get("GOOGLE_ADS_DATA_MANAGER_PROJECT_ID", "").strip() or None
     )
@@ -145,5 +176,7 @@ def load_settings() -> Settings:
         data_manager_refresh_token=data_manager_refresh_token,
         merchant_center_refresh_token=merchant_center_refresh_token,
         merchant_center_default_id=merchant_center_default_id,
+        allowed_merchant_ids=allowed_merchant_ids,
+        require_merchant_allowlist=require_merchant_allowlist,
         read_only=_bool("GOOGLE_ADS_MCP_READ_ONLY", False),
     )

@@ -208,10 +208,7 @@ def test_language_setter_builds_real_remove_and_create_operations():
     assert result["status"] == "executed"
     operations = client.calls[0][1]
     assert operations[0].remove.endswith("/campaignCriteria/111~222")
-    assert (
-        operations[1].create.language.language_constant
-        == "languageConstants/1003"
-    )
+    assert operations[1].create.language.language_constant == "languageConstants/1003"
 
 
 def test_device_setter_updates_existing_real_criterion():

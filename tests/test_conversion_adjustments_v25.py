@@ -88,9 +88,7 @@ def test_retraction_builds_real_v25_conversion_adjustment():
     assert adjustment.adjustment_type.name == "RETRACTION"
     assert adjustment.order_id == "ORDER-1"
     assert adjustment.adjustment_date_time == "2026-08-18 16:30:00-03:00"
-    assert adjustment.conversion_action == (
-        "customers/1234567890/conversionActions/55"
-    )
+    assert adjustment.conversion_action == ("customers/1234567890/conversionActions/55")
 
 
 def test_restatement_builds_real_v25_restatement_value():

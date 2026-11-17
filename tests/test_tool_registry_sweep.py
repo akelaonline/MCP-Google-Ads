@@ -91,7 +91,10 @@ def test_declared_legacy_is_skipped_silently():
         return {}
 
     legacy_function.__module__ = "google_ads_mcp.tools.remaining_core_services"
-    assert _candidate_should_register("create_conversion_value_rule", legacy_function) is False
+    assert (
+        _candidate_should_register("create_conversion_value_rule", legacy_function)
+        is False
+    )
     assert _TOOL_OWNERS.get("create_conversion_value_rule") == (
         "google_ads_mcp.tools.conversions"
     )

@@ -1,10 +1,17 @@
-.PHONY: install install-dev smoke test lint format check
+.PHONY: install install-dev install-certified smoke test lint format check lifecycle
 
 install:
 	python -m pip install -e .
 
 install-dev:
 	python -m pip install -e ".[dev]"
+
+install-certified:
+	python -m pip install -e ".[dev,auth]" -c constraints-certified.txt
+	python -m pip check
+
+lifecycle:
+	python scripts/stdio_lifecycle_test.py
 
 smoke:
 	python scripts/smoke_test.py
@@ -23,3 +30,4 @@ check:
 	python scripts/smoke_test.py
 	ruff check src tests scripts
 	pytest tests/ -v
+	python scripts/stdio_lifecycle_test.py

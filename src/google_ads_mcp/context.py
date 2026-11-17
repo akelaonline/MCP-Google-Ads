@@ -9,6 +9,7 @@ from .audit import AuditLog
 from .client import GoogleAdsClientWrapper
 from .config import Settings, load_settings
 from .merchant_client import MerchantCenterClient
+from .merchant_scope import MerchantScope
 from .read_only import ReadOnlySafetyProxy
 from .safety import SafetyLayer
 from .scoped_client import ScopedGoogleAdsClientWrapper
@@ -21,6 +22,20 @@ class AppContext:
     safety: Any
     audit: AuditLog
     merchant: MerchantCenterClient | None = None
+
+    def assert_merchant_allowed(self, merchant_id: Any) -> str:
+        """Validate a Merchant account ID named by an Ads-side tool.
+
+        Merchant account IDs are a separate scope from Ads customer IDs, so the
+        Ads allowlist never authorizes them. Uses the live Merchant client's
+        scope; falls back to the one derived from settings.
+        """
+        scope = (
+            self.merchant.scope
+            if self.merchant is not None
+            else MerchantScope.from_settings(self.settings)
+        )
+        return scope.assert_allowed(merchant_id)
 
 
 def build_context() -> AppContext:
@@ -36,6 +51,8 @@ def build_context() -> AppContext:
         auto_approve_sensitive=settings.auto_approve_sensitive,
         allowed_customer_ids=settings.allowed_customer_ids,
         require_customer_allowlist=settings.require_customer_allowlist,
+        allowed_merchant_ids=settings.allowed_merchant_ids,
+        require_merchant_allowlist=settings.require_merchant_allowlist,
     )
     safety = ReadOnlySafetyProxy(base_safety) if settings.read_only else base_safety
     merchant = MerchantCenterClient(settings)

@@ -96,7 +96,9 @@ def test_add_webpage_target_validates_operand():
         tool_fns["add_webpage_target"](
             customer_id="123",
             campaign_id="456",
-            conditions=[{"operand": "PAGE_URL", "operator": "EQUALS", "argument": "/x"}],
+            conditions=[
+                {"operand": "PAGE_URL", "operator": "EQUALS", "argument": "/x"}
+            ],
         )
 
 

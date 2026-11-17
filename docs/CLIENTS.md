@@ -68,7 +68,7 @@ MCP-capable AI client
         |
 Google Ads MCP (local Python process)
         |
- Google Ads API v25
+ Google Ads API v26
 ```
 
 For a remote/cloud operator:
@@ -80,7 +80,7 @@ MCP-capable cloud client
         |
 Google Ads MCP (HTTP, private server)
         |
- Google Ads API v25
+ Google Ads API v26
 ```
 
 The second pattern is only safe when the external boundary authenticates and restricts access.

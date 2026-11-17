@@ -13,9 +13,7 @@ class _FakeRecommendationService:
     def __init__(self):
         self.calls = []
 
-    def apply_recommendation(
-        self, *, customer_id, operations, partial_failure=False
-    ):
+    def apply_recommendation(self, *, customer_id, operations, partial_failure=False):
         self.calls.append(
             (
                 "apply",
@@ -32,9 +30,7 @@ class _FakeRecommendationService:
             ]
         )
 
-    def dismiss_recommendation(
-        self, *, customer_id, operations, partial_failure=False
-    ):
+    def dismiss_recommendation(self, *, customer_id, operations, partial_failure=False):
         self.calls.append(
             (
                 "dismiss",

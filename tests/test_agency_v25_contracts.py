@@ -217,7 +217,10 @@ def test_update_user_access_builds_real_v25_update_mask():
 
 
 def test_account_access_mutate_rpc_names_are_singular_in_v25():
-    assert _mutate_method_name("CustomerUserAccessService") == "mutate_customer_user_access"
+    assert (
+        _mutate_method_name("CustomerUserAccessService")
+        == "mutate_customer_user_access"
+    )
     assert _mutate_method_name("CustomerUserAccessInvitationService") == (
         "mutate_customer_user_access_invitation"
     )
