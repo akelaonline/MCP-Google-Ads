@@ -57,7 +57,12 @@ def build_server() -> FastMCP:
     # Must be installed before any @mcp.tool() registrations. This preserves each
     # function's public signature while capturing original validated arguments for
     # restart-safe pending-action replay.
-    install_tool_tracking(mcp)
+    if ctx.settings.read_only:
+        from .write_tools import WRITE_TOOLS
+
+        install_tool_tracking(mcp, read_only_blocked_tools=WRITE_TOOLS)
+    else:
+        install_tool_tracking(mcp)
 
     from .tools import ALL_MODULES
 
